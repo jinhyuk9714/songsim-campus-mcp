@@ -1,5 +1,0 @@
-[console_scripts]
-songsim-api = songsim_campus.api:main
-songsim-mcp = songsim_campus.mcp_server:main
-songsim-seed-demo = songsim_campus.seed:main
-songsim-sync = songsim_campus.sync:main
