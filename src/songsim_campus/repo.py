@@ -234,6 +234,39 @@ def get_place_by_slug_or_name(
     return _row_to_dict("places", row) if row else None
 
 
+def get_place_by_slug(conn: psycopg.Connection, slug: str) -> dict[str, Any] | None:
+    row = conn.execute(
+        "SELECT * FROM places WHERE slug = %s",
+        (slug,),
+    ).fetchone()
+    return _row_to_dict("places", row) if row else None
+
+
+def list_places_by_exact_name(conn: psycopg.Connection, name: str) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        "SELECT * FROM places WHERE name = %s ORDER BY name",
+        (name,),
+    ).fetchall()
+    return [_row_to_dict("places", row) for row in rows]
+
+
+def list_places_by_exact_alias(conn: psycopg.Connection, alias: str) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT *
+        FROM places
+        WHERE EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements_text(aliases_json) AS alias_item(value)
+            WHERE alias_item.value = %s
+        )
+        ORDER BY name
+        """,
+        (alias,),
+    ).fetchall()
+    return [_row_to_dict("places", row) for row in rows]
+
+
 def update_place_opening_hours(
     conn: psycopg.Connection,
     slug: str,

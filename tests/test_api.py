@@ -464,6 +464,15 @@ def test_nearby_restaurants_returns_404_for_missing_origin(client):
     assert response.status_code == 404
 
 
+def test_nearby_restaurants_accepts_origin_alias(client):
+    response = client.get('/restaurants/nearby', params={'origin': '중도', 'limit': 3})
+
+    assert response.status_code == 200
+    items = response.json()
+    assert items
+    assert all(item['origin'] == 'central-library' for item in items)
+
+
 def test_nearby_restaurants_can_filter_open_now(client):
     with connection() as conn:
         replace_restaurants(

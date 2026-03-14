@@ -13,6 +13,7 @@ from songsim_campus.ingest.kakao_places import KakaoPlace
 from songsim_campus.repo import replace_places, replace_restaurants, update_place_opening_hours
 from songsim_campus.seed import seed_demo
 from songsim_campus.services import (
+    InvalidRequestError,
     NotFoundError,
     _parse_campus_walk_graph,
     find_nearby_restaurants,
@@ -87,6 +88,38 @@ def test_find_nearby_restaurants_sorted(app_env):
     assert items
     walk_minutes = [item.estimated_walk_minutes for item in items]
     assert walk_minutes == sorted(walk_minutes)
+
+
+def test_find_nearby_restaurants_accepts_origin_alias(app_env):
+    init_db()
+    seed_demo(force=True)
+    with connection() as conn:
+        slug_items = find_nearby_restaurants(
+            conn,
+            origin="central-library",
+            walk_minutes=15,
+            limit=3,
+        )
+        alias_items = find_nearby_restaurants(conn, origin="중도", walk_minutes=15, limit=3)
+
+    assert [item.name for item in alias_items] == [item.name for item in slug_items]
+    assert all(item.origin == "central-library" for item in alias_items)
+
+
+def test_find_nearby_restaurants_accepts_facility_alias_as_origin(app_env):
+    init_db()
+    seed_demo(force=True)
+    with connection() as conn:
+        slug_items = find_nearby_restaurants(
+            conn,
+            origin="student-center",
+            walk_minutes=15,
+            limit=3,
+        )
+        alias_items = find_nearby_restaurants(conn, origin="학생식당", walk_minutes=15, limit=3)
+
+    assert [item.name for item in alias_items] == [item.name for item in slug_items]
+    assert all(item.origin == "student-center" for item in alias_items)
 
 
 def test_find_nearby_restaurants_uses_campus_graph_for_external_routes(app_env):
@@ -174,6 +207,54 @@ def test_find_nearby_restaurants_raises_for_unknown_origin(app_env):
 
     with connection() as conn, pytest.raises(NotFoundError):
         find_nearby_restaurants(conn, origin='unknown-place')
+
+
+def test_find_nearby_restaurants_raises_for_ambiguous_origin_alias(app_env):
+    init_db()
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                {
+                    "slug": "library-a",
+                    "name": "중앙도서관A",
+                    "category": "library",
+                    "aliases": ["중도"],
+                    "description": "",
+                    "latitude": 37.48643,
+                    "longitude": 126.80164,
+                    "opening_hours": {},
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "slug": "library-b",
+                    "name": "중앙도서관B",
+                    "category": "library",
+                    "aliases": ["중도"],
+                    "description": "",
+                    "latitude": 37.48653,
+                    "longitude": 126.80174,
+                    "opening_hours": {},
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+        replace_restaurants(
+            conn,
+            [
+                _restaurant_row(
+                    slug="test-bap",
+                    name="테스트백반",
+                    latitude=37.4866,
+                    longitude=126.8018,
+                )
+            ],
+        )
+
+        with pytest.raises(InvalidRequestError, match="Ambiguous origin"):
+            find_nearby_restaurants(conn, origin="중도", walk_minutes=15)
 
 
 def test_find_nearby_restaurants_raises_when_origin_has_no_coordinates(app_env):

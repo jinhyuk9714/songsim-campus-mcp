@@ -229,7 +229,8 @@ def _public_usage_guide() -> str:
             ),
             (
                 "4. Use tool_find_nearby_restaurants for walkable food "
-                "recommendations from a campus origin."
+                "recommendations from a campus origin. You can pass a slug, 대표 이름, "
+                "or a clear alias like 중도."
             ),
             "5. Use tool_list_latest_notices for latest notices; category is optional.",
             "",
@@ -237,6 +238,7 @@ def _public_usage_guide() -> str:
             "- 성심교정 중앙도서관 위치 알려줘",
             "- 최신 장학 공지 3개 보여줘",
             "- 중앙도서관 근처 밥집 추천해줘",
+            "- 중도 근처 밥집 추천해줘",
         ]
     )
 
@@ -392,7 +394,15 @@ def build_mcp():
             description="Explain how to find walkable nearby restaurants from a campus origin.",
         )
         def prompt_find_nearby_restaurants(
-            origin: Annotated[str, Field(description="출발 장소 slug 또는 이름")],
+            origin: Annotated[
+                str,
+                Field(
+                    description=(
+                        "출발 장소 slug, 대표 이름, 또는 alias. "
+                        "예: central-library, 중앙도서관, 중도"
+                    )
+                ),
+            ],
             category: Annotated[
                 str | None,
                 Field(description="optional category like korean or cafe"),
@@ -406,7 +416,8 @@ def build_mcp():
                 f"Then call tool_find_nearby_restaurants with origin={origin}, "
                 f"category={category or '<optional>'}, budget_max={budget_max}, "
                 f"open_now={open_now}, walk_minutes={walk_minutes}.\n"
-                "Use tool_search_places first if the origin is ambiguous."
+                "A clear alias such as 중도 or 학생식당 can be used directly.\n"
+                "Use tool_search_places first only if the origin is ambiguous."
             )
 
         @mcp.prompt(
@@ -528,6 +539,7 @@ def build_mcp():
             (
                 "캠퍼스 출발지 기준으로 주변 식당을 찾을 때 사용합니다. "
                 "origin, 예산(budget_max), open_now, walk_minutes를 함께 줄 수 있습니다. "
+                "origin은 slug, 대표 이름, alias(예: 중도, 학생식당)를 받을 수 있습니다. "
                 "출발지가 모호하면 tool_search_places를 먼저 사용합니다."
             )
             if public_readonly
@@ -543,8 +555,8 @@ def build_mcp():
             str,
             Field(
                 description=(
-                    "식당을 찾을 출발 장소 slug 또는 이름. "
-                    "예: central-library, 중앙도서관"
+                    "식당을 찾을 출발 장소 slug, 대표 이름, 또는 alias. "
+                    "예: central-library, 중앙도서관, 중도"
                 )
             ),
         ],

@@ -1970,6 +1970,31 @@ def _restaurant_cache_key(
     )
 
 
+def _format_ambiguous_origin_error(origin: str, matches: list[dict[str, Any]]) -> str:
+    candidates = ", ".join(f"{item['name']} ({item['slug']})" for item in matches[:3])
+    return f"Ambiguous origin: {origin}. Try one of: {candidates}."
+
+
+def _resolve_origin_place(conn: sqlite3.Connection, origin: str) -> dict[str, Any]:
+    place = repo.get_place_by_slug(conn, origin)
+    if place is not None:
+        return place
+
+    name_matches = repo.list_places_by_exact_name(conn, origin)
+    if len(name_matches) == 1:
+        return name_matches[0]
+    if len(name_matches) > 1:
+        raise InvalidRequestError(_format_ambiguous_origin_error(origin, name_matches))
+
+    alias_matches = repo.list_places_by_exact_alias(conn, origin)
+    if len(alias_matches) == 1:
+        return alias_matches[0]
+    if len(alias_matches) > 1:
+        raise InvalidRequestError(_format_ambiguous_origin_error(origin, alias_matches))
+
+    raise NotFoundError(f"Origin place not found: {origin}")
+
+
 def _cache_status(fetched_at: str, now: datetime) -> str:
     try:
         fetched = datetime.fromisoformat(fetched_at)
@@ -2049,9 +2074,7 @@ def find_nearby_restaurants(
 ) -> list[NearbyRestaurant]:
     current = _coerce_datetime(at)
     cache_now = _now()
-    place = repo.get_place_by_slug_or_name(conn, origin)
-    if not place:
-        raise NotFoundError(f"Origin place not found: {origin}")
+    place = _resolve_origin_place(conn, origin)
     if place.get("latitude") is None or place.get("longitude") is None:
         raise NotFoundError(f"Origin place has no coordinates: {origin}")
 

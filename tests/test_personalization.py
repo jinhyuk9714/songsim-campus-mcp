@@ -577,6 +577,43 @@ def test_meal_recommendations_use_campus_graph_for_external_route_segments(app_e
     assert recommendation.items[0].total_estimated_walk_minutes == 11
 
 
+def test_meal_recommendations_accept_origin_alias(app_env):
+    init_db()
+    seed_demo(force=True)
+    with connection() as conn:
+        replace_courses(
+            conn,
+            [
+                _course_row(
+                    code="CSE101",
+                    title="자료구조",
+                    day="월",
+                    period_start=7,
+                    period_end=8,
+                    room="K201",
+                )
+            ],
+        )
+        profile = create_profile(conn)
+        set_profile_timetable(
+            conn,
+            profile.id,
+            [ProfileCourseRef(year=2026, semester=1, code="CSE101", section="01")],
+        )
+
+        recommendation = get_profile_meal_recommendations(
+            conn,
+            profile.id,
+            origin="중도",
+            at=datetime.fromisoformat("2026-03-16T12:00:00+09:00"),
+            year=2026,
+            semester=1,
+        )
+
+    assert recommendation.items
+    assert all(item.restaurant.origin == "central-library" for item in recommendation.items)
+
+
 def test_meal_recommendations_return_reason_when_gap_is_too_short(app_env):
     init_db()
     seed_demo(force=True)

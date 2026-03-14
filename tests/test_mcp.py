@@ -434,6 +434,7 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
     assert "과목명" in tools["tool_search_courses"]["description"]
     assert "교수" in tools["tool_search_courses"]["description"]
     assert "출발지" in tools["tool_find_nearby_restaurants"]["description"]
+    assert "alias" in tools["tool_find_nearby_restaurants"]["description"]
     assert "예산" in tools["tool_find_nearby_restaurants"]["description"]
     assert "open_now" in tools["tool_find_nearby_restaurants"]["description"]
     assert "walk_minutes" in tools["tool_find_nearby_restaurants"]["description"]
@@ -447,6 +448,9 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
     )
     assert "건물명" in place_query_description
     assert "출발 장소" in (
+        tools["tool_find_nearby_restaurants"]["inputSchema"]["properties"]["origin"]["description"]
+    )
+    assert "중도" in (
         tools["tool_find_nearby_restaurants"]["inputSchema"]["properties"]["origin"]["description"]
     )
 
@@ -473,6 +477,7 @@ def test_mcp_public_prompts_explain_tool_selection_flow(app_env, monkeypatch):
     assert "origin=central-library" in message
     assert "category=korean" in message
     assert "songsim://usage-guide" in message
+    assert "alias" in message
 
     clear_settings_cache()
 
@@ -495,6 +500,7 @@ def test_mcp_public_usage_and_class_period_resources_are_readable(app_env, monke
     assert "tool_search_places" in usage_content
     assert "tool_find_nearby_restaurants" in usage_content
     assert "profile" in usage_content
+    assert "중도" in usage_content
     assert periods_payload[0]["period"] == 1
     assert {"period", "start", "end"} <= set(periods_payload[0].keys())
 
@@ -594,6 +600,33 @@ def test_mcp_public_nearby_restaurants_return_condensed_payload(app_env, monkeyp
     assert "location_hint" in payload
     assert "description" not in payload
     assert "tags" not in payload
+
+    clear_settings_cache()
+
+
+def test_mcp_public_nearby_restaurants_accept_origin_alias(app_env, monkeypatch):
+    pytest.importorskip('mcp.server.fastmcp')
+    init_db()
+    seed_demo(force=True)
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        alias_result = await mcp.call_tool(
+            'tool_find_nearby_restaurants',
+            {'origin': '중도', 'limit': 1},
+        )
+        slug_result = await mcp.call_tool(
+            'tool_find_nearby_restaurants',
+            {'origin': 'central-library', 'limit': 1},
+        )
+        return _tool_payloads(alias_result)[0], _tool_payloads(slug_result)[0]
+
+    alias_payload, slug_payload = asyncio.run(main())
+
+    assert alias_payload["name"] == slug_payload["name"]
+    assert alias_payload["category_display"] == slug_payload["category_display"]
 
     clear_settings_cache()
 

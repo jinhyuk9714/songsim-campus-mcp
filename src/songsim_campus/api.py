@@ -1296,6 +1296,8 @@ def create_app() -> FastAPI:
                 )
             except NotFoundError as exc:
                 raise HTTPException(status_code=404, detail=str(exc)) from exc
+            except InvalidRequestError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
         return [
             GptNearbyRestaurantResult.model_validate(
                 _serialize_gpt_nearby_restaurant(restaurant)
@@ -1359,6 +1361,8 @@ def create_app() -> FastAPI:
                 )
             except NotFoundError as exc:
                 raise HTTPException(status_code=404, detail=str(exc)) from exc
+            except InvalidRequestError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/notices", response_model=list[Notice])
     def notices(
