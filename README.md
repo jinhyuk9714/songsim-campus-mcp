@@ -24,15 +24,14 @@
 ## 대표 MCP 테스트 질문
 
 - `성심교정 중앙도서관 위치 알려줘`
-- `중도 어디야?`
 - `학생식당 있는 건물 뭐야?`
-- `니콜스관인데 지금 비어 있는 강의실 있어?`
-- `2026년 1학기 객체지향 과목 찾아줘`
-- `김가톨 교수 수업 알려줘`
-- `최신 학사 공지 2개 보여줘`
+- `니콜스관인데 2026-03-16 오전 10시 15분 기준 비어 있는 강의실 있어?`
+- `정문 기준 빈 강의실 보여줘`
+- `최신 공지 3개 보여줘`
 - `장학 공지 최신순으로 3개 보여줘`
-- `중앙도서관 근처 한식만 찾아줘`
+- `중앙도서관 근처 한식집 찾아줘`
 - `중앙도서관에서 10분 안쪽에 1만원 이하 식당 보여줘`
+- `성심교정 버스로 가는 법 알려줘`
 - `성심교정 지하철 오는 길 알려줘`
 
 ## 공개 테스트 배포 기준
@@ -50,6 +49,8 @@
 - [Codex 연결 가이드](/Users/sungjh/Projects/songsim-campus-mcp/docs/connect-codex.md)
 - [공개 MCP 100문장 테스트팩](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-test-pack-100.md)
 - [공개 MCP 실행 리허설](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-rehearsal.md)
+- [공개 MCP 20문장 실측 검증](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-live-validation-20.md)
+- [공개 MCP 실측 검증 요약](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-live-validation-summary.md)
 
 이 스타터킷은 처음부터 복잡한 인프라를 얹지 않고, 아래 흐름을 가장 빠르게 검증하는 데 초점을 둡니다.
 
