@@ -400,6 +400,9 @@ def create_app() -> FastAPI:
             settings.public_mcp_url
             or "Set SONGSIM_PUBLIC_MCP_URL to show the public MCP URL."
         )
+        oauth_enabled = (
+            settings.app_mode == "public_readonly" and settings.mcp_oauth_enabled
+        )
         example_prompts = [
             "성심교정 중앙도서관 위치 알려줘",
             "2026년 1학기 객체지향 과목 찾아줘",
@@ -509,6 +512,13 @@ def create_app() -> FastAPI:
             This server exposes verified Songsim campus data through a public read-only API
             surface and a remote MCP endpoint that can be connected from ChatGPT, Claude,
             or Codex-style clients.
+          </p>
+          <p class="meta">
+            {
+              "Remote MCP access requires OAuth login via Auth0 and Google login."
+              if oauth_enabled
+              else "Remote MCP access is currently configured without OAuth."
+            }
           </p>
           <p>
             <a class="pill primary" href="{html.escape(docs_url)}">Open API Docs</a>

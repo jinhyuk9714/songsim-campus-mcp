@@ -4,6 +4,7 @@
 
 - 서버 이름 예시: `Songsim Campus MCP`
 - Streamable HTTP URL: `https://your-public-mcp-url/mcp`
+- 로그인: Auth0 + Google login
 
 ## 주 사용 시나리오
 
@@ -22,5 +23,6 @@
 
 ## 공개 서버 제한
 
+- 첫 연결 시 로그인 또는 `mcp login` 흐름이 필요할 수 있습니다.
 - 이 공개 MCP는 read-only입니다.
 - profile, timetable, notice preferences, meal personalization, admin 기능은 제외됩니다.

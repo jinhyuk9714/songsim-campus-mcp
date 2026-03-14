@@ -82,6 +82,24 @@ def test_settings_parse_public_mode_and_urls(monkeypatch):
     assert settings.public_mcp_url == "https://songsim-mcp.onrender.com/mcp"
 
 
+def test_settings_parse_mcp_oauth(monkeypatch):
+    monkeypatch.setenv("SONGSIM_MCP_OAUTH_ENABLED", "true")
+    monkeypatch.setenv("SONGSIM_MCP_OAUTH_ISSUER", "https://songsim.us.auth0.com/")
+    monkeypatch.setenv(
+        "SONGSIM_MCP_OAUTH_AUDIENCE",
+        "https://songsim-public-mcp.onrender.com/mcp",
+    )
+    monkeypatch.setenv("SONGSIM_MCP_OAUTH_SCOPES", "songsim.read,profile.read")
+    clear_settings_cache()
+
+    settings = Settings()
+
+    assert settings.mcp_oauth_enabled is True
+    assert settings.mcp_oauth_issuer == "https://songsim.us.auth0.com/"
+    assert settings.mcp_oauth_audience == "https://songsim-public-mcp.onrender.com/mcp"
+    assert settings.mcp_oauth_scopes == ["songsim.read", "profile.read"]
+
+
 def test_settings_parse_automation_defaults(monkeypatch):
     monkeypatch.setenv("SONGSIM_AUTOMATION_ENABLED", "true")
     monkeypatch.setenv("SONGSIM_AUTOMATION_TICK_SECONDS", "30")
@@ -106,6 +124,10 @@ def test_env_example_documents_2026_first_semester_defaults():
     assert "SONGSIM_APP_MODE=local_full" in text
     assert "SONGSIM_PUBLIC_HTTP_URL=" in text
     assert "SONGSIM_PUBLIC_MCP_URL=" in text
+    assert "SONGSIM_MCP_OAUTH_ENABLED=false" in text
+    assert "SONGSIM_MCP_OAUTH_ISSUER=" in text
+    assert "SONGSIM_MCP_OAUTH_AUDIENCE=" in text
+    assert "SONGSIM_MCP_OAUTH_SCOPES=songsim.read" in text
     assert "SONGSIM_AUTOMATION_ENABLED=false" in text
     assert "SONGSIM_AUTOMATION_TICK_SECONDS=60" in text
     assert "SONGSIM_AUTOMATION_SNAPSHOT_INTERVAL_MINUTES=360" in text

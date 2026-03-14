@@ -4,7 +4,15 @@ import argparse
 import json
 from pathlib import Path
 
+from starlette.responses import JSONResponse
+
 from .db import connection, init_db
+from .mcp_oauth import (
+    Auth0TokenVerifier,
+    build_mcp_auth_settings,
+    build_mcp_tool_meta,
+    build_protected_resource_metadata,
+)
 from .schemas import (
     ProfileCourseRef,
     ProfileInterests,
@@ -50,6 +58,15 @@ def build_mcp():
 
     settings = get_settings()
     public_readonly = settings.app_mode == "public_readonly"
+    tool_meta = build_mcp_tool_meta(settings)
+    auth_settings = build_mcp_auth_settings(settings)
+    token_verifier = None
+    if auth_settings is not None and settings.resolved_mcp_oauth_audience is not None:
+        token_verifier = Auth0TokenVerifier(
+            issuer_url=settings.mcp_oauth_issuer or "",
+            audience=settings.resolved_mcp_oauth_audience,
+            required_scopes=settings.mcp_oauth_scopes,
+        )
     mcp = FastMCP(
         "Songsim Campus MCP",
         instructions=(
@@ -61,7 +78,15 @@ def build_mcp():
         port=settings.app_port,
         streamable_http_path="/mcp",
         json_response=True,
+        auth=auth_settings,
+        token_verifier=token_verifier,
     )
+
+    protected_resource_metadata = build_protected_resource_metadata(settings)
+    if protected_resource_metadata is not None:
+        @mcp.custom_route("/.well-known/oauth-protected-resource", methods=["GET"])
+        async def oauth_protected_resource_alias(_request):
+            return JSONResponse(protected_resource_metadata)
 
     @mcp.resource("songsim://source-registry")
     def source_registry() -> str:
@@ -81,7 +106,8 @@ def build_mcp():
     @mcp.tool(
         description=(
             "성심교정 건물, 도서관, 기준 위치를 한국어 이름이나 별칭으로 찾습니다."
-        )
+        ),
+        meta=tool_meta,
     )
     def tool_search_places(query: str = "", category: str | None = None, limit: int = 10):
         with connection() as conn:
@@ -93,7 +119,8 @@ def build_mcp():
     @mcp.tool(
         description=(
             "이미 목적지를 알고 있을 때 장소 slug 또는 정확한 이름으로 한 곳을 가져옵니다."
-        )
+        ),
+        meta=tool_meta,
     )
     def tool_get_place(identifier: str):
         with connection() as conn:
@@ -105,7 +132,8 @@ def build_mcp():
     @mcp.tool(
         description=(
             "현재 공개된 성심교정 개설과목을 과목명, 코드, 교수, 학기 조건으로 찾습니다."
-        )
+        ),
+        meta=tool_meta,
     )
     def tool_search_courses(
         query: str = "",
@@ -128,7 +156,8 @@ def build_mcp():
     @mcp.tool(
         description=(
             "성심교정 교시 번호를 실제 시간으로 바꿀 수 있도록 고정 교시표를 반환합니다."
-        )
+        ),
+        meta=tool_meta,
     )
     def tool_get_class_periods():
         return [item.model_dump() for item in get_class_periods()]
@@ -136,7 +165,8 @@ def build_mcp():
     @mcp.tool(
         description=(
             "캠퍼스 출발지 기준으로 걸어갈 수 있는 주변 식당을 예산과 카테고리 조건으로 찾습니다."
-        )
+        ),
+        meta=tool_meta,
     )
     def tool_find_nearby_restaurants(
         origin: str,
@@ -171,7 +201,8 @@ def build_mcp():
     @mcp.tool(
         description=(
             "최신 성심교정 공지를 가져오고, 필요하면 academic이나 scholarship 같은 범주로 좁힙니다."
-        )
+        ),
+        meta=tool_meta,
     )
     def tool_list_latest_notices(category: str | None = None, limit: int = 10):
         with connection() as conn:
@@ -183,7 +214,8 @@ def build_mcp():
     @mcp.tool(
         description=(
             "성심교정 지하철·버스 접근 안내를 가져오고, 필요하면 교통수단 모드로 좁힙니다."
-        )
+        ),
+        meta=tool_meta,
     )
     def tool_list_transport_guides(mode: str | None = None, limit: int = 20):
         with connection() as conn:

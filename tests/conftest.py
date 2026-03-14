@@ -106,6 +106,10 @@ def app_env(postgres_server, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("SONGSIM_APP_MODE", "local_full")
     monkeypatch.setenv("SONGSIM_PUBLIC_HTTP_URL", "")
     monkeypatch.setenv("SONGSIM_PUBLIC_MCP_URL", "")
+    monkeypatch.setenv("SONGSIM_MCP_OAUTH_ENABLED", "false")
+    monkeypatch.setenv("SONGSIM_MCP_OAUTH_ISSUER", "")
+    monkeypatch.setenv("SONGSIM_MCP_OAUTH_AUDIENCE", "")
+    monkeypatch.setenv("SONGSIM_MCP_OAUTH_SCOPES", "songsim.read")
     monkeypatch.setenv("SONGSIM_KAKAO_REST_API_KEY", "")
     clear_settings_cache()
     yield database_url
@@ -118,6 +122,10 @@ def app_env(postgres_server, monkeypatch: pytest.MonkeyPatch):
     os.environ.pop("SONGSIM_APP_MODE", None)
     os.environ.pop("SONGSIM_PUBLIC_HTTP_URL", None)
     os.environ.pop("SONGSIM_PUBLIC_MCP_URL", None)
+    os.environ.pop("SONGSIM_MCP_OAUTH_ENABLED", None)
+    os.environ.pop("SONGSIM_MCP_OAUTH_ISSUER", None)
+    os.environ.pop("SONGSIM_MCP_OAUTH_AUDIENCE", None)
+    os.environ.pop("SONGSIM_MCP_OAUTH_SCOPES", None)
     os.environ.pop("SONGSIM_KAKAO_REST_API_KEY", None)
     os.environ.pop("SONGSIM_DATABASE_PATH", None)
 

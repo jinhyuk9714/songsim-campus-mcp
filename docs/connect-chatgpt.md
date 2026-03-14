@@ -5,6 +5,7 @@
 - 이름 예시: `Songsim Campus MCP`
 - URL: `https://your-public-mcp-url/mcp`
 - 모드: read-only public server
+- 로그인: Auth0 + Google login
 
 ## 연결 후 바로 해볼 질문
 
@@ -16,5 +17,6 @@
 
 ## 기대 동작
 
+- 최초 연결 시 OAuth 링크 화면이 뜨고 Google 로그인 후 사용합니다.
 - 장소, 과목, 공지, 주변 식당, 교통 안내 조회
 - 프로필 생성, 시간표 저장, admin 기능은 공개 서버에서 제공하지 않음

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import os
 from functools import lru_cache
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     app_mode: Literal["local_full", "public_readonly"] = "local_full"
     public_http_url: str | None = None
     public_mcp_url: str | None = None
+    mcp_oauth_enabled: bool = False
+    mcp_oauth_issuer: str | None = None
+    mcp_oauth_audience: str | None = None
+    mcp_oauth_scopes: Annotated[list[str], NoDecode] = ["songsim.read"]
     automation_enabled: bool = False
     automation_tick_seconds: int = 60
     automation_snapshot_interval_minutes: int = 360
@@ -40,12 +44,34 @@ class Settings(BaseSettings):
     official_course_year: int | None = None
     official_course_semester: int | None = None
 
-    @field_validator("official_course_year", "official_course_semester", mode="before")
+    @field_validator(
+        "public_http_url",
+        "public_mcp_url",
+        "kakao_rest_api_key",
+        "mcp_oauth_issuer",
+        "mcp_oauth_audience",
+        "official_course_year",
+        "official_course_semester",
+        mode="before",
+    )
     @classmethod
-    def blank_course_sync_values_to_none(cls, value: object) -> object:
+    def blank_values_to_none(cls, value: object) -> object:
         if value == "":
             return None
         return value
+
+    @field_validator("mcp_oauth_scopes", mode="before")
+    @classmethod
+    def parse_mcp_oauth_scopes(cls, value: object) -> object:
+        if value is None or value == "":
+            return ["songsim.read"]
+        if isinstance(value, str):
+            return [item.strip() for item in value.split(",") if item.strip()]
+        return value
+
+    @property
+    def resolved_mcp_oauth_audience(self) -> str | None:
+        return self.mcp_oauth_audience or self.public_mcp_url
 
     @model_validator(mode="after")
     def reject_legacy_database_path(self) -> Settings:
@@ -54,6 +80,21 @@ class Settings(BaseSettings):
                 "SONGSIM_DATABASE_PATH is no longer supported. "
                 "Use SONGSIM_DATABASE_URL instead."
             )
+        if self.mcp_oauth_enabled:
+            if not self.mcp_oauth_issuer:
+                raise ValueError(
+                    "SONGSIM_MCP_OAUTH_ISSUER is required when SONGSIM_MCP_OAUTH_ENABLED=true."
+                )
+            if not self.resolved_mcp_oauth_audience:
+                raise ValueError(
+                    "SONGSIM_MCP_OAUTH_AUDIENCE or SONGSIM_PUBLIC_MCP_URL is required "
+                    "when SONGSIM_MCP_OAUTH_ENABLED=true."
+                )
+            if not self.mcp_oauth_scopes:
+                raise ValueError(
+                    "SONGSIM_MCP_OAUTH_SCOPES must include at least one scope "
+                    "when SONGSIM_MCP_OAUTH_ENABLED=true."
+                )
         return self
 
 
