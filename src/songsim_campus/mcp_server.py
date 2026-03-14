@@ -81,6 +81,14 @@ RESTAURANT_CATEGORY_DISPLAY = {
     "cafe": "카페",
 }
 
+PLACE_CATEGORY_GUIDE = {
+    "library": "도서관, 열람실, 자료 이용 중심 장소",
+    "building": "강의동, 행정동 등 일반 건물",
+    "facility": "학생식당, 편의점, 카페 같은 편의시설",
+    "gate": "정문, 북문 같은 캠퍼스 출입구",
+    "stop": "버스 정류장 같은 기준 위치",
+}
+
 
 def _truncate_preview(text: str, limit: int = 140) -> str:
     normalized = " ".join(text.split())
@@ -200,6 +208,39 @@ def _serialize_public_transport_guide(guide: TransportGuide) -> dict[str, object
     return payload
 
 
+def _public_usage_guide() -> str:
+    return "\n".join(
+        [
+            "Songsim public MCP usage guide",
+            "",
+            "This server is read-only.",
+            "Available: places, courses, notices, nearby restaurants, transport guides.",
+            "Unavailable: profile, timetable, notice preferences, meal personalization, admin.",
+            "",
+            "Recommended flow:",
+            "1. Read songsim://usage-guide when you need the public MCP capability overview.",
+            (
+                "2. Use a prompt such as prompt_find_place or "
+                "prompt_find_nearby_restaurants to choose the first tool."
+            ),
+            (
+                "3. Use tool_search_places for fuzzy building/facility queries, "
+                "then tool_get_place when you know the slug."
+            ),
+            (
+                "4. Use tool_find_nearby_restaurants for walkable food "
+                "recommendations from a campus origin."
+            ),
+            "5. Use tool_list_latest_notices for latest notices; category is optional.",
+            "",
+            "Example questions:",
+            "- 성심교정 중앙도서관 위치 알려줘",
+            "- 최신 장학 공지 3개 보여줘",
+            "- 중앙도서관 근처 밥집 추천해줘",
+        ]
+    )
+
+
 def build_mcp():
     try:
         from mcp.server.fastmcp import FastMCP
@@ -263,9 +304,135 @@ def build_mcp():
                 indent=2,
             )
 
+    if public_readonly:
+        @mcp.resource("songsim://usage-guide")
+        def usage_guide_resource() -> str:
+            """Return the public MCP usage guide."""
+            return _public_usage_guide()
+
+        @mcp.resource("songsim://place-categories")
+        def place_categories_resource() -> str:
+            """Return public place category descriptions as JSON."""
+            return json.dumps(PLACE_CATEGORY_GUIDE, ensure_ascii=False, indent=2)
+
+        @mcp.resource("songsim://notice-categories")
+        def notice_categories_resource() -> str:
+            """Return public notice category labels as JSON."""
+            return json.dumps(NOTICE_CATEGORY_DISPLAY, ensure_ascii=False, indent=2)
+
+        @mcp.resource("songsim://class-periods")
+        def class_periods_resource() -> str:
+            """Return the static class period table as JSON."""
+            return json.dumps(
+                [item.model_dump() for item in get_class_periods()],
+                ensure_ascii=False,
+                indent=2,
+            )
+
+        @mcp.prompt(
+            name="prompt_find_place",
+            description="Explain how to search for a place, building, alias, or facility.",
+        )
+        def prompt_find_place(
+            query: Annotated[
+                str,
+                Field(description="건물명, 별칭, 시설명. 예: 중앙도서관, 중도, 학생회관"),
+            ]
+        ):
+            return (
+                "Use songsim://usage-guide first if you need the public MCP rules.\n"
+                f"Then call tool_search_places with query={query}.\n"
+                "If the result narrows to one clear candidate, call tool_get_place with the "
+                "slug from tool_search_places.\n"
+                "Use songsim://place-categories if you need to explain category labels."
+            )
+
+        @mcp.prompt(
+            name="prompt_search_courses",
+            description=(
+                "Explain how to search Songsim courses by title, code, professor, "
+                "year, or semester."
+            ),
+        )
+        def prompt_search_courses(
+            query: Annotated[str, Field(description="과목명, 코드, 교수명 등 검색어")] = "",
+            year: Annotated[int | None, Field(description="학년도 필터")] = None,
+            semester: Annotated[int | None, Field(description="학기 필터")] = None,
+        ):
+            return (
+                "Use tool_search_courses for public course lookup.\n"
+                f"query={query or '<empty>'}, year={year}, semester={semester}.\n"
+                "If a user asks about period numbers, read songsim://class-periods or call "
+                "tool_get_class_periods."
+            )
+
+        @mcp.prompt(
+            name="prompt_latest_notices",
+            description=(
+                "Explain how to fetch latest public notices, optionally filtered "
+                "by category."
+            ),
+        )
+        def prompt_latest_notices(
+            category: Annotated[
+                str | None,
+                Field(description="optional notice category like scholarship or academic"),
+            ] = None,
+            limit: Annotated[int, Field(description="가져올 공지 수")] = 10,
+        ):
+            return (
+                "Use tool_list_latest_notices for latest public notices.\n"
+                f"category={category or '<optional>'}, limit={limit}.\n"
+                "Category is optional. Use songsim://notice-categories if you need to explain "
+                "display labels before answering."
+            )
+
+        @mcp.prompt(
+            name="prompt_find_nearby_restaurants",
+            description="Explain how to find walkable nearby restaurants from a campus origin.",
+        )
+        def prompt_find_nearby_restaurants(
+            origin: Annotated[str, Field(description="출발 장소 slug 또는 이름")],
+            category: Annotated[
+                str | None,
+                Field(description="optional category like korean or cafe"),
+            ] = None,
+            budget_max: Annotated[int | None, Field(description="optional maximum budget")] = None,
+            open_now: Annotated[bool, Field(description="영업 중 후보만 원하면 true")] = False,
+            walk_minutes: Annotated[int, Field(description="도보 허용 시간(분)")] = 15,
+        ):
+            return (
+                "Use songsim://usage-guide first if you need the public MCP rules.\n"
+                f"Then call tool_find_nearby_restaurants with origin={origin}, "
+                f"category={category or '<optional>'}, budget_max={budget_max}, "
+                f"open_now={open_now}, walk_minutes={walk_minutes}.\n"
+                "Use tool_search_places first if the origin is ambiguous."
+            )
+
+        @mcp.prompt(
+            name="prompt_transport_guide",
+            description="Explain how to fetch subway or bus transport guidance for Songsim campus.",
+        )
+        def prompt_transport_guide(
+            mode: Annotated[
+                str | None,
+                Field(description="optional transport mode like subway or bus"),
+            ] = None,
+            limit: Annotated[int, Field(description="가져올 가이드 수")] = 20,
+        ):
+            return (
+                "Use tool_list_transport_guides for static transit guidance.\n"
+                f"mode={mode or '<optional>'}, limit={limit}.\n"
+                "This tool is for subway and bus access guidance, not live routing."
+            )
+
     @mcp.tool(
         description=(
-            "사용자가 성심교정 건물명, 별칭, 시설명으로 장소를 찾을 때 사용합니다."
+            (
+                "사용자가 성심교정 건물명, 별칭, 시설명으로 장소를 찾을 때 사용합니다. "
+                "질문이 모호하면 먼저 이 tool을 쓰고, 단일 slug가 정해지면 "
+                "tool_get_place로 넘어갑니다."
+            )
             if public_readonly
             else "성심교정 건물, 도서관, 기준 위치를 한국어 이름이나 별칭으로 찾습니다."
         ),
@@ -290,7 +457,10 @@ def build_mcp():
 
     @mcp.tool(
         description=(
-            "이미 장소 slug 또는 정확한 이름을 알고 있을 때 한 곳의 요약 정보를 가져옵니다."
+            (
+                "이미 장소 slug 또는 정확한 이름을 알고 있을 때 한 곳의 요약 정보를 가져옵니다. "
+                "보통 tool_search_places 다음 단계에서 사용합니다."
+            )
             if public_readonly
             else "이미 목적지를 알고 있을 때 장소 slug 또는 정확한 이름으로 한 곳을 가져옵니다."
         ),
@@ -357,7 +527,8 @@ def build_mcp():
         description=(
             (
                 "캠퍼스 출발지 기준으로 주변 식당을 찾을 때 사용합니다. "
-                "출발지, 예산, 영업 여부, 도보 시간을 함께 줄 수 있습니다."
+                "origin, 예산(budget_max), open_now, walk_minutes를 함께 줄 수 있습니다. "
+                "출발지가 모호하면 tool_search_places를 먼저 사용합니다."
             )
             if public_readonly
             else (
@@ -428,7 +599,10 @@ def build_mcp():
 
     @mcp.tool(
         description=(
-            "최신 공지를 최신순으로 가져오거나 카테고리로 좁힐 때 사용합니다."
+            (
+                "최신 공지를 최신순으로 가져오거나 카테고리로 좁힐 때 사용합니다. "
+                "category filter는 optional입니다."
+            )
             if public_readonly
             else (
                 "최신 성심교정 공지를 가져오고, 필요하면 academic이나 "
@@ -452,7 +626,7 @@ def build_mcp():
 
     @mcp.tool(
         description=(
-            "성심교정 지하철·버스 접근 안내를 찾을 때 사용합니다."
+            "성심교정 지하철·버스 접근 안내를 찾을 때 사용합니다. 정적 subway/bus 안내용입니다."
             if public_readonly
             else "성심교정 지하철·버스 접근 안내를 가져오고, 필요하면 교통수단 모드로 좁힙니다."
         ),

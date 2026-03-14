@@ -13,6 +13,12 @@
 - Shared GPT: ChatGPT GPT Builder에서 Actions로 붙여 `chatgpt.com/g/...` 링크로 공개
 - Local full mode: profile, timetable, admin sync, observability, automation 운영
 
+공개 MCP 사용 패턴은 이 순서를 기준으로 보면 됩니다.
+
+1. `songsim://usage-guide` 같은 resource로 공개 surface를 먼저 확인
+2. place / course / notice / restaurant / transport prompt로 첫 tool 선택
+3. 해당 tool로 실제 조회
+
 ## 공개 테스트 배포 기준
 
 - API URL 하나
@@ -182,6 +188,15 @@ streamable HTTP:
 ```bash
 uv run songsim-mcp --transport streamable-http
 ```
+
+공개 MCP에서 기본으로 노출되는 resource:
+
+- `songsim://usage-guide`
+- `songsim://source-registry`
+- `songsim://transport-guide`
+- `songsim://place-categories`
+- `songsim://notice-categories`
+- `songsim://class-periods`
 
 ## API 예시
 

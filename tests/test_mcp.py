@@ -366,6 +366,55 @@ def test_mcp_public_readonly_mode_registers_only_read_only_tools(app_env, monkey
     clear_settings_cache()
 
 
+def test_mcp_public_readonly_mode_registers_prompts_and_extended_resources(app_env, monkeypatch):
+    pytest.importorskip('mcp.server.fastmcp')
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        prompts = await mcp.list_prompts()
+        resources = await mcp.list_resources()
+        return [prompt.name for prompt in prompts], [str(resource.uri) for resource in resources]
+
+    prompt_names, resource_uris = asyncio.run(main())
+
+    assert set(prompt_names) == {
+        "prompt_find_place",
+        "prompt_search_courses",
+        "prompt_latest_notices",
+        "prompt_find_nearby_restaurants",
+        "prompt_transport_guide",
+    }
+    assert set(resource_uris) >= {
+        "songsim://source-registry",
+        "songsim://transport-guide",
+        "songsim://usage-guide",
+        "songsim://place-categories",
+        "songsim://notice-categories",
+        "songsim://class-periods",
+    }
+
+    clear_settings_cache()
+
+
+def test_mcp_local_full_mode_does_not_register_public_prompts(app_env, monkeypatch):
+    pytest.importorskip('mcp.server.fastmcp')
+    monkeypatch.delenv("SONGSIM_APP_MODE", raising=False)
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        prompts = await mcp.list_prompts()
+        return [prompt.name for prompt in prompts]
+
+    prompt_names = asyncio.run(main())
+
+    assert prompt_names == []
+
+    clear_settings_cache()
+
+
 def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, monkeypatch):
     pytest.importorskip('mcp.server.fastmcp')
     monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
@@ -380,11 +429,18 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
 
     assert "건물명" in tools["tool_search_places"]["description"]
     assert "별칭" in tools["tool_search_places"]["description"]
+    assert "tool_get_place" in tools["tool_search_places"]["description"]
+    assert "slug" in tools["tool_get_place"]["description"]
     assert "과목명" in tools["tool_search_courses"]["description"]
     assert "교수" in tools["tool_search_courses"]["description"]
     assert "출발지" in tools["tool_find_nearby_restaurants"]["description"]
     assert "예산" in tools["tool_find_nearby_restaurants"]["description"]
+    assert "open_now" in tools["tool_find_nearby_restaurants"]["description"]
+    assert "walk_minutes" in tools["tool_find_nearby_restaurants"]["description"]
     assert "카테고리" in tools["tool_list_latest_notices"]["description"]
+    assert "optional" in tools["tool_list_latest_notices"]["description"]
+    assert "지하철" in tools["tool_list_transport_guides"]["description"]
+    assert "버스" in tools["tool_list_transport_guides"]["description"]
 
     place_query_description = (
         tools["tool_search_places"]["inputSchema"]["properties"]["query"]["description"]
@@ -393,6 +449,54 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
     assert "출발 장소" in (
         tools["tool_find_nearby_restaurants"]["inputSchema"]["properties"]["origin"]["description"]
     )
+
+    clear_settings_cache()
+
+
+def test_mcp_public_prompts_explain_tool_selection_flow(app_env, monkeypatch):
+    pytest.importorskip('mcp.server.fastmcp')
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        prompt = await mcp.get_prompt(
+            "prompt_find_nearby_restaurants",
+            {"origin": "central-library", "category": "korean"},
+        )
+        return prompt
+
+    prompt = asyncio.run(main())
+    message = prompt.messages[0].content.text
+
+    assert "tool_find_nearby_restaurants" in message
+    assert "origin=central-library" in message
+    assert "category=korean" in message
+    assert "songsim://usage-guide" in message
+
+    clear_settings_cache()
+
+
+def test_mcp_public_usage_and_class_period_resources_are_readable(app_env, monkeypatch):
+    pytest.importorskip('mcp.server.fastmcp')
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        usage = list(await mcp.read_resource('songsim://usage-guide'))
+        periods = list(await mcp.read_resource('songsim://class-periods'))
+        return usage[0].content, periods[0].content
+
+    usage_content, periods_content = asyncio.run(main())
+    periods_payload = json.loads(periods_content)
+
+    assert "read-only" in usage_content
+    assert "tool_search_places" in usage_content
+    assert "tool_find_nearby_restaurants" in usage_content
+    assert "profile" in usage_content
+    assert periods_payload[0]["period"] == 1
+    assert {"period", "start", "end"} <= set(periods_payload[0].keys())
 
     clear_settings_cache()
 

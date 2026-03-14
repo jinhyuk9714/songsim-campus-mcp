@@ -15,6 +15,12 @@
 - 최신 공지와 교통 안내 조회
 - 공개 서버는 read-only라서 profile, timetable, admin 기능은 제공하지 않음
 
+## 추천 사용 흐름
+
+1. `songsim://usage-guide` resource를 먼저 읽어 공개 MCP 범위를 확인
+2. place / course / notice / restaurant / transport prompt 중 하나를 사용
+3. prompt가 가리키는 tool을 호출해 실제 조회
+
 ## GPT 링크로 공개하고 싶을 때
 
 ChatGPT의 `chatgpt.com/g/...` 링크를 만들고 싶다면 MCP connector 대신 GPT Builder의 `Actions`를 사용합니다. 다만 제품의 기본 표면은 MCP이고, GPT는 그 위에 얹는 공개 포장층으로 생각하면 됩니다.

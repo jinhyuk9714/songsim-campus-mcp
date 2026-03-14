@@ -16,6 +16,12 @@
 
 Codex에서는 이 MCP가 공개 제품의 기준 표면입니다. HTTP API나 Shared GPT보다 먼저 연결해 두면, 같은 검증 가능한 데이터 도구를 가장 직접적으로 쓸 수 있습니다.
 
+## 추천 사용 흐름
+
+1. `songsim://usage-guide` resource로 공개 범위를 확인
+2. prompt_find_place / prompt_search_courses / prompt_latest_notices / prompt_find_nearby_restaurants / prompt_transport_guide 중 하나를 먼저 사용
+3. prompt가 가리키는 tool로 실제 조회
+
 ## 예시 요청
 
 - `성심교정 중앙도서관 정보 찾아줘`

@@ -619,6 +619,17 @@ def create_app() -> FastAPI:
             <li><code>/transport</code> Songsim transit guides</li>
           </ul>
         </article>
+        <article class="card">
+          <h2>Remote MCP Pattern</h2>
+          <ul>
+            <li>Read <code>songsim://usage-guide</code> for the public MCP rules</li>
+            <li>
+              Use prompts to pick the first tool for places, notices, restaurants,
+              or transport
+            </li>
+            <li>Call tools after the prompt narrows the correct public read-only flow</li>
+          </ul>
+        </article>
       </section>
     </main>
   </body>
