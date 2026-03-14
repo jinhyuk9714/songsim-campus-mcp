@@ -1,15 +1,15 @@
 # Songsim Campus MCP
 
-가톨릭대학교 성심교정 전용 데이터를 **HTTP API + 원격 MCP 서버**로 제공하는 프로젝트입니다.
+가톨릭대학교 성심교정 전용 데이터를 **원격 MCP 서버 + HTTP API**로 제공하는 프로젝트입니다.
 
-공개 배포에서는 `read-only` 원격 MCP처럼 동작하고, 로컬 full 모드에서는 admin, sync, observability, 개인화 실험까지 함께 쓸 수 있습니다.
+공개 배포에서는 `read-only` 원격 MCP가 핵심 제품 표면으로 동작하고, HTTP API는 그 위에 붙는 얇은 companion layer 역할을 합니다. 로컬 full 모드에서는 admin, sync, observability, 개인화 실험까지 함께 쓸 수 있습니다.
 
 공개 MCP는 ChatGPT와 Codex에서 사용할 수 있도록 OAuth 로그인 흐름을 지원합니다. 공개 API는 계속 익명 read-only입니다.
 
 ## 공개 사용 방식
 
-- HTTP API: 장소, 과목, 공지, 식당, 교통 안내 조회
 - Remote MCP: ChatGPT, Claude, Codex 같은 클라이언트에서 직접 연결
+- HTTP API: 장소, 과목, 공지, 식당, 교통 안내 조회
 - Shared GPT: ChatGPT GPT Builder에서 Actions로 붙여 `chatgpt.com/g/...` 링크로 공개
 - Local full mode: profile, timetable, admin sync, observability, automation 운영
 
@@ -29,12 +29,13 @@
 
 이 스타터킷은 처음부터 복잡한 인프라를 얹지 않고, 아래 흐름을 가장 빠르게 검증하는 데 초점을 둡니다.
 
+- 원격 MCP로 검증 가능한 학교 데이터 조회
 - 교내 시설/건물 검색
 - 강의 시간표 검색
 - 교시 ↔ 실제 시간 변환
 - 주변 맛집 추천
 - 공지 조회
-- HTTP API + MCP 도구 동시 제공
+- HTTP API와 GPT Actions는 같은 데이터를 얇게 재노출
 
 ## 왜 이 스택인가
 
@@ -51,7 +52,7 @@
 ### 3) 공식 MCP Python SDK(FastMCP) 연결 구조
 - API가 먼저 있고, MCP는 얇은 어댑터로 두었습니다.
 - 로직은 `services.py`, I/O는 `api.py`와 `mcp_server.py`에서 담당합니다.
-- 그래서 웹앱, Claude Desktop, ChatGPT, Codex 어디서든 재사용이 쉽습니다.
+- 그래서 ChatGPT, Codex, Claude 같은 MCP 클라이언트에서 먼저 쓰고, 필요하면 HTTP API와 GPT Actions로 같은 데이터를 재사용하기 쉽습니다.
 
 ## 프로젝트 구조
 

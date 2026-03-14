@@ -4,7 +4,9 @@ import argparse
 import json
 from pathlib import Path
 from types import MethodType
+from typing import Annotated
 
+from pydantic import Field
 from starlette.responses import JSONResponse
 
 from .db import connection, init_db
@@ -18,10 +20,20 @@ from .mcp_oauth import (
     is_public_mcp_oauth_enabled,
 )
 from .schemas import (
+    Course,
+    McpCoordinates,
+    McpNearbyRestaurantResult,
+    McpNoticeResult,
+    McpPlaceResult,
+    McpToolError,
+    NearbyRestaurant,
+    Notice,
+    Place,
     ProfileCourseRef,
     ProfileInterests,
     ProfileNoticePreferences,
     ProfileUpdateRequest,
+    TransportGuide,
 )
 from .seed import seed_demo
 from .services import (
@@ -49,6 +61,143 @@ from .services import (
 from .settings import get_settings
 
 DOCS_DIR = Path(__file__).resolve().parents[2] / "docs"
+
+NOTICE_CATEGORY_DISPLAY = {
+    "academic": "학사",
+    "scholarship": "장학",
+    "employment": "취업",
+    "event": "행사",
+    "facility": "시설",
+    "library": "도서관",
+    "general": "일반",
+    "place": "일반",
+}
+
+RESTAURANT_CATEGORY_DISPLAY = {
+    "korean": "한식",
+    "western": "양식",
+    "japanese": "일식",
+    "chinese": "중식",
+    "cafe": "카페",
+}
+
+
+def _truncate_preview(text: str, limit: int = 140) -> str:
+    normalized = " ".join(text.split())
+    if len(normalized) <= limit:
+        return normalized
+    return normalized[: max(0, limit - 3)].rstrip() + "..."
+
+
+def _format_opening_hours_preview(opening_hours: dict[str, str]) -> str | None:
+    if not opening_hours:
+        return None
+    preview_items = []
+    for key, value in opening_hours.items():
+        preview_items.append(f"{key}: {value}")
+        if len(preview_items) == 2:
+            break
+    return " / ".join(preview_items)
+
+
+def _serialize_public_error(exc: Exception) -> dict[str, str]:
+    error_type = "not_found" if isinstance(exc, NotFoundError) else "invalid_request"
+    message = str(exc)
+    return McpToolError(error=message, type=error_type, message=message).model_dump()
+
+
+def _serialize_public_place(place: Place) -> dict[str, object]:
+    highlights: list[str] = []
+    if place.aliases:
+        highlights.append(f"별칭: {', '.join(place.aliases[:3])}")
+    if place.description:
+        highlights.append(_truncate_preview(place.description, limit=80))
+    opening_preview = _format_opening_hours_preview(place.opening_hours)
+    if opening_preview:
+        highlights.append(f"운영: {opening_preview}")
+    coordinates = None
+    if place.latitude is not None and place.longitude is not None:
+        coordinates = McpCoordinates(latitude=place.latitude, longitude=place.longitude)
+    return McpPlaceResult(
+        slug=place.slug,
+        name=place.name,
+        canonical_name=place.name,
+        category=place.category,
+        aliases=place.aliases,
+        short_location=(
+            _truncate_preview(place.description, limit=80)
+            if place.description
+            else None
+        ),
+        coordinates=coordinates,
+        highlights=highlights,
+    ).model_dump(exclude_none=True)
+
+
+def _serialize_public_notice(notice: Notice) -> dict[str, object]:
+    return McpNoticeResult(
+        title=notice.title,
+        category_display=NOTICE_CATEGORY_DISPLAY.get(notice.category, "일반"),
+        published_at=notice.published_at,
+        summary=_truncate_preview(notice.summary, limit=160),
+        source_url=notice.source_url,
+    ).model_dump(exclude_none=True)
+
+
+def _restaurant_price_hint(restaurant: NearbyRestaurant) -> str | None:
+    if restaurant.min_price is not None and restaurant.max_price is not None:
+        if restaurant.min_price == restaurant.max_price:
+            return f"{restaurant.min_price:,}원"
+        return f"{restaurant.min_price:,}~{restaurant.max_price:,}원"
+    if restaurant.min_price is not None:
+        return f"{restaurant.min_price:,}원부터"
+    if restaurant.max_price is not None:
+        return f"{restaurant.max_price:,}원 이하"
+    return None
+
+
+def _restaurant_category_label(restaurant: NearbyRestaurant) -> str:
+    if restaurant.tags:
+        return restaurant.tags[-1]
+    return RESTAURANT_CATEGORY_DISPLAY.get(restaurant.category, "식당")
+
+
+def _serialize_public_nearby_restaurant(restaurant: NearbyRestaurant) -> dict[str, object]:
+    payload = McpNearbyRestaurantResult(
+        name=restaurant.name,
+        category_display=_restaurant_category_label(restaurant),
+        distance_meters=restaurant.distance_meters,
+        estimated_walk_minutes=restaurant.estimated_walk_minutes,
+        price_hint=_restaurant_price_hint(restaurant),
+        open_now=restaurant.open_now,
+        location_hint=(
+            _truncate_preview(restaurant.description, limit=80)
+            if restaurant.description
+            else None
+        ),
+    ).model_dump(exclude_none=True)
+    payload["price_hint"] = _restaurant_price_hint(restaurant)
+    payload["open_now"] = restaurant.open_now
+    return payload
+
+
+def _serialize_public_course(course: Course) -> dict[str, object]:
+    payload = course.model_dump()
+    summary_parts = [course.title]
+    if course.professor:
+        summary_parts.append(course.professor)
+    if course.raw_schedule:
+        summary_parts.append(course.raw_schedule)
+    elif course.day_of_week and course.period_start is not None and course.period_end is not None:
+        summary_parts.append(f"{course.day_of_week}{course.period_start}~{course.period_end}")
+    payload["course_summary"] = " / ".join(summary_parts)
+    return payload
+
+
+def _serialize_public_transport_guide(guide: TransportGuide) -> dict[str, object]:
+    payload = guide.model_dump()
+    payload["guide_summary"] = guide.summary or (guide.steps[0] if guide.steps else "")
+    return payload
 
 
 def build_mcp():
@@ -116,57 +265,88 @@ def build_mcp():
 
     @mcp.tool(
         description=(
-            "성심교정 건물, 도서관, 기준 위치를 한국어 이름이나 별칭으로 찾습니다."
+            "사용자가 성심교정 건물명, 별칭, 시설명으로 장소를 찾을 때 사용합니다."
+            if public_readonly
+            else "성심교정 건물, 도서관, 기준 위치를 한국어 이름이나 별칭으로 찾습니다."
         ),
         meta=tool_meta,
     )
-    def tool_search_places(query: str = "", category: str | None = None, limit: int = 10):
+    def tool_search_places(
+        query: Annotated[
+            str,
+            Field(description="찾고 싶은 건물명, 별칭, 시설명. 예: 중앙도서관, 중도, 정문"),
+        ] = "",
+        category: Annotated[
+            str | None,
+            Field(description="장소 카테고리 필터. 예: library, building, facility"),
+        ] = None,
+        limit: Annotated[int, Field(description="최대 결과 수. 기본값은 10입니다.")] = 10,
+    ):
         with connection() as conn:
-            return [
-                item.model_dump()
-                for item in search_places(conn, query=query, category=category, limit=limit)
-            ]
+            places = search_places(conn, query=query, category=category, limit=limit)
+            if public_readonly:
+                return [_serialize_public_place(item) for item in places]
+            return [item.model_dump() for item in places]
 
     @mcp.tool(
         description=(
-            "이미 목적지를 알고 있을 때 장소 slug 또는 정확한 이름으로 한 곳을 가져옵니다."
+            "이미 장소 slug 또는 정확한 이름을 알고 있을 때 한 곳의 요약 정보를 가져옵니다."
+            if public_readonly
+            else "이미 목적지를 알고 있을 때 장소 slug 또는 정확한 이름으로 한 곳을 가져옵니다."
         ),
         meta=tool_meta,
     )
-    def tool_get_place(identifier: str):
+    def tool_get_place(
+        identifier: Annotated[
+            str,
+            Field(description="장소 slug 또는 정확한 이름. 예: central-library, 중앙도서관"),
+        ]
+    ):
         with connection() as conn:
             try:
-                return get_place(conn, identifier).model_dump()
+                place = get_place(conn, identifier)
+                if public_readonly:
+                    return _serialize_public_place(place)
+                return place.model_dump()
             except NotFoundError as exc:
+                if public_readonly:
+                    return _serialize_public_error(exc)
                 return {"error": str(exc)}
 
     @mcp.tool(
         description=(
-            "현재 공개된 성심교정 개설과목을 과목명, 코드, 교수, 학기 조건으로 찾습니다."
+            "과목명, 코드, 교수, 학기 조건으로 현재 공개된 성심교정 개설과목을 찾을 때 사용합니다."
+            if public_readonly
+            else "현재 공개된 성심교정 개설과목을 과목명, 코드, 교수, 학기 조건으로 찾습니다."
         ),
         meta=tool_meta,
     )
     def tool_search_courses(
-        query: str = "",
-        year: int | None = None,
-        semester: int | None = None,
-        limit: int = 20,
+        query: Annotated[
+            str,
+            Field(description="과목명, 과목 코드, 교수명으로 검색할 문자열"),
+        ] = "",
+        year: Annotated[int | None, Field(description="학년도 필터. 예: 2026")] = None,
+        semester: Annotated[int | None, Field(description="학기 필터. 예: 1, 2")] = None,
+        limit: Annotated[int, Field(description="최대 결과 수. 기본값은 20입니다.")] = 20,
     ):
         with connection() as conn:
-            return [
-                item.model_dump()
-                for item in search_courses(
-                    conn,
-                    query=query,
-                    year=year,
-                    semester=semester,
-                    limit=limit,
-                )
-            ]
+            courses = search_courses(
+                conn,
+                query=query,
+                year=year,
+                semester=semester,
+                limit=limit,
+            )
+            if public_readonly:
+                return [_serialize_public_course(item) for item in courses]
+            return [item.model_dump() for item in courses]
 
     @mcp.tool(
         description=(
-            "성심교정 교시 번호를 실제 시간으로 바꿀 수 있도록 고정 교시표를 반환합니다."
+            "교시 번호를 실제 수업 시간으로 바꾸고 싶을 때 고정 교시표를 반환합니다."
+            if public_readonly
+            else "성심교정 교시 번호를 실제 시간으로 바꿀 수 있도록 고정 교시표를 반환합니다."
         ),
         meta=tool_meta,
     )
@@ -175,65 +355,121 @@ def build_mcp():
 
     @mcp.tool(
         description=(
-            "캠퍼스 출발지 기준으로 걸어갈 수 있는 주변 식당을 예산과 카테고리 조건으로 찾습니다."
+            (
+                "캠퍼스 출발지 기준으로 주변 식당을 찾을 때 사용합니다. "
+                "출발지, 예산, 영업 여부, 도보 시간을 함께 줄 수 있습니다."
+            )
+            if public_readonly
+            else (
+                "캠퍼스 출발지 기준으로 걸어갈 수 있는 주변 식당을 "
+                "예산과 카테고리 조건으로 찾습니다."
+            )
         ),
         meta=tool_meta,
     )
     def tool_find_nearby_restaurants(
-        origin: str,
-        at: str | None = None,
-        category: str | None = None,
-        budget_max: int | None = None,
-        open_now: bool = False,
-        walk_minutes: int = 15,
-        limit: int = 10,
+        origin: Annotated[
+            str,
+            Field(
+                description=(
+                    "식당을 찾을 출발 장소 slug 또는 이름. "
+                    "예: central-library, 중앙도서관"
+                )
+            ),
+        ],
+        at: Annotated[
+            str | None,
+            Field(description="기준 시각 ISO 8601 문자열. open_now 판단에 사용합니다."),
+        ] = None,
+        category: Annotated[
+            str | None,
+            Field(description="식당 카테고리 필터. 예: korean, cafe, western"),
+        ] = None,
+        budget_max: Annotated[int | None, Field(description="최대 예산(원)")] = None,
+        open_now: Annotated[
+            bool,
+            Field(description="지금 영업 중인 후보만 보고 싶으면 true"),
+        ] = False,
+        walk_minutes: Annotated[
+            int,
+            Field(description="도보 허용 시간(분). 기본값은 15분입니다."),
+        ] = 15,
+        limit: Annotated[int, Field(description="최대 결과 수. 기본값은 10입니다.")] = 10,
     ):
         with connection() as conn:
             try:
                 from datetime import datetime
 
                 parsed_at = datetime.fromisoformat(at) if at else None
-                return [
-                    item.model_dump()
-                    for item in find_nearby_restaurants(
-                        conn,
-                        origin=origin,
-                        at=parsed_at,
-                        category=category,
-                        budget_max=budget_max,
-                        open_now=open_now,
-                        walk_minutes=walk_minutes,
-                        limit=limit,
-                    )
-                ]
-            except (NotFoundError, ValueError) as exc:
+                restaurants = find_nearby_restaurants(
+                    conn,
+                    origin=origin,
+                    at=parsed_at,
+                    category=category,
+                    budget_max=budget_max,
+                    open_now=open_now,
+                    walk_minutes=walk_minutes,
+                    limit=limit,
+                )
+                if public_readonly:
+                    return [_serialize_public_nearby_restaurant(item) for item in restaurants]
+                return [item.model_dump() for item in restaurants]
+            except NotFoundError as exc:
+                if public_readonly:
+                    return _serialize_public_error(exc)
+                return {"error": str(exc)}
+            except ValueError:
+                exc = InvalidRequestError(
+                    "Invalid 'at' timestamp. Use ISO 8601, for example 2026-03-15T11:00:00+09:00."
+                )
+                if public_readonly:
+                    return _serialize_public_error(exc)
                 return {"error": str(exc)}
 
     @mcp.tool(
         description=(
-            "최신 성심교정 공지를 가져오고, 필요하면 academic이나 scholarship 같은 범주로 좁힙니다."
+            "최신 공지를 최신순으로 가져오거나 카테고리로 좁힐 때 사용합니다."
+            if public_readonly
+            else (
+                "최신 성심교정 공지를 가져오고, 필요하면 academic이나 "
+                "scholarship 같은 범주로 좁힙니다."
+            )
         ),
         meta=tool_meta,
     )
-    def tool_list_latest_notices(category: str | None = None, limit: int = 10):
+    def tool_list_latest_notices(
+        category: Annotated[
+            str | None,
+            Field(description="공지 카테고리 필터. 예: academic, scholarship, employment"),
+        ] = None,
+        limit: Annotated[int, Field(description="최대 결과 수. 기본값은 10입니다.")] = 10,
+    ):
         with connection() as conn:
-            return [
-                item.model_dump()
-                for item in list_latest_notices(conn, category=category, limit=limit)
-            ]
+            notices = list_latest_notices(conn, category=category, limit=limit)
+            if public_readonly:
+                return [_serialize_public_notice(item) for item in notices]
+            return [item.model_dump() for item in notices]
 
     @mcp.tool(
         description=(
-            "성심교정 지하철·버스 접근 안내를 가져오고, 필요하면 교통수단 모드로 좁힙니다."
+            "성심교정 지하철·버스 접근 안내를 찾을 때 사용합니다."
+            if public_readonly
+            else "성심교정 지하철·버스 접근 안내를 가져오고, 필요하면 교통수단 모드로 좁힙니다."
         ),
         meta=tool_meta,
     )
-    def tool_list_transport_guides(mode: str | None = None, limit: int = 20):
+    def tool_list_transport_guides(
+        mode: Annotated[
+            str | None,
+            Field(description="교통수단 모드 필터. 예: subway, bus"),
+        ] = None,
+        limit: Annotated[int, Field(description="최대 결과 수. 기본값은 20입니다.")] = 20,
+    ):
         with connection() as conn:
-            return [
-                item.model_dump()
-                for item in list_transport_guides(conn, mode=mode, limit=limit)
-            ]
+            guides = list_transport_guides(conn, mode=mode, limit=limit)
+            if public_readonly:
+                return [_serialize_public_transport_guide(item) for item in guides]
+            return [item.model_dump() for item in guides]
 
     if not public_readonly:
         @mcp.tool(

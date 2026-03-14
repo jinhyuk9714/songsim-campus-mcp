@@ -7,9 +7,17 @@
 - 모드: read-only public server
 - 로그인: Auth0 + Google login
 
+## 먼저 무엇에 쓰나
+
+- 건물명, 별칭, 시설명으로 장소 찾기
+- 학년도/학기 기준 개설과목 찾기
+- 캠퍼스 출발지 기준 주변 식당 찾기
+- 최신 공지와 교통 안내 조회
+- 공개 서버는 read-only라서 profile, timetable, admin 기능은 제공하지 않음
+
 ## GPT 링크로 공개하고 싶을 때
 
-ChatGPT의 `chatgpt.com/g/...` 링크를 만들고 싶다면 MCP connector 대신 GPT Builder의 `Actions`를 사용합니다.
+ChatGPT의 `chatgpt.com/g/...` 링크를 만들고 싶다면 MCP connector 대신 GPT Builder의 `Actions`를 사용합니다. 다만 제품의 기본 표면은 MCP이고, GPT는 그 위에 얹는 공개 포장층으로 생각하면 됩니다.
 
 - Actions schema URL: `https://your-public-api-url/gpt-actions-openapi.json`
 - Privacy Policy URL: `https://your-public-api-url/privacy`

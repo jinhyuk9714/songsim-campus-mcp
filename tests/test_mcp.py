@@ -7,7 +7,12 @@ import pytest
 
 from songsim_campus.db import connection, init_db
 from songsim_campus.mcp_server import build_mcp
-from songsim_campus.repo import replace_courses, replace_restaurants, update_place_opening_hours
+from songsim_campus.repo import (
+    replace_courses,
+    replace_notices,
+    replace_restaurants,
+    update_place_opening_hours,
+)
 from songsim_campus.seed import seed_demo
 from songsim_campus.services import refresh_transport_guides_from_location_page
 from songsim_campus.settings import clear_settings_cache
@@ -30,6 +35,10 @@ class McpTransportSource:
                 'last_synced_at': fetched_at,
             }
         ]
+
+
+def _tool_payloads(result) -> list[dict[str, object]]:
+    return [json.loads(item.text) for item in result]
 
 
 def test_mcp_transport_tool_and_resource_share_service_data(app_env):
@@ -353,5 +362,162 @@ def test_mcp_public_readonly_mode_registers_only_read_only_tools(app_env, monkey
     assert "tool_get_profile_notices" not in tool_names
     assert "songsim://source-registry" in resource_uris
     assert "songsim://transport-guide" in resource_uris
+
+    clear_settings_cache()
+
+
+def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, monkeypatch):
+    pytest.importorskip('mcp.server.fastmcp')
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        tools = await mcp.list_tools()
+        return {tool.name: tool.model_dump(by_alias=True) for tool in tools}
+
+    tools = asyncio.run(main())
+
+    assert "건물명" in tools["tool_search_places"]["description"]
+    assert "별칭" in tools["tool_search_places"]["description"]
+    assert "과목명" in tools["tool_search_courses"]["description"]
+    assert "교수" in tools["tool_search_courses"]["description"]
+    assert "출발지" in tools["tool_find_nearby_restaurants"]["description"]
+    assert "예산" in tools["tool_find_nearby_restaurants"]["description"]
+    assert "카테고리" in tools["tool_list_latest_notices"]["description"]
+
+    place_query_description = (
+        tools["tool_search_places"]["inputSchema"]["properties"]["query"]["description"]
+    )
+    assert "건물명" in place_query_description
+    assert "출발 장소" in (
+        tools["tool_find_nearby_restaurants"]["inputSchema"]["properties"]["origin"]["description"]
+    )
+
+    clear_settings_cache()
+
+
+def test_mcp_public_search_places_returns_condensed_place_payload(app_env, monkeypatch):
+    pytest.importorskip('mcp.server.fastmcp')
+    init_db()
+    seed_demo(force=True)
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        result = await mcp.call_tool('tool_search_places', {'query': '중앙도서관', 'limit': 1})
+        return _tool_payloads(result)[0]
+
+    payload = asyncio.run(main())
+
+    assert payload["slug"] == "central-library"
+    assert payload["name"] == "중앙도서관"
+    assert payload["canonical_name"] == "중앙도서관"
+    assert payload["aliases"] == ["도서관", "중도"]
+    assert payload["coordinates"] == {"latitude": 37.48643, "longitude": 126.80164}
+    assert payload["short_location"] == "자료 열람과 시험기간 공부에 쓰는 중심 공간"
+    assert payload["highlights"][0] == "별칭: 도서관, 중도"
+    assert "description" not in payload
+    assert "opening_hours" not in payload
+
+    clear_settings_cache()
+
+
+def test_mcp_public_notices_return_category_display_and_summary_preview(app_env, monkeypatch):
+    pytest.importorskip('mcp.server.fastmcp')
+    init_db()
+    seed_demo(force=True)
+    with connection() as conn:
+        replace_notices(
+            conn,
+            [
+                {
+                    "title": "2026학년도 1학기 장학 신청 안내",
+                    "category": "scholarship",
+                    "published_at": "2026-03-13",
+                    "summary": "장학 신청 대상, 제출 서류, 신청 기한을 자세히 안내합니다. " * 10,
+                    "labels": ["장학", "학부"],
+                    "source_url": "https://example.com/notices/1",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                }
+            ],
+        )
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        result = await mcp.call_tool('tool_list_latest_notices', {'limit': 1})
+        return _tool_payloads(result)[0]
+
+    payload = asyncio.run(main())
+
+    assert payload["title"] == "2026학년도 1학기 장학 신청 안내"
+    assert payload["category_display"] == "장학"
+    assert payload["source_url"] == "https://example.com/notices/1"
+    assert len(payload["summary"]) <= 160
+    assert payload["summary"].endswith("...")
+    assert "category" not in payload
+    assert "labels" not in payload
+
+    clear_settings_cache()
+
+
+def test_mcp_public_nearby_restaurants_return_condensed_payload(app_env, monkeypatch):
+    pytest.importorskip('mcp.server.fastmcp')
+    init_db()
+    seed_demo(force=True)
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        result = await mcp.call_tool(
+            'tool_find_nearby_restaurants',
+            {'origin': 'central-library', 'limit': 1},
+        )
+        return _tool_payloads(result)[0]
+
+    payload = asyncio.run(main())
+
+    assert isinstance(payload["category_display"], str)
+    assert payload["category_display"]
+    assert "distance_meters" in payload
+    assert "estimated_walk_minutes" in payload
+    assert "open_now" in payload
+    assert "location_hint" in payload
+    assert "description" not in payload
+    assert "tags" not in payload
+
+    clear_settings_cache()
+
+
+def test_mcp_public_readonly_tools_return_structured_errors(app_env, monkeypatch):
+    pytest.importorskip('mcp.server.fastmcp')
+    init_db()
+    seed_demo(force=True)
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        missing_place = await mcp.call_tool('tool_get_place', {'identifier': 'missing-place'})
+        invalid_timestamp = await mcp.call_tool(
+            'tool_find_nearby_restaurants',
+            {'origin': 'central-library', 'at': 'not-a-timestamp'},
+        )
+        return _tool_payloads(missing_place)[0], _tool_payloads(invalid_timestamp)[0]
+
+    missing_place_payload, invalid_timestamp_payload = asyncio.run(main())
+
+    assert missing_place_payload["type"] == "not_found"
+    assert missing_place_payload["error"] == missing_place_payload["message"]
+    assert "missing-place" in missing_place_payload["message"]
+
+    assert invalid_timestamp_payload["type"] == "invalid_request"
+    assert invalid_timestamp_payload["error"] == invalid_timestamp_payload["message"]
+    assert "ISO 8601" in invalid_timestamp_payload["message"]
 
     clear_settings_cache()

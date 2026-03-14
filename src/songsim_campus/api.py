@@ -563,22 +563,29 @@ def create_app() -> FastAPI:
     <main>
       <h1>Songsim Campus MCP</h1>
       <p class="lead">
-        Catholic University Songsim campus data server for places, courses, notices,
-        restaurants, and transit. Use the HTTP API directly or connect the remote MCP URL.
+        Verified Catholic University Songsim campus data server for places, courses,
+        notices, restaurants, and transit. The remote MCP endpoint is the primary
+        public product surface, and the HTTP API is the thin companion layer.
       </p>
       <div class="hero">
         <section class="card">
           <p class="meta">Mode: {html.escape(product_mode)}</p>
           <p>
-            This server exposes verified Songsim campus data through a public read-only API
-            surface and a remote MCP endpoint that can be connected from ChatGPT, Claude,
-            or Codex-style clients.
+            This server exposes verified Songsim campus data through a remote read-only MCP
+            endpoint for ChatGPT, Claude, and Codex-style clients, plus a companion HTTP API
+            for direct integrations and GPT Actions.
           </p>
           <p class="meta">
             {
-              "Remote MCP access requires OAuth login via Auth0 and Google login."
+              (
+                "Remote MCP access is the core public interface and requires "
+                "OAuth login via Auth0 and Google login."
+              )
               if oauth_enabled
-              else "Remote MCP access is currently configured without OAuth."
+              else (
+                "Remote MCP access is the core public interface and is currently "
+                "configured without OAuth."
+              )
             }
           </p>
           <p>
@@ -591,10 +598,10 @@ def create_app() -> FastAPI:
         </section>
         <section class="card">
           <h2>Public URLs</h2>
-          <p class="meta">HTTP API</p>
-          <code>{html.escape(public_http_url)}</code>
           <p class="meta">Remote MCP</p>
           <code>{html.escape(mcp_url)}</code>
+          <p class="meta">HTTP API</p>
+          <code>{html.escape(public_http_url)}</code>
         </section>
       </div>
       <section class="grid">
@@ -603,7 +610,7 @@ def create_app() -> FastAPI:
           <ul>{examples_html}</ul>
         </article>
         <article class="card">
-          <h2>Core Endpoints</h2>
+          <h2>MCP-Backed HTTP Endpoints</h2>
           <ul>
             <li><code>/places</code> campus places and landmarks</li>
             <li><code>/courses</code> public course offerings</li>

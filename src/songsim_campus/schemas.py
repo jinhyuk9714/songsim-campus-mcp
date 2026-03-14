@@ -82,6 +82,46 @@ class TransportGuide(BaseModel):
     last_synced_at: str
 
 
+class McpCoordinates(BaseModel):
+    latitude: float
+    longitude: float
+
+
+class McpToolError(BaseModel):
+    error: str
+    type: str
+    message: str
+
+
+class McpPlaceResult(BaseModel):
+    slug: str
+    name: str
+    canonical_name: str
+    category: str
+    aliases: list[str] = Field(default_factory=list)
+    short_location: str | None = None
+    coordinates: McpCoordinates | None = None
+    highlights: list[str] = Field(default_factory=list)
+
+
+class McpNoticeResult(BaseModel):
+    title: str
+    category_display: str
+    published_at: str
+    summary: str = ""
+    source_url: str | None = None
+
+
+class McpNearbyRestaurantResult(BaseModel):
+    name: str
+    category_display: str
+    distance_meters: int | None = None
+    estimated_walk_minutes: int | None = None
+    price_hint: str | None = None
+    open_now: bool | None = None
+    location_hint: str | None = None
+
+
 class Profile(BaseModel):
     id: str
     display_name: str = ""
