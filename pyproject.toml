@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "songsim-campus-starterkit"
+version = "0.1.0"
+description = "Campus-specific MCP + HTTP starter kit for Catholic University Songsim campus"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "beautifulsoup4>=4.12.3",
+  "fastapi>=0.115.0",
+  "httpx>=0.28.0",
+  "pydantic>=2.8.0",
+  "pydantic-settings>=2.4.0",
+  "uvicorn[standard]>=0.30.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3.0",
+  "ruff>=0.6.0",
+]
+mcp = [
+  "mcp>=1.0.0",
+]
+scrape = [
+  "playwright>=1.49.0",
+]
+
+[project.scripts]
+songsim-api = "songsim_campus.api:main"
+songsim-mcp = "songsim_campus.mcp_server:main"
+songsim-seed-demo = "songsim_campus.seed:main"
+songsim-sync = "songsim_campus.sync:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["B008"]

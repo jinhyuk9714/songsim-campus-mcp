@@ -1,0 +1,40 @@
+{
+  "items": [
+    {
+      "id": 21,
+      "placeName": "정문",
+      "placeNameEn": "Main Gate",
+      "abbreviation": "",
+      "orderNo": 1,
+      "subTitle": "",
+      "latitude": 37.485931,
+      "longitude": 126.804622,
+      "description": "성심교정의 정문",
+      "campusId": 1
+    },
+    {
+      "id": 15,
+      "placeName": "베리타스관(중앙도서관)",
+      "placeNameEn": "Veritas Hall (Central Library)",
+      "abbreviation": "L관",
+      "orderNo": 15,
+      "subTitle": "참된 이치(진실) 진리",
+      "latitude": 37.486853,
+      "longitude": 126.799802,
+      "description": "중앙도서관 안내",
+      "campusId": 1
+    },
+    {
+      "id": 29,
+      "placeName": "산책로",
+      "placeNameEn": "Walking Trails",
+      "abbreviation": "",
+      "orderNo": 24,
+      "subTitle": "",
+      "latitude": 0,
+      "longitude": 0,
+      "description": "산책을 할 수 있도록 조성된 공간",
+      "campusId": 1
+    }
+  ]
+}

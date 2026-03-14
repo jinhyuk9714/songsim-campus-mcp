@@ -1,0 +1,32 @@
+[
+  {
+    "title": "2026-1 수강신청 정정 안내",
+    "category": "academic",
+    "published_at": "2026-03-02",
+    "summary": "정정 기간과 유의사항을 안내하는 데모 공지",
+    "labels": ["수강신청", "정정"],
+    "source_url": "https://example.edu/notices/1",
+    "source_tag": "demo",
+    "last_synced_at": "2026-03-13T09:00:00+09:00"
+  },
+  {
+    "title": "중앙도서관 시험기간 연장 운영",
+    "category": "library",
+    "published_at": "2026-03-05",
+    "summary": "시험기간 동안 운영시간이 연장된다는 데모 공지",
+    "labels": ["도서관", "시험기간"],
+    "source_url": "https://example.edu/notices/2",
+    "source_tag": "demo",
+    "last_synced_at": "2026-03-13T09:00:00+09:00"
+  },
+  {
+    "title": "천원의 아침밥 운영 일정 안내",
+    "category": "cafeteria",
+    "published_at": "2026-03-07",
+    "summary": "학생식당 조식 이벤트 데모 공지",
+    "labels": ["학생식당", "이벤트"],
+    "source_url": "https://example.edu/notices/3",
+    "source_tag": "demo",
+    "last_synced_at": "2026-03-13T09:00:00+09:00"
+  }
+]

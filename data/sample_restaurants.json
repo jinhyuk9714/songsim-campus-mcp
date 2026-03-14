@@ -1,0 +1,67 @@
+[
+  {
+    "slug": "songsim-kimbap",
+    "name": "성심김밥",
+    "category": "korean",
+    "min_price": 5000,
+    "max_price": 8000,
+    "latitude": 37.48678,
+    "longitude": 126.80243,
+    "tags": ["혼밥", "빠름", "가성비"],
+    "description": "수업 사이에 빠르게 먹기 좋은 데모 식당",
+    "source_tag": "demo",
+    "last_synced_at": "2026-03-13T09:00:00+09:00"
+  },
+  {
+    "slug": "nichols-ramen",
+    "name": "니콜스라멘",
+    "category": "japanese",
+    "min_price": 9000,
+    "max_price": 12000,
+    "latitude": 37.48693,
+    "longitude": 126.80188,
+    "tags": ["면", "따뜻함"],
+    "description": "비 오는 날 가기 좋은 데모 식당",
+    "source_tag": "demo",
+    "last_synced_at": "2026-03-13T09:00:00+09:00"
+  },
+  {
+    "slug": "library-pasta",
+    "name": "도서관파스타",
+    "category": "western",
+    "min_price": 11000,
+    "max_price": 15000,
+    "latitude": 37.48636,
+    "longitude": 126.80198,
+    "tags": ["데이트", "좌석넓음"],
+    "description": "도서관 근처 데모 양식집",
+    "source_tag": "demo",
+    "last_synced_at": "2026-03-13T09:00:00+09:00"
+  },
+  {
+    "slug": "budget-bowl",
+    "name": "버짓덮밥",
+    "category": "korean",
+    "min_price": 7000,
+    "max_price": 9500,
+    "latitude": 37.48599,
+    "longitude": 126.80226,
+    "tags": ["덮밥", "든든함"],
+    "description": "정문 쪽 데모 한식집",
+    "source_tag": "demo",
+    "last_synced_at": "2026-03-13T09:00:00+09:00"
+  },
+  {
+    "slug": "quick-toast",
+    "name": "퀵토스트",
+    "category": "cafe",
+    "min_price": 3500,
+    "max_price": 6500,
+    "latitude": 37.48641,
+    "longitude": 126.80258,
+    "tags": ["브런치", "간단식"],
+    "description": "아침 수업 전 데모 카페",
+    "source_tag": "demo",
+    "last_synced_at": "2026-03-13T09:00:00+09:00"
+  }
+]

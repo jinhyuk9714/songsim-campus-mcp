@@ -1,0 +1,62 @@
+[
+  {
+    "slug": "central-library",
+    "name": "중앙도서관",
+    "category": "library",
+    "aliases": ["도서관", "중도"],
+    "description": "자료 열람과 시험기간 공부에 쓰는 중심 공간",
+    "latitude": 37.48643,
+    "longitude": 126.80164,
+    "opening_hours": {"mon-fri": "08:30-22:00", "sat": "09:00-17:00"},
+    "source_tag": "demo",
+    "last_synced_at": "2026-03-13T09:00:00+09:00"
+  },
+  {
+    "slug": "nichols-hall",
+    "name": "니콜스관",
+    "category": "building",
+    "aliases": ["니콜스", "N관"],
+    "description": "주요 전공 수업이 자주 열리는 강의동 예시",
+    "latitude": 37.48681,
+    "longitude": 126.80109,
+    "opening_hours": {"weekday": "08:00-21:00"},
+    "source_tag": "demo",
+    "last_synced_at": "2026-03-13T09:00:00+09:00"
+  },
+  {
+    "slug": "kim-soo-hwan-hall",
+    "name": "김수환관",
+    "category": "building",
+    "aliases": ["김수환", "K관"],
+    "description": "강의와 행사 모두 가능한 건물 예시",
+    "latitude": 37.48612,
+    "longitude": 126.80117,
+    "opening_hours": {"weekday": "08:00-21:00"},
+    "source_tag": "demo",
+    "last_synced_at": "2026-03-13T09:00:00+09:00"
+  },
+  {
+    "slug": "student-center",
+    "name": "학생회관",
+    "category": "facility",
+    "aliases": ["학회관", "학생식당"],
+    "description": "학생식당과 편의시설이 몰린 건물 예시",
+    "latitude": 37.48652,
+    "longitude": 126.80216,
+    "opening_hours": {"weekday": "08:30-20:00"},
+    "source_tag": "demo",
+    "last_synced_at": "2026-03-13T09:00:00+09:00"
+  },
+  {
+    "slug": "main-gate",
+    "name": "정문",
+    "category": "gate",
+    "aliases": ["학교 정문", "입구"],
+    "description": "버스 하차 후 가장 많이 찾는 기준 위치",
+    "latitude": 37.48590,
+    "longitude": 126.80282,
+    "opening_hours": {},
+    "source_tag": "demo",
+    "last_synced_at": "2026-03-13T09:00:00+09:00"
+  }
+]

@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <title>캠퍼스 안내 | 가톨릭대학교</title>
+</head>
+<body>
+  <script>
+    function fetchPlaceList(campus) {
+      return fetch(`?mode=getPlaceListByCondition&campus=${campus}`)
+        .then(response => response.json());
+    }
+    function fetchPlaceDetails(placeId) {
+      return fetch(`?mode=getPlace&id=${placeId}`)
+        .then(response => response.json());
+    }
+  </script>
+</body>
+</html>
