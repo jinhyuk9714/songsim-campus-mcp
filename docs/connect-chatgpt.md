@@ -12,6 +12,7 @@
 ChatGPT의 `chatgpt.com/g/...` 링크를 만들고 싶다면 MCP connector 대신 GPT Builder의 `Actions`를 사용합니다.
 
 - Actions schema URL: `https://your-public-api-url/gpt-actions-openapi.json`
+- Privacy Policy URL: `https://your-public-api-url/privacy`
 - 인증: `None`
 - 추천 endpoint 집합: 장소, 과목, 공지, 주변 식당, 교통 안내
 

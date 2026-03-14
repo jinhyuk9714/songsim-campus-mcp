@@ -456,6 +456,7 @@ def create_app() -> FastAPI:
     def render_landing_page(request: Request) -> str:
         public_http_url = settings.public_http_url or str(request.base_url).rstrip("/")
         docs_url = f"{public_http_url}/docs"
+        privacy_url = f"{public_http_url}/privacy"
         mcp_url = (
             settings.public_mcp_url
             or "Set SONGSIM_PUBLIC_MCP_URL to show the public MCP URL."
@@ -584,6 +585,7 @@ def create_app() -> FastAPI:
             <a class="pill primary" href="{html.escape(docs_url)}">Open API Docs</a>
             <a class="pill" href="/openapi.json">OpenAPI JSON</a>
             <a class="pill" href="/gpt-actions-openapi.json">GPT Actions OpenAPI</a>
+            <a class="pill" href="{html.escape(privacy_url)}">Privacy Policy</a>
             {admin_link}
           </p>
         </section>
@@ -611,6 +613,130 @@ def create_app() -> FastAPI:
           </ul>
         </article>
       </section>
+    </main>
+  </body>
+</html>
+"""
+
+    def render_privacy_page(request: Request) -> str:
+        public_http_url = settings.public_http_url or str(request.base_url).rstrip("/")
+        return f"""
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Songsim Campus Privacy Policy</title>
+    <style>
+      :root {{
+        color-scheme: light;
+        --bg: #f5f1e7;
+        --surface: #fffdf8;
+        --ink: #162126;
+        --muted: #5f6b6f;
+        --line: #d5ccb6;
+        --accent: #174f7a;
+      }}
+      * {{ box-sizing: border-box; }}
+      body {{
+        margin: 0;
+        font-family: Georgia, "Noto Serif KR", serif;
+        background:
+          radial-gradient(circle at top left, rgba(23,79,122,0.08), transparent 30%),
+          linear-gradient(180deg, #f9f4ea 0%, var(--bg) 100%);
+        color: var(--ink);
+      }}
+      main {{ max-width: 920px; margin: 0 auto; padding: 36px 20px 56px; }}
+      .card {{
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        padding: 20px;
+        box-shadow: 0 12px 30px rgba(22,33,38,0.06);
+      }}
+      h1 {{ margin: 0 0 10px; font-size: 2.2rem; }}
+      h2 {{ margin-top: 28px; }}
+      p, li {{ line-height: 1.65; }}
+      .meta {{ color: var(--muted); }}
+      code {{
+        display: inline-block;
+        padding: 2px 6px;
+        border-radius: 8px;
+        background: #f3efe5;
+        border: 1px solid #e0d6bf;
+      }}
+      a {{ color: var(--accent); }}
+    </style>
+  </head>
+  <body>
+    <main>
+      <article class="card">
+        <h1>Songsim Campus Privacy Policy</h1>
+        <p class="meta">
+          Effective date: 2026-03-14 · Service: Songsim Campus HTTP API,
+          ChatGPT Actions, and Remote MCP
+        </p>
+
+        <h2>1. What this service does</h2>
+        <p>
+          Songsim Campus provides read-only access to Catholic University
+          Songsim campus information such as
+          places, public courses, notices, nearby restaurants, and transport guides.
+        </p>
+
+        <h2>2. Data we process</h2>
+        <ul>
+          <li>
+            Request metadata needed to operate the service, such as timestamps,
+            endpoint usage, and basic server logs.
+          </li>
+          <li>
+            Query values you send to the API, ChatGPT Actions, or Remote MCP,
+            such as place names or course search terms.
+          </li>
+          <li>
+            Cached restaurant lookups from Kakao Local and Kakao place detail
+            pages to improve response quality.
+          </li>
+        </ul>
+
+        <h2>3. What we do not collect intentionally</h2>
+        <ul>
+          <li>We do not require account creation for the public read-only API.</li>
+          <li>
+            We do not intentionally collect sensitive personal information
+            through the public API or ChatGPT Actions.
+          </li>
+          <li>We do not sell personal data.</li>
+        </ul>
+
+        <h2>4. Third-party services</h2>
+        <ul>
+          <li>Render is used for hosting the public application services.</li>
+          <li>Supabase PostgreSQL is used for persistent storage.</li>
+          <li>
+            Kakao Local and Kakao place detail sources may be used to provide
+            nearby restaurant data and opening hours.
+          </li>
+          <li>Auth0 and Google login may be used for Remote MCP OAuth access.</li>
+          <li>
+            ChatGPT Actions may send your requests to this API when you use a
+            published GPT.
+          </li>
+        </ul>
+
+        <h2>5. Retention</h2>
+        <p>
+          Operational logs and caches may be retained for debugging,
+          observability, and service quality improvement.
+          Cached restaurant and hours data are periodically cleaned up by automation jobs.
+        </p>
+
+        <h2>6. Contact</h2>
+        <p>
+          For issues related to this deployment, refer to the public service root at
+          <a href="{html.escape(public_http_url)}">{html.escape(public_http_url)}</a>.
+        </p>
+      </article>
     </main>
   </body>
 </html>
@@ -932,6 +1058,10 @@ def create_app() -> FastAPI:
     @app.get("/", response_class=HTMLResponse)
     def landing(request: Request) -> HTMLResponse:
         return HTMLResponse(render_landing_page(request))
+
+    @app.get("/privacy", response_class=HTMLResponse)
+    def privacy(request: Request) -> HTMLResponse:
+        return HTMLResponse(render_privacy_page(request))
 
     @app.get("/readyz")
     def ready() -> dict[str, object]:
