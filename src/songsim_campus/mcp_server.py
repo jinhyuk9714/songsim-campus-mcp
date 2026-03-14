@@ -3,15 +3,19 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from types import MethodType
 
 from starlette.responses import JSONResponse
 
 from .db import connection, init_db
 from .mcp_oauth import (
     Auth0TokenVerifier,
-    build_mcp_auth_settings,
+    attach_optional_bearer_auth,
     build_mcp_tool_meta,
     build_protected_resource_metadata,
+    build_protected_resource_metadata_path,
+    ensure_authenticated_tool_access,
+    is_public_mcp_oauth_enabled,
 )
 from .schemas import (
     ProfileCourseRef,
@@ -59,9 +63,9 @@ def build_mcp():
     settings = get_settings()
     public_readonly = settings.app_mode == "public_readonly"
     tool_meta = build_mcp_tool_meta(settings)
-    auth_settings = build_mcp_auth_settings(settings)
+    public_mcp_oauth_enabled = is_public_mcp_oauth_enabled(settings)
     token_verifier = None
-    if auth_settings is not None and settings.resolved_mcp_oauth_audience is not None:
+    if public_mcp_oauth_enabled and settings.resolved_mcp_oauth_audience is not None:
         token_verifier = Auth0TokenVerifier(
             issuer_url=settings.mcp_oauth_issuer or "",
             audience=settings.resolved_mcp_oauth_audience,
@@ -78,8 +82,6 @@ def build_mcp():
         port=settings.app_port,
         streamable_http_path="/mcp",
         json_response=True,
-        auth=auth_settings,
-        token_verifier=token_verifier,
     )
 
     protected_resource_metadata = build_protected_resource_metadata(settings)
@@ -87,6 +89,15 @@ def build_mcp():
         @mcp.custom_route("/.well-known/oauth-protected-resource", methods=["GET"])
         async def oauth_protected_resource_alias(_request):
             return JSONResponse(protected_resource_metadata)
+
+        protected_resource_metadata_path = build_protected_resource_metadata_path(settings)
+        if (
+            protected_resource_metadata_path is not None
+            and protected_resource_metadata_path != "/.well-known/oauth-protected-resource"
+        ):
+            @mcp.custom_route(protected_resource_metadata_path, methods=["GET"])
+            async def oauth_protected_resource(_request):
+                return JSONResponse(protected_resource_metadata)
 
     @mcp.resource("songsim://source-registry")
     def source_registry() -> str:
@@ -432,6 +443,27 @@ def build_mcp():
                     ).model_dump()
                 except (NotFoundError, InvalidRequestError, ValueError) as exc:
                     return {"error": str(exc)}
+
+    if public_mcp_oauth_enabled and token_verifier is not None:
+        original_streamable_http_app = mcp.streamable_http_app
+        original_call_tool = mcp.call_tool
+
+        def streamable_http_app_with_optional_auth(self):
+            app = original_streamable_http_app()
+            return attach_optional_bearer_auth(app, token_verifier)
+
+        async def call_tool_with_mixed_auth(self, name: str, arguments: dict[str, object]):
+            try:
+                request_context = self.get_context().request_context
+            except ValueError:
+                request_context = None
+            if request_context is not None and request_context.request is not None:
+                ensure_authenticated_tool_access(settings)
+            return await original_call_tool(name, arguments)
+
+        mcp.streamable_http_app = MethodType(streamable_http_app_with_optional_auth, mcp)
+        mcp.call_tool = MethodType(call_tool_with_mixed_auth, mcp)
+        mcp._mcp_server.call_tool(validate_input=False)(mcp.call_tool)
 
     return mcp
 

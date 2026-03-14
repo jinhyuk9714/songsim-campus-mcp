@@ -9,6 +9,7 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
 from jwt.algorithms import RSAAlgorithm
+from mcp.types import LATEST_PROTOCOL_VERSION
 
 from songsim_campus.mcp_server import build_mcp
 from songsim_campus.settings import clear_settings_cache
@@ -28,7 +29,19 @@ def _set_public_oauth_env(monkeypatch: pytest.MonkeyPatch) -> None:
     clear_settings_cache()
 
 
-def test_mcp_oauth_metadata_and_challenge(app_env, monkeypatch):
+def _json_rpc_headers(*, session_id: str | None = None) -> dict[str, str]:
+    headers = {
+        "accept": "application/json",
+        "content-type": "application/json",
+        "host": "127.0.0.1:8000",
+    }
+    if session_id:
+        headers["mcp-session-id"] = session_id
+        headers["mcp-protocol-version"] = LATEST_PROTOCOL_VERSION
+    return headers
+
+
+def test_mcp_oauth_metadata_and_initialize_flow(app_env, monkeypatch):
     pytest.importorskip("mcp.server.fastmcp")
     _set_public_oauth_env(monkeypatch)
 
@@ -36,7 +49,31 @@ def test_mcp_oauth_metadata_and_challenge(app_env, monkeypatch):
     with TestClient(mcp.streamable_http_app()) as client:
         root_metadata = client.get("/.well-known/oauth-protected-resource")
         scoped_metadata = client.get("/.well-known/oauth-protected-resource/mcp")
-        challenge = client.get("/mcp")
+        initialize = client.post(
+            "/mcp",
+            headers=_json_rpc_headers(),
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": LATEST_PROTOCOL_VERSION,
+                    "capabilities": {},
+                    "clientInfo": {"name": "pytest", "version": "1.0"},
+                },
+            },
+        )
+        session_id = initialize.headers["mcp-session-id"]
+        list_tools = client.post(
+            "/mcp",
+            headers=_json_rpc_headers(session_id=session_id),
+            json={
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/list",
+                "params": {},
+            },
+        )
 
     clear_settings_cache()
 
@@ -46,11 +83,63 @@ def test_mcp_oauth_metadata_and_challenge(app_env, monkeypatch):
     assert root_metadata.json()["authorization_servers"] == ["https://songsim.us.auth0.com/"]
     assert root_metadata.json()["scopes_supported"] == ["songsim.read"]
     assert scoped_metadata.json() == root_metadata.json()
-    assert challenge.status_code == 401
-    assert (
-        'resource_metadata="https://songsim-public-mcp.onrender.com/'
-        '.well-known/oauth-protected-resource/mcp"'
-    ) in challenge.headers["www-authenticate"]
+    assert initialize.status_code == 200
+    assert initialize.json()["result"]["serverInfo"]["name"] == "Songsim Campus MCP"
+    assert session_id
+    assert list_tools.status_code == 200
+    assert {tool["name"] for tool in list_tools.json()["result"]["tools"]} == {
+        "tool_search_places",
+        "tool_get_place",
+        "tool_search_courses",
+        "tool_get_class_periods",
+        "tool_find_nearby_restaurants",
+        "tool_list_latest_notices",
+        "tool_list_transport_guides",
+    }
+
+
+def test_mcp_oauth_tool_calls_require_auth_after_initialize(app_env, monkeypatch):
+    pytest.importorskip("mcp.server.fastmcp")
+    _set_public_oauth_env(monkeypatch)
+
+    mcp = build_mcp()
+    with TestClient(mcp.streamable_http_app()) as client:
+        initialize = client.post(
+            "/mcp",
+            headers=_json_rpc_headers(),
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": LATEST_PROTOCOL_VERSION,
+                    "capabilities": {},
+                    "clientInfo": {"name": "pytest", "version": "1.0"},
+                },
+            },
+        )
+        session_id = initialize.headers["mcp-session-id"]
+        tool_call = client.post(
+            "/mcp",
+            headers=_json_rpc_headers(session_id=session_id),
+            json={
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": {
+                    "name": "tool_search_places",
+                    "arguments": {"query": "도서관"},
+                },
+            },
+        )
+
+    clear_settings_cache()
+
+    assert initialize.status_code == 200
+    assert tool_call.status_code == 200
+    payload = tool_call.json()["result"]
+    assert payload["isError"] is True
+    assert payload["content"][0]["text"] == "Authentication required for Songsim MCP tools."
 
 
 def test_mcp_public_tools_include_oauth_security_metadata(app_env, monkeypatch):

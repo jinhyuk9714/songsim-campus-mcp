@@ -4,17 +4,25 @@ import asyncio
 import json
 import time
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 import jwt
 from jwt.algorithms import RSAAlgorithm
+from mcp import McpError
+from mcp.server.auth.middleware.auth_context import AuthContextMiddleware, get_access_token
+from mcp.server.auth.middleware.bearer_auth import BearerAuthBackend
 from mcp.server.auth.provider import AccessToken, TokenVerifier
 from mcp.server.auth.settings import AuthSettings
+from mcp.types import INVALID_REQUEST, ErrorData
+from starlette.applications import Starlette
+from starlette.middleware.authentication import AuthenticationMiddleware
 
 from .settings import Settings
 
 DEFAULT_SCOPE = "songsim.read"
 JWKS_CACHE_TTL_SECONDS = 300
+MCP_AUTH_REQUIRED_MESSAGE = "Authentication required for Songsim MCP tools."
 
 
 def is_public_mcp_oauth_enabled(settings: Settings) -> bool:
@@ -74,6 +82,40 @@ def build_protected_resource_metadata(settings: Settings) -> dict[str, Any] | No
         "scopes_supported": settings.mcp_oauth_scopes,
         "bearer_methods_supported": ["header"],
     }
+
+
+def build_protected_resource_metadata_path(settings: Settings) -> str | None:
+    if not is_public_mcp_oauth_enabled(settings):
+        return None
+    audience = settings.resolved_mcp_oauth_audience
+    if audience is None:  # pragma: no cover - guarded by settings validation
+        return None
+    parsed = urlparse(audience)
+    resource_path = parsed.path if parsed.path != "/" else ""
+    return f"/.well-known/oauth-protected-resource{resource_path}"
+
+
+def attach_optional_bearer_auth(app: Starlette, token_verifier: TokenVerifier) -> Starlette:
+    if getattr(app.state, "songsim_optional_bearer_auth", False):
+        return app
+    app.add_middleware(AuthContextMiddleware)
+    app.add_middleware(AuthenticationMiddleware, backend=BearerAuthBackend(token_verifier))
+    app.state.songsim_optional_bearer_auth = True
+    return app
+
+
+def ensure_authenticated_tool_access(settings: Settings) -> None:
+    if not is_public_mcp_oauth_enabled(settings):
+        return
+    if get_access_token() is not None:
+        return
+    raise McpError(
+        ErrorData(
+            code=INVALID_REQUEST,
+            message=MCP_AUTH_REQUIRED_MESSAGE,
+            data={"required_scopes": settings.mcp_oauth_scopes},
+        )
+    )
 
 
 class Auth0TokenVerifier(TokenVerifier):
