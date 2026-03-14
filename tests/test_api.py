@@ -79,6 +79,38 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     assert "/admin/sync" not in openapi.text
 
 
+def test_public_readonly_mode_exposes_gpt_actions_openapi(app_env, monkeypatch):
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    monkeypatch.setenv("SONGSIM_PUBLIC_HTTP_URL", "https://songsim-api.onrender.com")
+    clear_settings_cache()
+
+    app = create_app()
+    with TestClient(app) as public_client:
+        response = public_client.get("/gpt-actions-openapi.json")
+
+    clear_settings_cache()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["info"]["title"] == "Songsim Campus GPT Actions"
+    assert payload["servers"] == [{"url": "https://songsim-api.onrender.com"}]
+    assert set(payload["paths"]) == {
+        "/places",
+        "/courses",
+        "/notices",
+        "/restaurants/nearby",
+        "/transport",
+    }
+    assert payload["paths"]["/places"]["get"]["operationId"] == "searchPlaces"
+    assert payload["paths"]["/courses"]["get"]["operationId"] == "searchCourses"
+    assert payload["paths"]["/notices"]["get"]["operationId"] == "listLatestNotices"
+    assert (
+        payload["paths"]["/restaurants/nearby"]["get"]["operationId"]
+        == "findNearbyRestaurants"
+    )
+    assert payload["paths"]["/transport"]["get"]["operationId"] == "listTransportGuides"
+
+
 def test_admin_sync_route_rejects_non_loopback(remote_admin_client):
     response = remote_admin_client.get("/admin/sync")
 

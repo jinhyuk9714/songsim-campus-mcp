@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import html
 import json
 import logging
@@ -10,7 +11,7 @@ from urllib.parse import parse_qs
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from .db import connection, get_connection, init_db
 from .schemas import (
@@ -67,6 +68,41 @@ from .settings import get_settings
 
 logger = logging.getLogger(__name__)
 
+GPT_ACTION_PATHS: dict[str, dict[str, str]] = {
+    "/places": {
+        "operationId": "searchPlaces",
+        "summary": "Search campus places",
+        "description": (
+            "Search Songsim campus places by building name, alias, or facility keyword. "
+            "Use this for locations such as 중앙도서관, 베리타스관, or student facilities."
+        ),
+    },
+    "/courses": {
+        "operationId": "searchCourses",
+        "summary": "Search public course offerings",
+        "description": (
+            "Search public Songsim course offerings by title and optional year or semester."
+        ),
+    },
+    "/notices": {
+        "operationId": "listLatestNotices",
+        "summary": "List latest public notices",
+        "description": "List the latest public Songsim campus notices.",
+    },
+    "/restaurants/nearby": {
+        "operationId": "findNearbyRestaurants",
+        "summary": "Find nearby restaurants",
+        "description": (
+            "Find walkable restaurants near a Songsim campus building or landmark."
+        ),
+    },
+    "/transport": {
+        "operationId": "listTransportGuides",
+        "summary": "List transit guides",
+        "description": "List public Songsim campus transit and access guides.",
+    },
+}
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -119,6 +155,30 @@ def create_app() -> FastAPI:
     settings = get_settings()
     public_readonly = settings.app_mode == "public_readonly"
     app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
+
+    def build_gpt_actions_openapi(request: Request) -> dict[str, object]:
+        source_spec = copy.deepcopy(app.openapi())
+        public_http_url = settings.public_http_url or str(request.base_url).rstrip("/")
+        filtered_paths: dict[str, object] = {}
+        for path, metadata in GPT_ACTION_PATHS.items():
+            operation = copy.deepcopy(source_spec["paths"][path]["get"])
+            operation["operationId"] = metadata["operationId"]
+            operation["summary"] = metadata["summary"]
+            operation["description"] = metadata["description"]
+            filtered_paths[path] = {"get": operation}
+        return {
+            "openapi": source_spec["openapi"],
+            "info": {
+                "title": "Songsim Campus GPT Actions",
+                "version": source_spec["info"]["version"],
+                "description": (
+                    "Slimmed-down read-only actions schema for ChatGPT GPT Actions."
+                ),
+            },
+            "servers": [{"url": public_http_url}],
+            "paths": filtered_paths,
+            "components": source_spec.get("components", {}),
+        }
 
     def ensure_admin_request_allowed(request: Request) -> None:
         client_host = request.client.host if request.client else ""
@@ -523,6 +583,7 @@ def create_app() -> FastAPI:
           <p>
             <a class="pill primary" href="{html.escape(docs_url)}">Open API Docs</a>
             <a class="pill" href="/openapi.json">OpenAPI JSON</a>
+            <a class="pill" href="/gpt-actions-openapi.json">GPT Actions OpenAPI</a>
             {admin_link}
           </p>
         </section>
@@ -875,6 +936,10 @@ def create_app() -> FastAPI:
     @app.get("/readyz")
     def ready() -> dict[str, object]:
         return get_readiness_snapshot()
+
+    @app.get("/gpt-actions-openapi.json")
+    def gpt_actions_openapi(request: Request) -> JSONResponse:
+        return JSONResponse(build_gpt_actions_openapi(request))
 
     @app.get("/periods", response_model=list[Period])
     def periods() -> list[Period]:

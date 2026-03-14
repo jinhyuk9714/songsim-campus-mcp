@@ -7,6 +7,14 @@
 - 모드: read-only public server
 - 로그인: Auth0 + Google login
 
+## GPT 링크로 공개하고 싶을 때
+
+ChatGPT의 `chatgpt.com/g/...` 링크를 만들고 싶다면 MCP connector 대신 GPT Builder의 `Actions`를 사용합니다.
+
+- Actions schema URL: `https://your-public-api-url/gpt-actions-openapi.json`
+- 인증: `None`
+- 추천 endpoint 집합: 장소, 과목, 공지, 주변 식당, 교통 안내
+
 ## 연결 후 바로 해볼 질문
 
 - `성심교정 중앙도서관 위치 알려줘`
