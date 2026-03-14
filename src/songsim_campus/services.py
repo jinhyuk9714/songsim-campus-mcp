@@ -1,15 +1,22 @@
 from __future__ import annotations
 
+import heapq
+import json
+import logging
 import math
 import re
 import sqlite3
 import uuid
-from datetime import datetime
+from copy import deepcopy
+from datetime import date, datetime
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 import httpx
 
 from . import repo
+from .db import get_connection
 from .ingest.kakao_places import KakaoLocalClient, KakaoPlace
 from .ingest.official_sources import (
     CampusFacilitiesSource,
@@ -20,17 +27,25 @@ from .ingest.official_sources import (
     TransportGuideSource,
 )
 from .schemas import (
+    CacheObservability,
     Course,
+    MatchedCourse,
+    MatchedNotice,
     MealRecommendation,
     MealRecommendationResponse,
     NearbyRestaurant,
     Notice,
+    ObservabilitySnapshot,
     Period,
     Place,
     Profile,
     ProfileCourseRef,
+    ProfileInterests,
     ProfileNoticePreferences,
+    ProfileUpdateRequest,
     Restaurant,
+    SyncObservability,
+    SyncRun,
     TransportGuide,
 )
 from .settings import get_settings
@@ -42,6 +57,45 @@ CAMPUS_MAP_SOURCE_URL = "https://www.catholic.ac.kr/ko/about/campus-map.do"
 LIBRARY_HOURS_SOURCE_URL = "https://library.catholic.ac.kr/webcontent/info/45"
 FACILITIES_SOURCE_URL = "https://www.catholic.ac.kr/ko/campuslife/restaurant.do"
 TRANSPORT_SOURCE_URL = "https://www.catholic.ac.kr/ko/about/location_songsim.do"
+DATA_DIR = Path(__file__).resolve().parents[2] / "data"
+CAMPUS_WALK_GRAPH_PATH = DATA_DIR / "campus_walk_graph.json"
+SYNC_DATASET_TABLES = ("places", "courses", "notices", "transport_guides")
+ADMIN_SYNC_TARGETS = {
+    "snapshot",
+    "places",
+    "library_hours",
+    "facility_hours",
+    "courses",
+    "notices",
+    "transport_guides",
+}
+ALLOWED_ADMISSION_TYPES = {"general", "freshman", "transfer", "exchange"}
+ALLOWED_PROFILE_INTERESTS = {
+    "scholarship",
+    "internship",
+    "employment",
+    "graduation",
+    "exchange",
+    "startup",
+    "language",
+    "volunteer",
+}
+INTEREST_KEYWORDS = {
+    "scholarship": ["장학", "장학금", "장학생", "scholarship"],
+    "internship": ["인턴", "인턴십", "현장실습", "internship"],
+    "employment": ["취업", "채용", "진로", "커리어", "employment"],
+    "graduation": ["졸업", "졸업예정", "졸업요건", "graduation"],
+    "exchange": ["교환학생", "파견", "exchange"],
+    "startup": ["창업", "스타트업", "startup"],
+    "language": ["어학", "영어", "토익", "토플", "language"],
+    "volunteer": ["봉사", "사회공헌", "volunteer"],
+}
+ADMISSION_TYPE_KEYWORDS = {
+    "general": [],
+    "freshman": ["신입생", "새내기"],
+    "transfer": ["편입", "편입생"],
+    "exchange": ["교환학생", "파견학생"],
+}
 CLASS_PERIODS = [
     (1, "09:00", "09:50"),
     (2, "10:00", "10:50"),
@@ -55,6 +109,9 @@ CLASS_PERIODS = [
     (10, "18:00", "18:50"),
 ]
 
+logger = logging.getLogger(__name__)
+OBSERVABILITY_EVENT_LIMIT = 10
+
 
 class NotFoundError(ValueError):
     pass
@@ -64,18 +121,186 @@ class InvalidRequestError(ValueError):
     pass
 
 
+def _now() -> datetime:
+    return datetime.now().astimezone()
+
+
 def _now_iso() -> str:
-    return datetime.now().astimezone().isoformat(timespec="seconds")
+    return _now().isoformat(timespec="seconds")
+
+
+def _new_observability_state(process_started_at: str | None = None) -> dict[str, Any]:
+    return {
+        "process_started_at": process_started_at or _now_iso(),
+        "cache": {
+            "fresh_hit": 0,
+            "stale_hit": 0,
+            "live_fetch_success": 0,
+            "live_fetch_error": 0,
+            "local_fallback": 0,
+            "recent_events": [],
+        },
+        "sync": {
+            "recent_events": [],
+            "last_failure_at": None,
+            "last_failure_message": None,
+        },
+    }
+
+
+_OBSERVABILITY_STATE = _new_observability_state()
+
+
+def reset_observability_state() -> None:
+    global _OBSERVABILITY_STATE
+    _OBSERVABILITY_STATE = _new_observability_state()
+
+
+def _prepend_observability_event(items: list[dict[str, Any]], payload: dict[str, Any]) -> None:
+    items.insert(0, payload)
+    del items[OBSERVABILITY_EVENT_LIMIT:]
+
+
+def _record_cache_decision(
+    *,
+    decision: str,
+    origin_slug: str,
+    kakao_query: str,
+    radius_meters: int,
+    error_text: str | None = None,
+) -> None:
+    cache_state = _OBSERVABILITY_STATE["cache"]
+    if decision in {
+        "fresh_hit",
+        "stale_hit",
+        "live_fetch_success",
+        "live_fetch_error",
+        "local_fallback",
+    }:
+        cache_state[decision] += 1
+    event = {
+        "decision": decision,
+        "origin_slug": origin_slug,
+        "kakao_query": kakao_query,
+        "radius_meters": radius_meters,
+        "occurred_at": _now_iso(),
+        "error_text": error_text,
+    }
+    _prepend_observability_event(cache_state["recent_events"], event)
+    logger.info(
+        "event=restaurant_cache_decision decision=%s origin_slug=%s kakao_query=%s "
+        "radius_meters=%s error_text=%s",
+        decision,
+        origin_slug,
+        kakao_query,
+        radius_meters,
+        error_text or "",
+    )
+
+
+def _record_sync_result(
+    *,
+    target: str,
+    status: str,
+    started_at: str,
+    finished_at: str,
+    summary: dict[str, int] | None = None,
+    error_text: str | None = None,
+) -> None:
+    sync_state = _OBSERVABILITY_STATE["sync"]
+    started = datetime.fromisoformat(started_at)
+    finished = datetime.fromisoformat(finished_at)
+    event = {
+        "target": target,
+        "status": status,
+        "started_at": started_at,
+        "finished_at": finished_at,
+        "duration_ms": max(0, int((finished - started).total_seconds() * 1000)),
+        "summary": summary or {},
+        "error_text": error_text,
+    }
+    _prepend_observability_event(sync_state["recent_events"], event)
+    if status == "failed":
+        sync_state["last_failure_at"] = finished_at
+        sync_state["last_failure_message"] = error_text
+        logger.error(
+            "event=admin_sync_failed target=%s duration_ms=%s error_text=%s",
+            target,
+            event["duration_ms"],
+            error_text or "",
+        )
+    else:
+        logger.info(
+            "event=admin_sync_completed target=%s duration_ms=%s summary=%s",
+            target,
+            event["duration_ms"],
+            json.dumps(summary or {}, ensure_ascii=False),
+        )
+
+
+def get_readiness_snapshot() -> dict[str, Any]:
+    readiness: dict[str, Any] = {
+        "ok": True,
+        "database": {"ok": False, "error": None},
+        "tables": {},
+    }
+    try:
+        conn = get_connection()
+    except Exception as exc:
+        readiness["ok"] = False
+        readiness["database"] = {"ok": False, "error": str(exc)}
+        logger.warning("event=readiness_check_failed check=database error=%s", exc)
+        return readiness
+
+    try:
+        readiness["database"] = {"ok": True, "error": None}
+        for table in SYNC_DATASET_TABLES:
+            try:
+                item = repo.get_dataset_sync_state(conn, table)
+                readiness["tables"][table] = {"ok": True, **item}
+            except Exception as exc:
+                readiness["ok"] = False
+                readiness["tables"][table] = {"ok": False, "error": str(exc)}
+                logger.warning("event=readiness_check_failed check=%s error=%s", table, exc)
+        try:
+            repo.list_sync_runs(conn, limit=1)
+            readiness["tables"]["sync_runs"] = {"ok": True}
+        except Exception as exc:
+            readiness["ok"] = False
+            readiness["tables"]["sync_runs"] = {"ok": False, "error": str(exc)}
+            logger.warning("event=readiness_check_failed check=sync_runs error=%s", exc)
+    finally:
+        conn.close()
+
+    readiness["ok"] = readiness["database"]["ok"] and all(
+        item.get("ok", False) for item in readiness["tables"].values()
+    )
+    return readiness
+
+
+def get_observability_snapshot(
+    conn: sqlite3.Connection,
+    *,
+    runs_limit: int = 20,
+) -> ObservabilitySnapshot:
+    state = deepcopy(_OBSERVABILITY_STATE)
+    return ObservabilitySnapshot(
+        process_started_at=state["process_started_at"],
+        cache=CacheObservability.model_validate(state["cache"]),
+        sync=SyncObservability.model_validate(state["sync"]),
+        datasets=[repo.get_dataset_sync_state(conn, table) for table in SYNC_DATASET_TABLES],
+        recent_sync_runs=list_sync_runs(conn, limit=runs_limit),
+    )
 
 
 def _current_year_and_semester(now: datetime | None = None) -> tuple[int, int]:
-    current = now or datetime.now().astimezone()
+    current = now or _now()
     semester = 1 if current.month <= 6 else 2
     return current.year, semester
 
 
 def _coerce_datetime(value: datetime | None = None) -> datetime:
-    current = value or datetime.now().astimezone()
+    current = value or _now()
     return current if current.tzinfo else current.astimezone()
 
 
@@ -148,6 +373,421 @@ def _unique_stripped(values: list[str]) -> list[str]:
     return result
 
 
+def _unique_lower_stripped(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        cleaned = value.strip().lower()
+        if not cleaned or cleaned in seen:
+            continue
+        seen.add(cleaned)
+        result.append(cleaned)
+    return result
+
+
+def _normalize_optional_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = value.strip()
+    return cleaned or None
+
+
+def _normalize_profile_display_name(value: str | None) -> str:
+    return (value or "").strip()
+
+
+def _validate_student_year(value: int | None) -> int | None:
+    if value is None:
+        return None
+    if 1 <= value <= 6:
+        return value
+    raise InvalidRequestError("student_year must be between 1 and 6.")
+
+
+def _validate_admission_type(value: str | None) -> str | None:
+    cleaned = _normalize_optional_text(value)
+    if cleaned is None:
+        return None
+    normalized = cleaned.lower()
+    if normalized not in ALLOWED_ADMISSION_TYPES:
+        raise InvalidRequestError(
+            "admission_type must be one of: general, freshman, transfer, exchange."
+        )
+    return normalized
+
+
+def _normalize_interest_tags(tags: list[str]) -> list[str]:
+    normalized = _unique_lower_stripped(tags)
+    invalid = [tag for tag in normalized if tag not in ALLOWED_PROFILE_INTERESTS]
+    if invalid:
+        raise InvalidRequestError(f"Unsupported interest tag: {invalid[0]}")
+    return normalized
+
+
+def _student_year_keywords(student_year: int | None) -> list[str]:
+    if student_year is None:
+        return []
+    keywords = [f"{student_year}학년"]
+    if student_year == 1:
+        keywords.append("신입생")
+    return keywords
+
+
+def _joined_notice_text(item: dict[str, Any]) -> str:
+    parts = [item["category"], item["title"], item.get("summary", ""), *item.get("labels", [])]
+    return " ".join(str(part) for part in parts if part).lower()
+
+
+def _joined_course_text(course: Course) -> str:
+    return " ".join(
+        part
+        for part in [
+            course.title,
+            course.department or "",
+            course.raw_schedule or "",
+        ]
+        if part
+    ).lower()
+
+
+def _sort_matched_notices(items: list[MatchedNotice]) -> list[MatchedNotice]:
+    return sorted(
+        items,
+        key=lambda item: (
+            -date.fromisoformat(item.notice.published_at).toordinal(),
+            item.notice.title,
+        ),
+    )
+
+
+def _normalize_facility_name(value: str) -> str:
+    normalized = value.strip().lower()
+    normalized = re.sub(r"\([^)]*\)", "", normalized)
+    for token in ("가톨릭대학교", "가톨릭대", "성심교정"):
+        normalized = normalized.replace(token, "")
+    normalized = "".join(char for char in normalized if not char.isspace())
+    if normalized.endswith("점"):
+        normalized = normalized[:-1]
+    return normalized
+
+
+def _is_generic_opening_hours_key(value: str) -> bool:
+    normalized = value.strip().lower().replace(" ", "")
+    return normalized in {
+        "weekday",
+        "weekdays",
+        "weekend",
+        "mon-fri",
+        "sat",
+        "sun",
+        "평일",
+        "주중",
+        "토",
+        "토요일",
+        "일",
+        "일요일",
+        "월-금",
+    }
+
+
+def _facility_hours_index(conn: sqlite3.Connection) -> dict[str, str]:
+    index: dict[str, str] = {}
+    for place in repo.list_places(conn):
+        for name, hours_text in place.get("opening_hours", {}).items():
+            if _is_generic_opening_hours_key(name):
+                continue
+            key = _normalize_facility_name(name)
+            if key and key not in index:
+                index[key] = hours_text
+    return index
+
+
+def _minutes_from_time_string(value: str) -> int | None:
+    match = re.fullmatch(r"(\d{1,2}):(\d{2})", value.strip())
+    if not match:
+        return None
+    hour = int(match.group(1))
+    minute = int(match.group(2))
+    if hour > 23 or minute > 59:
+        return None
+    return hour * 60 + minute
+
+
+def _extract_time_range(value: str) -> tuple[int, int] | None:
+    match = re.search(r"(\d{1,2}:\d{2})\s*[~\-]\s*(\d{1,2}:\d{2})", value)
+    if not match:
+        return None
+    start = _minutes_from_time_string(match.group(1))
+    end = _minutes_from_time_string(match.group(2))
+    if start is None or end is None:
+        return None
+    return start, end
+
+
+def _is_in_time_range(current_minutes: int, time_range: tuple[int, int]) -> bool:
+    start, end = time_range
+    if end <= start:
+        return False
+    return start <= current_minutes < end
+
+
+def _is_explicitly_closed_for_day(value: str, weekday: int) -> bool:
+    compact = value.strip().lower().replace(" ", "")
+    if compact == "휴무":
+        return True
+    if "휴무" not in compact:
+        return False
+    if weekday == 6 and any(
+        token in compact
+        for token in ("일/공휴일휴무", "일휴무", "일요일휴무", "토/일휴무", "주말휴무")
+    ):
+        return True
+    if weekday == 5 and any(
+        token in compact for token in ("토휴무", "토요일휴무", "토/일휴무", "주말휴무")
+    ):
+        return True
+    if weekday < 5 and any(
+        token in compact for token in ("평일휴무", "주중휴무", "weekdayclosed")
+    ):
+        return True
+    return False
+
+
+def _find_day_specific_time_ranges(value: str, weekday: int) -> tuple[bool, list[tuple[int, int]]]:
+    time_pattern = r"(\d{1,2}:\d{2}\s*[~\-]\s*\d{1,2}:\d{2})"
+    patterns = [
+        (
+            (0, 1, 2, 3, 4),
+            [
+                rf"평일\s*{time_pattern}",
+                rf"mon-fri\s*{time_pattern}",
+                rf"weekday\s*{time_pattern}",
+            ],
+        ),
+        (
+            (5,),
+            [
+                rf"(?:토요일|토)\s*{time_pattern}",
+                rf"sat\s*{time_pattern}",
+            ],
+        ),
+        (
+            (6,),
+            [
+                rf"(?:일요일|일)\s*{time_pattern}",
+                rf"sun\s*{time_pattern}",
+            ],
+        ),
+    ]
+    found_any = False
+    matches: list[tuple[int, int]] = []
+    for days, options in patterns:
+        for option in options:
+            match = re.search(option, value, flags=re.IGNORECASE)
+            if not match:
+                continue
+            found_any = True
+            time_range = _extract_time_range(match.group(1))
+            if time_range and weekday in days:
+                matches.append(time_range)
+            break
+    return found_any, matches
+
+
+def _evaluate_open_now(hours_text: str, at: datetime) -> bool | None:
+    if not hours_text.strip():
+        return None
+
+    compact = hours_text.strip().lower().replace(" ", "")
+    if "24시간" in compact or "24hours" in compact:
+        return True
+
+    weekday = at.weekday()
+    current_minutes = at.hour * 60 + at.minute
+
+    if _is_explicitly_closed_for_day(hours_text, weekday):
+        return False
+
+    found_day_rules, day_ranges = _find_day_specific_time_ranges(hours_text, weekday)
+    if day_ranges:
+        return any(_is_in_time_range(current_minutes, item) for item in day_ranges)
+    if found_day_rules:
+        return False
+
+    generic_range = _extract_time_range(hours_text)
+    if generic_range:
+        return _is_in_time_range(current_minutes, generic_range)
+    if "휴무" in compact:
+        return False
+    return None
+
+
+def _restaurant_open_now(
+    restaurant_name: str,
+    facility_hours: dict[str, str],
+    at: datetime,
+) -> bool | None:
+    hours_text = facility_hours.get(_normalize_facility_name(restaurant_name))
+    if not hours_text:
+        return None
+    return _evaluate_open_now(hours_text, at)
+
+
+def _parse_campus_walk_graph(payload: dict[str, Any]) -> dict[str, Any]:
+    nodes_raw = payload.get("nodes")
+    edges_raw = payload.get("edges")
+    if not isinstance(nodes_raw, list):
+        raise ValueError("campus walk graph nodes must be a list")
+    if not isinstance(edges_raw, list):
+        raise ValueError("campus walk graph edges must be a list")
+
+    nodes: list[str] = []
+    for item in nodes_raw:
+        if not isinstance(item, str) or not item.strip():
+            raise ValueError("campus walk graph nodes must be non-empty strings")
+        slug = item.strip()
+        if slug not in nodes:
+            nodes.append(slug)
+
+    adjacency: dict[str, list[tuple[str, int]]] = {slug: [] for slug in nodes}
+    node_set = set(nodes)
+    for edge in edges_raw:
+        if not isinstance(edge, dict):
+            raise ValueError("campus walk graph edges must be objects")
+        start = str(edge.get("from", "")).strip()
+        end = str(edge.get("to", "")).strip()
+        if start not in node_set or end not in node_set:
+            raise ValueError("campus walk graph edge references unknown node")
+        walk_minutes = edge.get("walk_minutes")
+        if not isinstance(walk_minutes, int) or isinstance(walk_minutes, bool) or walk_minutes <= 0:
+            raise ValueError("campus walk graph edges must use positive walk_minutes")
+        adjacency[start].append((end, walk_minutes))
+
+    return {"nodes": frozenset(node_set), "adjacency": adjacency}
+
+
+@lru_cache(maxsize=1)
+def _load_campus_walk_graph() -> dict[str, Any]:
+    payload = json.loads(CAMPUS_WALK_GRAPH_PATH.read_text(encoding="utf-8"))
+    return _parse_campus_walk_graph(payload)
+
+
+def _campus_walk_minutes(start_slug: str, end_slug: str) -> int | None:
+    if start_slug == end_slug:
+        return 0
+    graph = _load_campus_walk_graph()
+    nodes: frozenset[str] = graph["nodes"]
+    if start_slug not in nodes or end_slug not in nodes:
+        return None
+    adjacency: dict[str, list[tuple[str, int]]] = graph["adjacency"]
+    queue: list[tuple[int, str]] = [(0, start_slug)]
+    seen: dict[str, int] = {start_slug: 0}
+    while queue:
+        cost, slug = heapq.heappop(queue)
+        if slug == end_slug:
+            return cost
+        if cost > seen.get(slug, cost):
+            continue
+        for neighbor, weight in adjacency.get(slug, []):
+            next_cost = cost + weight
+            if next_cost >= seen.get(neighbor, next_cost + 1):
+                continue
+            seen[neighbor] = next_cost
+            heapq.heappush(queue, (next_cost, neighbor))
+    return None
+
+
+def _direct_walk_minutes_from_coords(
+    lat1: float,
+    lon1: float,
+    lat2: float,
+    lon2: float,
+) -> int:
+    return max(1, round(_haversine_meters(lat1, lon1, lat2, lon2) / WALKING_METERS_PER_MINUTE))
+
+
+def _campus_gate_places(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    graph_nodes: frozenset[str] = _load_campus_walk_graph()["nodes"]
+    return [
+        place
+        for place in repo.list_places(conn)
+        if place["slug"] in graph_nodes
+        and place["category"] == "gate"
+        and place.get("latitude") is not None
+        and place.get("longitude") is not None
+    ]
+
+
+def _is_external_restaurant_route(source_tag: str | None) -> bool:
+    return (source_tag or "").startswith("kakao_local")
+
+
+def _estimate_place_to_restaurant_walk_minutes(
+    conn: sqlite3.Connection,
+    *,
+    origin_place: dict[str, Any],
+    restaurant_row: dict[str, Any],
+) -> int:
+    direct_minutes = _direct_walk_minutes_from_coords(
+        origin_place["latitude"],
+        origin_place["longitude"],
+        restaurant_row["latitude"],
+        restaurant_row["longitude"],
+    )
+    if not _is_external_restaurant_route(restaurant_row.get("source_tag")):
+        return direct_minutes
+
+    best_minutes: int | None = None
+    for gate in _campus_gate_places(conn):
+        internal_minutes = _campus_walk_minutes(origin_place["slug"], gate["slug"])
+        if internal_minutes is None:
+            continue
+        external_minutes = _direct_walk_minutes_from_coords(
+            gate["latitude"],
+            gate["longitude"],
+            restaurant_row["latitude"],
+            restaurant_row["longitude"],
+        )
+        total_minutes = internal_minutes + external_minutes
+        if best_minutes is None or total_minutes < best_minutes:
+            best_minutes = total_minutes
+    return best_minutes or direct_minutes
+
+
+def _estimate_restaurant_to_place_walk_minutes(
+    conn: sqlite3.Connection,
+    *,
+    restaurant_latitude: float,
+    restaurant_longitude: float,
+    restaurant_source_tag: str | None,
+    next_place: Place,
+) -> int:
+    direct_minutes = _direct_walk_minutes_from_coords(
+        restaurant_latitude,
+        restaurant_longitude,
+        next_place.latitude,
+        next_place.longitude,
+    )
+    if not _is_external_restaurant_route(restaurant_source_tag):
+        return direct_minutes
+
+    best_minutes: int | None = None
+    for gate in _campus_gate_places(conn):
+        internal_minutes = _campus_walk_minutes(gate["slug"], next_place.slug)
+        if internal_minutes is None:
+            continue
+        external_minutes = _direct_walk_minutes_from_coords(
+            restaurant_latitude,
+            restaurant_longitude,
+            gate["latitude"],
+            gate["longitude"],
+        )
+        total_minutes = external_minutes + internal_minutes
+        if best_minutes is None or total_minutes < best_minutes:
+            best_minutes = total_minutes
+    return best_minutes or direct_minutes
+
+
 def _resolve_place_from_room(conn: sqlite3.Connection, room: str | None) -> Place | None:
     if not room:
         return None
@@ -169,6 +809,90 @@ def _ensure_profile(conn: sqlite3.Connection, profile_id: str) -> Profile:
     if not row:
         raise NotFoundError(f"Profile not found: {profile_id}")
     return Profile.model_validate(row)
+
+
+def _dedupe_reasons(reasons: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for reason in reasons:
+        if reason in seen:
+            continue
+        seen.add(reason)
+        result.append(reason)
+    return result
+
+
+def _profile_notice_context_is_empty(
+    profile: Profile,
+    preferences: ProfileNoticePreferences,
+    interests: ProfileInterests,
+) -> bool:
+    return not any(
+        [
+            preferences.categories,
+            preferences.keywords,
+            profile.department,
+            profile.student_year,
+            profile.admission_type,
+            interests.tags,
+        ]
+    )
+
+
+def _notice_match_reasons(
+    item: dict[str, Any],
+    *,
+    preferences: ProfileNoticePreferences,
+    profile: Profile,
+    interests: ProfileInterests,
+) -> list[str]:
+    reasons: list[str] = []
+    category = item["category"].lower()
+    labels = [label.lower() for label in item.get("labels", [])]
+    text = _joined_notice_text(item)
+
+    for raw_category in preferences.categories:
+        normalized = raw_category.lower()
+        if normalized == category or normalized in labels:
+            reasons.append(f"category:{raw_category}")
+
+    for keyword in preferences.keywords:
+        if keyword.lower() in text:
+            reasons.append(f"keyword:{keyword}")
+
+    if profile.department and profile.department.lower() in text:
+        reasons.append(f"department:{profile.department}")
+
+    for keyword in _student_year_keywords(profile.student_year):
+        if keyword.lower() in text:
+            reasons.append(f"student_year:{profile.student_year}")
+            break
+
+    if profile.admission_type:
+        for keyword in ADMISSION_TYPE_KEYWORDS[profile.admission_type]:
+            if keyword.lower() in text:
+                reasons.append(f"admission_type:{profile.admission_type}")
+                break
+
+    for tag in interests.tags:
+        if any(keyword.lower() in text for keyword in INTEREST_KEYWORDS[tag]):
+            reasons.append(f"interest:{tag}")
+
+    return _dedupe_reasons(reasons)
+
+
+def _course_match_reasons(course: Course, *, profile: Profile) -> list[str]:
+    reasons: list[str] = []
+    text = _joined_course_text(course)
+    if profile.department:
+        department = profile.department.lower()
+        if department in (course.department or "").lower() or department in course.title.lower():
+            reasons.append(f"department:{profile.department}")
+    for keyword in _student_year_keywords(profile.student_year):
+        if keyword.lower() in text:
+            reasons.append(f"student_year:{profile.student_year}")
+            break
+    return reasons
 
 
 def get_class_periods() -> list[Period]:
@@ -217,15 +941,213 @@ def list_transport_guides(
     ]
 
 
+def list_sync_runs(conn: sqlite3.Connection, limit: int = 20) -> list[SyncRun]:
+    return [SyncRun.model_validate(item) for item in repo.list_sync_runs(conn, limit=limit)]
+
+
+def get_sync_dashboard_state(
+    conn: sqlite3.Connection,
+    *,
+    runs_limit: int = 20,
+) -> dict[str, Any]:
+    return {
+        "datasets": [repo.get_dataset_sync_state(conn, table) for table in SYNC_DATASET_TABLES],
+        "recent_runs": list_sync_runs(conn, limit=runs_limit),
+    }
+
+
+def _sync_run_params(
+    *,
+    target: str,
+    campus: str | None,
+    year: int | None,
+    semester: int | None,
+    notice_pages: int | None,
+) -> dict[str, int | str]:
+    params: dict[str, int | str] = {}
+    if target in {"snapshot", "places"} and campus:
+        params["campus"] = campus
+    if target in {"snapshot", "courses"} and year is not None:
+        params["year"] = year
+    if target in {"snapshot", "courses"} and semester is not None:
+        params["semester"] = semester
+    if target in {"snapshot", "notices"} and notice_pages is not None:
+        params["notice_pages"] = notice_pages
+    return params
+
+
+def _run_admin_sync_target(
+    conn: sqlite3.Connection,
+    *,
+    target: str,
+    campus: str | None,
+    year: int | None,
+    semester: int | None,
+    notice_pages: int | None,
+) -> dict[str, int]:
+    settings = get_settings()
+    if target == "snapshot":
+        return sync_official_snapshot(
+            conn,
+            campus=campus,
+            year=year,
+            semester=semester,
+            notice_pages=notice_pages,
+        )
+    if target == "places":
+        return {
+            "places": len(
+                refresh_places_from_campus_map(
+                    conn,
+                    campus=campus or settings.official_campus_id,
+                )
+            )
+        }
+    if target == "library_hours":
+        return {"updated_places": len(refresh_library_hours_from_library_page(conn))}
+    if target == "facility_hours":
+        return {"updated_places": len(refresh_facility_hours_from_facilities_page(conn))}
+    if target == "courses":
+        return {
+            "courses": len(
+                refresh_courses_from_subject_search(
+                    conn,
+                    year=year,
+                    semester=semester,
+                )
+            )
+        }
+    if target == "notices":
+        return {
+            "notices": len(
+                refresh_notices_from_notice_board(
+                    conn,
+                    pages=notice_pages or settings.official_notice_pages,
+                )
+            )
+        }
+    if target == "transport_guides":
+        return {"transport_guides": len(refresh_transport_guides_from_location_page(conn))}
+    raise InvalidRequestError(f"Unsupported admin sync target: {target}")
+
+
+def run_admin_sync(
+    *,
+    target: str = "snapshot",
+    campus: str | None = None,
+    year: int | None = None,
+    semester: int | None = None,
+    notice_pages: int | None = None,
+) -> SyncRun:
+    if target not in ADMIN_SYNC_TARGETS:
+        raise InvalidRequestError(f"Unsupported admin sync target: {target}")
+
+    params = _sync_run_params(
+        target=target,
+        campus=campus,
+        year=year,
+        semester=semester,
+        notice_pages=notice_pages,
+    )
+    started_at = _now_iso()
+    run_conn = get_connection()
+    try:
+        run_id = repo.create_sync_run(
+            run_conn,
+            target=target,
+            status="running",
+            params=params,
+            summary={},
+            error_text=None,
+            started_at=started_at,
+            finished_at=None,
+        )
+        run_conn.commit()
+    finally:
+        run_conn.close()
+
+    summary: dict[str, int] = {}
+    error_text: str | None = None
+    status = "success"
+    sync_conn = get_connection()
+    try:
+        summary = _run_admin_sync_target(
+            sync_conn,
+            target=target,
+            campus=campus,
+            year=year,
+            semester=semester,
+            notice_pages=notice_pages,
+        )
+        sync_conn.commit()
+    except Exception as exc:
+        sync_conn.rollback()
+        status = "failed"
+        error_text = str(exc)
+        summary = {}
+    finally:
+        sync_conn.close()
+
+    finished_at = _now_iso()
+    update_conn = get_connection()
+    try:
+        repo.update_sync_run(
+            update_conn,
+            run_id,
+            status=status,
+            summary=summary,
+            error_text=error_text,
+            finished_at=finished_at,
+        )
+        update_conn.commit()
+        row = repo.get_sync_run(update_conn, run_id)
+    finally:
+        update_conn.close()
+
+    if not row:
+        raise RuntimeError(f"Sync run not found after update: {run_id}")
+    _record_sync_result(
+        target=target,
+        status=status,
+        started_at=started_at,
+        finished_at=finished_at,
+        summary=summary,
+        error_text=error_text,
+    )
+    return SyncRun.model_validate(row)
+
+
 def create_profile(conn: sqlite3.Connection, display_name: str = "") -> Profile:
     created_at = _now_iso()
     profile_id = uuid.uuid4().hex
     repo.create_profile(
         conn,
         profile_id=profile_id,
-        display_name=display_name.strip(),
+        display_name=_normalize_profile_display_name(display_name),
         created_at=created_at,
         updated_at=created_at,
+    )
+    return _ensure_profile(conn, profile_id)
+
+
+def update_profile(
+    conn: sqlite3.Connection,
+    profile_id: str,
+    payload: ProfileUpdateRequest,
+) -> Profile:
+    _ensure_profile(conn, profile_id)
+    fields = set(payload.model_fields_set)
+    if not fields:
+        return _ensure_profile(conn, profile_id)
+    repo.update_profile(
+        conn,
+        profile_id,
+        display_name=_normalize_profile_display_name(payload.display_name),
+        department=_normalize_optional_text(payload.department),
+        student_year=_validate_student_year(payload.student_year),
+        admission_type=_validate_admission_type(payload.admission_type),
+        updated_at=_now_iso(),
+        fields=fields,
     )
     return _ensure_profile(conn, profile_id)
 
@@ -324,28 +1246,110 @@ def set_profile_notice_preferences(
     return ProfileNoticePreferences(categories=categories, keywords=keywords)
 
 
+def set_profile_interests(
+    conn: sqlite3.Connection,
+    profile_id: str,
+    interests: ProfileInterests,
+) -> ProfileInterests:
+    _ensure_profile(conn, profile_id)
+    tags = _normalize_interest_tags(interests.tags)
+    repo.save_profile_interests(
+        conn,
+        profile_id,
+        tags=tags,
+        updated_at=_now_iso(),
+    )
+    return ProfileInterests(tags=tags)
+
+
+def get_profile_interests(conn: sqlite3.Connection, profile_id: str) -> ProfileInterests:
+    _ensure_profile(conn, profile_id)
+    row = repo.get_profile_interests(conn, profile_id)
+    return ProfileInterests(tags=(row["tags"] if row else []))
+
+
 def list_profile_notices(
     conn: sqlite3.Connection,
     profile_id: str,
     *,
     limit: int = 10,
-) -> list[Notice]:
-    _ensure_profile(conn, profile_id)
-    preferences = repo.get_profile_notice_preferences(conn, profile_id)
-    if not preferences or (not preferences["categories"] and not preferences["keywords"]):
-        raise InvalidRequestError("Profile has no notice preferences.")
+) -> list[MatchedNotice]:
+    profile = _ensure_profile(conn, profile_id)
+    preferences = ProfileNoticePreferences.model_validate(
+        repo.get_profile_notice_preferences(conn, profile_id)
+        or {"categories": [], "keywords": []}
+    )
+    interests = get_profile_interests(conn, profile_id)
+    if _profile_notice_context_is_empty(profile, preferences, interests):
+        raise InvalidRequestError("Profile has no personalization context.")
 
-    categories = set(preferences["categories"])
-    keywords = [keyword.lower() for keyword in preferences["keywords"]]
-    matched: list[Notice] = []
+    matched: list[MatchedNotice] = []
     for item in repo.list_notices(conn, limit=max(limit * 5, 100)):
-        label_set = set(item.get("labels", []))
-        text = " ".join([item["title"], item.get("summary", "")]).lower()
-        if item["category"] in categories or label_set.intersection(categories):
-            matched.append(Notice.model_validate(item))
+        reasons = _notice_match_reasons(
+            item,
+            preferences=preferences,
+            profile=profile,
+            interests=interests,
+        )
+        if reasons:
+            matched.append(
+                MatchedNotice(
+                    notice=Notice.model_validate(item),
+                    matched_reasons=reasons,
+                )
+            )
+    return _sort_matched_notices(matched)[:limit]
+
+
+def get_profile_course_recommendations(
+    conn: sqlite3.Connection,
+    profile_id: str,
+    *,
+    year: int | None = None,
+    semester: int | None = None,
+    query: str = "",
+    limit: int = 10,
+) -> list[MatchedCourse]:
+    profile = _ensure_profile(conn, profile_id)
+    if not profile.department and profile.student_year is None:
+        raise InvalidRequestError("Profile has no course recommendation context.")
+
+    resolved_year, resolved_semester = _current_year_and_semester()
+    selected_year = year or resolved_year
+    selected_semester = semester or resolved_semester
+    excluded = {
+        (item["code"], item["section"])
+        for item in repo.list_profile_courses(
+            conn,
+            profile_id,
+            year=selected_year,
+            semester=selected_semester,
+        )
+    }
+    matched: list[MatchedCourse] = []
+    for item in repo.search_courses(
+        conn,
+        query=query,
+        year=selected_year,
+        semester=selected_semester,
+        limit=max(limit * 20, 500),
+    ):
+        course = Course.model_validate(item)
+        if (course.code, course.section or "") in excluded:
             continue
-        if any(keyword in text for keyword in keywords):
-            matched.append(Notice.model_validate(item))
+        reasons = _course_match_reasons(course, profile=profile)
+        if not reasons:
+            continue
+        matched.append(MatchedCourse(course=course, matched_reasons=reasons))
+
+    matched.sort(
+        key=lambda item: (
+            0 if any(reason.startswith("department:") for reason in item.matched_reasons) else 1,
+            0 if any(reason.startswith("student_year:") for reason in item.matched_reasons) else 1,
+            item.course.title,
+            item.course.code,
+        )
+    )
     return matched[:limit]
 
 
@@ -360,6 +1364,7 @@ def get_profile_meal_recommendations(
     budget_max: int | None = None,
     category: str | None = None,
     limit: int = 10,
+    open_now: bool = False,
 ) -> MealRecommendationResponse:
     current = _coerce_datetime(at)
     resolved_year, resolved_semester = _current_year_and_semester(current)
@@ -410,6 +1415,8 @@ def get_profile_meal_recommendations(
         budget_max=budget_max,
         walk_minutes=walk_limit,
         limit=max(limit * 5, 20),
+        at=current,
+        open_now=open_now,
     )
 
     items: list[MealRecommendation] = []
@@ -420,17 +1427,12 @@ def get_profile_meal_recommendations(
             and next_place.latitude is not None
             and next_place.longitude is not None
         ):
-            second_leg = max(
-                1,
-                round(
-                    _haversine_meters(
-                        restaurant.latitude,
-                        restaurant.longitude,
-                        next_place.latitude,
-                        next_place.longitude,
-                    )
-                    / WALKING_METERS_PER_MINUTE
-                ),
+            second_leg = _estimate_restaurant_to_place_walk_minutes(
+                conn,
+                restaurant_latitude=restaurant.latitude,
+                restaurant_longitude=restaurant.longitude,
+                restaurant_source_tag=restaurant.source_tag,
+                next_place=next_place,
             )
             total_walk_minutes = (restaurant.estimated_walk_minutes or 0) + second_leg
             if available_minutes is not None and total_walk_minutes + 10 > available_minutes:
@@ -456,6 +1458,11 @@ def get_profile_meal_recommendations(
         next_course=next_course,
         next_place=next_place,
         available_minutes=available_minutes,
+        reason=(
+            "No currently open restaurants matched the filters."
+            if open_now and not items
+            else None
+        ),
     )
 
 
@@ -510,25 +1517,78 @@ def _normalize_kakao_restaurant(place: KakaoPlace, *, fetched_at: str) -> dict[s
     }
 
 
+def _cached_kakao_restaurant_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [{**row, "source_tag": "kakao_local_cache"} for row in rows]
+
+
+def _restaurant_cache_key(
+    origin_slug: str,
+    category: str | None,
+    walk_minutes: int,
+) -> tuple[str, str, int]:
+    return (
+        origin_slug,
+        _category_to_kakao_query(category),
+        walk_minutes * WALKING_METERS_PER_MINUTE,
+    )
+
+
+def _cache_status(fetched_at: str, now: datetime) -> str:
+    try:
+        fetched = datetime.fromisoformat(fetched_at)
+    except ValueError:
+        return "expired"
+    if fetched.tzinfo is None:
+        fetched = fetched.astimezone()
+    age_minutes = (now - fetched).total_seconds() / 60
+    settings = get_settings()
+    if age_minutes <= settings.restaurant_cache_ttl_minutes:
+        return "fresh"
+    if age_minutes <= settings.restaurant_cache_stale_ttl_minutes:
+        return "stale"
+    return "expired"
+
+
+def _cache_rows_for_key(
+    conn: sqlite3.Connection,
+    *,
+    origin_slug: str,
+    kakao_query: str,
+    radius_meters: int,
+    latitude: float,
+    longitude: float,
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    snapshot = repo.get_restaurant_cache_snapshot(
+        conn,
+        origin_slug=origin_slug,
+        kakao_query=kakao_query,
+        radius_meters=radius_meters,
+    )
+    if not snapshot:
+        return None, []
+    return snapshot, repo.list_restaurant_cache_items(
+        conn,
+        int(snapshot["id"]),
+        latitude=latitude,
+        longitude=longitude,
+        radius_meters=radius_meters,
+    )
+
+
 def _live_restaurant_rows(
     *,
     place: dict[str, Any],
-    category: str | None,
-    walk_minutes: int,
+    kakao_query: str,
+    radius_meters: int,
     kakao_client: KakaoLocalClient | Any,
 ) -> list[dict[str, Any]]:
-    query = _category_to_kakao_query(category)
-    radius = walk_minutes * WALKING_METERS_PER_MINUTE
     fetched_at = _now_iso()
-    try:
-        items = kakao_client.search_sync(
-            query,
-            x=place["longitude"],
-            y=place["latitude"],
-            radius=radius,
-        )
-    except httpx.HTTPError:
-        return []
+    items = kakao_client.search_sync(
+        kakao_query,
+        x=place["longitude"],
+        y=place["latitude"],
+        radius=radius_meters,
+    )
     rows: list[dict[str, Any]] = []
     for index, item in enumerate(items, start=1):
         row = _normalize_kakao_restaurant(item, fetched_at=fetched_at)
@@ -545,29 +1605,133 @@ def find_nearby_restaurants(
     budget_max: int | None = None,
     walk_minutes: int = 15,
     limit: int = 10,
+    at: datetime | None = None,
+    open_now: bool = False,
     kakao_client: KakaoLocalClient | Any | None = None,
 ) -> list[NearbyRestaurant]:
+    current = _coerce_datetime(at)
+    cache_now = _now()
     place = repo.get_place_by_slug_or_name(conn, origin)
     if not place:
         raise NotFoundError(f"Origin place not found: {origin}")
     if place.get("latitude") is None or place.get("longitude") is None:
         raise NotFoundError(f"Origin place has no coordinates: {origin}")
 
-    has_local_restaurants = repo.count_rows(conn, "restaurants") > 0
-
-    if kakao_client is None and not has_local_restaurants and get_settings().kakao_rest_api_key:
-        kakao_client = KakaoLocalClient(get_settings().kakao_rest_api_key)
-
-    raw_restaurants = (
-        _live_restaurant_rows(
-            place=place,
-            category=category,
-            walk_minutes=walk_minutes,
-            kakao_client=kakao_client,
-        )
-        if kakao_client is not None
-        else repo.list_restaurants(conn)
+    settings = get_settings()
+    origin_slug, kakao_query, radius_meters = _restaurant_cache_key(
+        place["slug"],
+        category,
+        walk_minutes,
     )
+    snapshot, cached_rows = _cache_rows_for_key(
+        conn,
+        origin_slug=origin_slug,
+        kakao_query=kakao_query,
+        radius_meters=radius_meters,
+        latitude=place["latitude"],
+        longitude=place["longitude"],
+    )
+    cache_state = (
+        _cache_status(snapshot["fetched_at"], cache_now)
+        if snapshot is not None
+        else "expired"
+    )
+
+    if snapshot is not None and cache_state == "fresh":
+        raw_restaurants = cached_rows
+        _record_cache_decision(
+            decision="fresh_hit",
+            origin_slug=origin_slug,
+            kakao_query=kakao_query,
+            radius_meters=radius_meters,
+        )
+    else:
+        if kakao_client is None and settings.kakao_rest_api_key:
+            kakao_client = KakaoLocalClient(settings.kakao_rest_api_key)
+        if kakao_client is not None:
+            try:
+                live_rows = _live_restaurant_rows(
+                    place=place,
+                    kakao_query=kakao_query,
+                    radius_meters=radius_meters,
+                    kakao_client=kakao_client,
+                )
+                snapshot_id = repo.replace_restaurant_cache_snapshot(
+                    conn,
+                    origin_slug=origin_slug,
+                    kakao_query=kakao_query,
+                    radius_meters=radius_meters,
+                    fetched_at=live_rows[0]["last_synced_at"] if live_rows else _now_iso(),
+                    rows=_cached_kakao_restaurant_rows(live_rows),
+                )
+                raw_restaurants = [
+                    {**row, "source_tag": "kakao_local"}
+                    for row in repo.list_restaurant_cache_items(
+                        conn,
+                        snapshot_id,
+                        latitude=place["latitude"],
+                        longitude=place["longitude"],
+                        radius_meters=radius_meters,
+                    )
+                ]
+                _record_cache_decision(
+                    decision="live_fetch_success",
+                    origin_slug=origin_slug,
+                    kakao_query=kakao_query,
+                    radius_meters=radius_meters,
+                )
+            except httpx.HTTPError:
+                _record_cache_decision(
+                    decision="live_fetch_error",
+                    origin_slug=origin_slug,
+                    kakao_query=kakao_query,
+                    radius_meters=radius_meters,
+                    error_text="kakao_fetch_failed",
+                )
+                if snapshot is not None and cache_state == "stale":
+                    raw_restaurants = cached_rows
+                    _record_cache_decision(
+                        decision="stale_hit",
+                        origin_slug=origin_slug,
+                        kakao_query=kakao_query,
+                        radius_meters=radius_meters,
+                    )
+                else:
+                    raw_restaurants = repo.list_restaurants_nearby(
+                        conn,
+                        latitude=place["latitude"],
+                        longitude=place["longitude"],
+                        radius_meters=radius_meters,
+                    )
+                    _record_cache_decision(
+                        decision="local_fallback",
+                        origin_slug=origin_slug,
+                        kakao_query=kakao_query,
+                        radius_meters=radius_meters,
+                    )
+        elif snapshot is not None and cache_state in {"fresh", "stale"}:
+            raw_restaurants = cached_rows
+            if cache_state == "stale":
+                _record_cache_decision(
+                    decision="stale_hit",
+                    origin_slug=origin_slug,
+                    kakao_query=kakao_query,
+                    radius_meters=radius_meters,
+                )
+        else:
+            raw_restaurants = repo.list_restaurants_nearby(
+                conn,
+                latitude=place["latitude"],
+                longitude=place["longitude"],
+                radius_meters=radius_meters,
+            )
+            _record_cache_decision(
+                decision="local_fallback",
+                origin_slug=origin_slug,
+                kakao_query=kakao_query,
+                radius_meters=radius_meters,
+            )
+    facility_hours = _facility_hours_index(conn)
 
     results: list[NearbyRestaurant] = []
     for raw in raw_restaurants:
@@ -582,14 +1746,21 @@ def find_nearby_restaurants(
         if raw.get("latitude") is None or raw.get("longitude") is None:
             continue
 
-        distance = _haversine_meters(
+        distance = raw.get("distance_meters") or _haversine_meters(
             place["latitude"],
             place["longitude"],
             raw["latitude"],
             raw["longitude"],
         )
-        estimated_walk_minutes = max(1, round(distance / WALKING_METERS_PER_MINUTE))
+        estimated_walk_minutes = _estimate_place_to_restaurant_walk_minutes(
+            conn,
+            origin_place=place,
+            restaurant_row=raw,
+        )
         if estimated_walk_minutes > walk_minutes:
+            continue
+        current_open_now = _restaurant_open_now(raw["name"], facility_hours, current)
+        if open_now and current_open_now is False:
             continue
 
         results.append(
@@ -599,6 +1770,7 @@ def find_nearby_restaurants(
                     "distance_meters": distance,
                     "estimated_walk_minutes": estimated_walk_minutes,
                     "origin": place["slug"],
+                    "open_now": current_open_now,
                 }
             )
         )

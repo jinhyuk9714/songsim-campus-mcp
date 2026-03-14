@@ -10,7 +10,7 @@
 | cuk_library_hours | 공식 | https://library.catholic.ac.kr/webcontent/info/45 | 중간 | implemented | 중앙도서관 개관시간 표를 `중앙도서관` place의 `opening_hours`로 병합 |
 | cuk_facilities | 공식 | https://www.catholic.ac.kr/ko/campuslife/restaurant.do | 중간 | implemented | 식당/편의시설 운영시간을 위치 기준으로 기존 place의 `opening_hours`에 병합 |
 | cuk_transport | 공식 | https://www.catholic.ac.kr/ko/about/location_songsim.do | 중간 | implemented | 성심교정 정적 교통 안내를 `transport_guides`로 정규화 |
-| kakao_local | 외부 API | https://developers.kakao.com/docs/latest/ko/local/common | 높음 | implemented | API 키가 있으면 `/restaurants/nearby`에서 실시간 장소 검색 사용 |
+| kakao_local | 외부 API | https://developers.kakao.com/docs/latest/ko/local/common | 높음 | implemented | API 키가 있으면 `/restaurants/nearby`와 개인화 식사 추천에서 lazy cache 기반 실시간 장소 검색 사용 |
 
 ## 파서 원칙
 

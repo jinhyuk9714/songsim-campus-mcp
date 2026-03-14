@@ -5,7 +5,12 @@ import json
 from pathlib import Path
 
 from .db import connection, init_db
-from .schemas import ProfileCourseRef, ProfileNoticePreferences
+from .schemas import (
+    ProfileCourseRef,
+    ProfileInterests,
+    ProfileNoticePreferences,
+    ProfileUpdateRequest,
+)
 from .seed import seed_demo
 from .services import (
     InvalidRequestError,
@@ -14,6 +19,8 @@ from .services import (
     find_nearby_restaurants,
     get_class_periods,
     get_place,
+    get_profile_course_recommendations,
+    get_profile_interests,
     get_profile_meal_recommendations,
     get_profile_timetable,
     list_latest_notices,
@@ -21,9 +28,11 @@ from .services import (
     list_transport_guides,
     search_courses,
     search_places,
+    set_profile_interests,
     set_profile_notice_preferences,
     set_profile_timetable,
     sync_official_snapshot,
+    update_profile,
 )
 from .settings import get_settings
 
@@ -123,25 +132,32 @@ def build_mcp():
     )
     def tool_find_nearby_restaurants(
         origin: str,
+        at: str | None = None,
         category: str | None = None,
         budget_max: int | None = None,
+        open_now: bool = False,
         walk_minutes: int = 15,
         limit: int = 10,
     ):
         with connection() as conn:
             try:
+                from datetime import datetime
+
+                parsed_at = datetime.fromisoformat(at) if at else None
                 return [
                     item.model_dump()
                     for item in find_nearby_restaurants(
                         conn,
                         origin=origin,
+                        at=parsed_at,
                         category=category,
                         budget_max=budget_max,
+                        open_now=open_now,
                         walk_minutes=walk_minutes,
                         limit=limit,
                     )
                 ]
-            except NotFoundError as exc:
+            except (NotFoundError, ValueError) as exc:
                 return {"error": str(exc)}
 
     @mcp.tool(
@@ -179,6 +195,38 @@ def build_mcp():
     def tool_create_profile(display_name: str = ""):
         with connection() as conn:
             return create_profile(conn, display_name=display_name).model_dump()
+
+    @mcp.tool(
+        description=(
+            "Update one local profile's display name, department, student year, "
+            "or admission type."
+        )
+    )
+    def tool_update_profile(
+        profile_id: str,
+        display_name: str | None = None,
+        department: str | None = None,
+        student_year: int | None = None,
+        admission_type: str | None = None,
+    ):
+        with connection() as conn:
+            try:
+                payload: dict[str, object] = {}
+                if display_name is not None:
+                    payload["display_name"] = display_name
+                if department is not None:
+                    payload["department"] = department
+                if student_year is not None:
+                    payload["student_year"] = student_year
+                if admission_type is not None:
+                    payload["admission_type"] = admission_type
+                return update_profile(
+                    conn,
+                    profile_id,
+                    ProfileUpdateRequest(**payload),
+                ).model_dump()
+            except (NotFoundError, InvalidRequestError) as exc:
+                return {"error": str(exc)}
 
     @mcp.tool(
         description=(
@@ -241,7 +289,31 @@ def build_mcp():
                 return {"error": str(exc)}
 
     @mcp.tool(
-        description="List notices that match one profile's saved categories or keywords."
+        description="Save normalized interest tags for one local profile id."
+    )
+    def tool_set_profile_interests(profile_id: str, tags: list[str] | None = None):
+        with connection() as conn:
+            try:
+                return set_profile_interests(
+                    conn,
+                    profile_id,
+                    ProfileInterests(tags=tags or []),
+                ).model_dump()
+            except (NotFoundError, InvalidRequestError) as exc:
+                return {"error": str(exc)}
+
+    @mcp.tool(
+        description="Get the current stored interest tags for one local profile id."
+    )
+    def tool_get_profile_interests(profile_id: str):
+        with connection() as conn:
+            try:
+                return get_profile_interests(conn, profile_id).model_dump()
+            except NotFoundError as exc:
+                return {"error": str(exc)}
+
+    @mcp.tool(
+        description="List notices that match one profile's saved preferences and profile context."
     )
     def tool_get_profile_notices(profile_id: str, limit: int = 10):
         with connection() as conn:
@@ -249,6 +321,35 @@ def build_mcp():
                 return [
                     item.model_dump()
                     for item in list_profile_notices(conn, profile_id, limit=limit)
+                ]
+            except (NotFoundError, InvalidRequestError) as exc:
+                return {"error": str(exc)}
+
+    @mcp.tool(
+        description=(
+            "Recommend courses for one profile using department and student-year context, "
+            "excluding courses already in the timetable."
+        )
+    )
+    def tool_get_profile_course_recommendations(
+        profile_id: str,
+        year: int | None = None,
+        semester: int | None = None,
+        query: str = "",
+        limit: int = 10,
+    ):
+        with connection() as conn:
+            try:
+                return [
+                    item.model_dump()
+                    for item in get_profile_course_recommendations(
+                        conn,
+                        profile_id,
+                        year=year,
+                        semester=semester,
+                        query=query,
+                        limit=limit,
+                    )
                 ]
             except (NotFoundError, InvalidRequestError) as exc:
                 return {"error": str(exc)}
@@ -267,6 +368,7 @@ def build_mcp():
         semester: int | None = None,
         budget_max: int | None = None,
         category: str | None = None,
+        open_now: bool = False,
         limit: int = 10,
     ):
         with connection() as conn:
@@ -284,6 +386,7 @@ def build_mcp():
                     budget_max=budget_max,
                     category=category,
                     limit=limit,
+                    open_now=open_now,
                 ).model_dump()
             except (NotFoundError, InvalidRequestError, ValueError) as exc:
                 return {"error": str(exc)}

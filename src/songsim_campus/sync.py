@@ -10,7 +10,9 @@ from .settings import get_settings
 
 def main() -> None:
     settings = get_settings()
-    parser = argparse.ArgumentParser(description="Sync official Songsim campus data into SQLite")
+    parser = argparse.ArgumentParser(
+        description="Sync official Songsim campus data into PostgreSQL/PostGIS"
+    )
     parser.add_argument("--campus", default=settings.official_campus_id, help="Official campus id")
     parser.add_argument("--year", type=int, default=settings.official_course_year)
     parser.add_argument(

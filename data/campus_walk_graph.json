@@ -1,0 +1,23 @@
+{
+  "nodes": [
+    "central-library",
+    "nichols-hall",
+    "kim-soo-hwan-hall",
+    "student-center",
+    "main-gate"
+  ],
+  "edges": [
+    { "from": "central-library", "to": "student-center", "walk_minutes": 2 },
+    { "from": "student-center", "to": "central-library", "walk_minutes": 2 },
+    { "from": "student-center", "to": "main-gate", "walk_minutes": 3 },
+    { "from": "main-gate", "to": "student-center", "walk_minutes": 3 },
+    { "from": "central-library", "to": "nichols-hall", "walk_minutes": 3 },
+    { "from": "nichols-hall", "to": "central-library", "walk_minutes": 3 },
+    { "from": "nichols-hall", "to": "student-center", "walk_minutes": 3 },
+    { "from": "student-center", "to": "nichols-hall", "walk_minutes": 3 },
+    { "from": "central-library", "to": "kim-soo-hwan-hall", "walk_minutes": 4 },
+    { "from": "kim-soo-hwan-hall", "to": "central-library", "walk_minutes": 4 },
+    { "from": "kim-soo-hwan-hall", "to": "main-gate", "walk_minutes": 4 },
+    { "from": "main-gate", "to": "kim-soo-hwan-hall", "walk_minutes": 4 }
+  ]
+}

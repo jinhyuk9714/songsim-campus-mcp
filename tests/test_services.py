@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+from datetime import datetime
+
+import httpx
 import pytest
 
 from songsim_campus.db import connection, init_db
 from songsim_campus.ingest.kakao_places import KakaoPlace
-from songsim_campus.repo import replace_places
+from songsim_campus.repo import replace_places, replace_restaurants, update_place_opening_hours
 from songsim_campus.seed import seed_demo
 from songsim_campus.services import (
     NotFoundError,
+    _parse_campus_walk_graph,
     find_nearby_restaurants,
     get_class_periods,
     get_place,
@@ -23,6 +27,30 @@ from songsim_campus.services import (
     search_places,
     sync_official_snapshot,
 )
+
+
+def _restaurant_row(
+    *,
+    slug: str,
+    name: str,
+    latitude: float,
+    longitude: float,
+    category: str = "korean",
+    source_tag: str = "test",
+) -> dict:
+    return {
+        "slug": slug,
+        "name": name,
+        "category": category,
+        "min_price": 7000,
+        "max_price": 9000,
+        "latitude": latitude,
+        "longitude": longitude,
+        "tags": ["한식"],
+        "description": "테스트 식당",
+        "source_tag": source_tag,
+        "last_synced_at": "2026-03-13T09:00:00+09:00",
+    }
 
 
 def test_get_class_periods_returns_ten_periods(app_env):
@@ -50,6 +78,85 @@ def test_find_nearby_restaurants_sorted(app_env):
     assert items
     walk_minutes = [item.estimated_walk_minutes for item in items]
     assert walk_minutes == sorted(walk_minutes)
+
+
+def test_find_nearby_restaurants_uses_campus_graph_for_external_routes(app_env):
+    init_db()
+    seed_demo(force=True)
+    with connection() as conn:
+        replace_restaurants(
+            conn,
+            [
+                _restaurant_row(
+                    slug="gate-bap",
+                    name="정문백반",
+                    latitude=37.48590,
+                    longitude=126.80282,
+                    source_tag="kakao_local",
+                )
+            ],
+        )
+        items = find_nearby_restaurants(conn, origin="central-library", walk_minutes=15)
+
+    assert len(items) == 1
+    assert items[0].estimated_walk_minutes == 6
+    assert items[0].distance_meters is not None
+
+
+def test_find_nearby_restaurants_fall_back_to_direct_distance_when_origin_is_not_in_graph(app_env):
+    init_db()
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                {
+                    "slug": "annex-lobby",
+                    "name": "별관로비",
+                    "category": "facility",
+                    "aliases": [],
+                    "description": "",
+                    "latitude": 37.48590,
+                    "longitude": 126.80282,
+                    "opening_hours": {},
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                }
+            ],
+        )
+        replace_restaurants(
+            conn,
+            [
+                _restaurant_row(
+                    slug="gate-bap",
+                    name="정문백반",
+                    latitude=37.48590,
+                    longitude=126.80282,
+                    source_tag="kakao_local",
+                )
+            ],
+        )
+        items = find_nearby_restaurants(conn, origin="annex-lobby", walk_minutes=15)
+
+    assert len(items) == 1
+    assert items[0].estimated_walk_minutes == 1
+
+
+def test_parse_campus_walk_graph_rejects_invalid_edges():
+    with pytest.raises(ValueError, match="unknown node"):
+        _parse_campus_walk_graph(
+            {
+                "nodes": ["central-library", "main-gate"],
+                "edges": [{"from": "central-library", "to": "north-gate", "walk_minutes": 3}],
+            }
+        )
+
+    with pytest.raises(ValueError, match="positive"):
+        _parse_campus_walk_graph(
+            {
+                "nodes": ["central-library", "main-gate"],
+                "edges": [{"from": "central-library", "to": "main-gate", "walk_minutes": 0}],
+            }
+        )
 
 
 def test_find_nearby_restaurants_raises_for_unknown_origin(app_env):
@@ -86,6 +193,9 @@ def test_find_nearby_restaurants_raises_when_origin_has_no_coordinates(app_env):
 
 
 class FakeKakaoClient:
+    def __init__(self):
+        self.calls = 0
+
     def search_sync(
         self,
         query: str,
@@ -94,6 +204,7 @@ class FakeKakaoClient:
         y: float | None = None,
         radius: int = 1000,
     ):
+        self.calls += 1
         assert query == '한식'
         assert x is not None and y is not None
         assert radius > 0
@@ -133,6 +244,241 @@ def test_find_nearby_restaurants_can_use_kakao_live_results(app_env):
     assert [item.name for item in items] == ['가톨릭백반', '성심돈까스']
     assert all(item.source_tag == 'kakao_local' for item in items)
     assert all(item.origin == 'central-library' for item in items)
+
+
+class ExplodingKakaoClient:
+    def search_sync(
+        self,
+        query: str,
+        *,
+        x: float | None = None,
+        y: float | None = None,
+        radius: int = 1000,
+    ):
+        raise httpx.HTTPError('boom')
+
+
+def test_find_nearby_restaurants_reuses_fresh_kakao_cache_without_refetch(app_env):
+    init_db()
+    seed_demo(force=True)
+    client = FakeKakaoClient()
+
+    with connection() as conn:
+        first = find_nearby_restaurants(
+            conn,
+            origin='central-library',
+            category='korean',
+            walk_minutes=15,
+            kakao_client=client,
+        )
+        second = find_nearby_restaurants(
+            conn,
+            origin='central-library',
+            category='korean',
+            walk_minutes=15,
+            kakao_client=ExplodingKakaoClient(),
+        )
+
+    assert client.calls == 1
+    assert [item.name for item in first] == [item.name for item in second]
+    assert all(item.source_tag == 'kakao_local' for item in first)
+    assert all(item.source_tag == 'kakao_local_cache' for item in second)
+
+
+def test_find_nearby_restaurants_uses_stale_cache_when_live_fetch_fails(app_env, monkeypatch):
+    init_db()
+    seed_demo(force=True)
+    old_now = datetime.fromisoformat('2026-03-14T12:00:00+09:00')
+    stale_now = datetime.fromisoformat('2026-03-14T20:30:00+09:00')
+    client = FakeKakaoClient()
+
+    monkeypatch.setattr('songsim_campus.services._now', lambda: old_now)
+    with connection() as conn:
+        first = find_nearby_restaurants(
+            conn,
+            origin='central-library',
+            category='korean',
+            walk_minutes=15,
+            kakao_client=client,
+        )
+
+    monkeypatch.setattr('songsim_campus.services._now', lambda: stale_now)
+    with connection() as conn:
+        second = find_nearby_restaurants(
+            conn,
+            origin='central-library',
+            category='korean',
+            walk_minutes=15,
+            kakao_client=ExplodingKakaoClient(),
+        )
+
+    assert client.calls == 1
+    assert [item.name for item in first] == [item.name for item in second]
+    assert all(item.source_tag == 'kakao_local_cache' for item in second)
+
+
+def test_find_nearby_restaurants_falls_back_to_local_restaurants_when_cache_expired_and_live_fails(
+    app_env,
+    monkeypatch,
+):
+    init_db()
+    seed_demo(force=True)
+    old_now = datetime.fromisoformat('2026-03-10T12:00:00+09:00')
+    expired_now = datetime.fromisoformat('2026-03-14T20:30:00+09:00')
+
+    monkeypatch.setattr('songsim_campus.services._now', lambda: old_now)
+    with connection() as conn:
+        find_nearby_restaurants(
+            conn,
+            origin='central-library',
+            category='korean',
+            walk_minutes=15,
+            kakao_client=FakeKakaoClient(),
+        )
+
+    monkeypatch.setattr('songsim_campus.services._now', lambda: expired_now)
+    with connection() as conn:
+        items = find_nearby_restaurants(
+            conn,
+            origin='central-library',
+            category='korean',
+            walk_minutes=15,
+            kakao_client=ExplodingKakaoClient(),
+        )
+
+    assert items
+    assert all(item.source_tag not in {'kakao_local', 'kakao_local_cache'} for item in items)
+
+
+def test_find_nearby_restaurants_cache_key_ignores_budget_open_now_and_limit(app_env):
+    init_db()
+    seed_demo(force=True)
+    client = FakeKakaoClient()
+
+    with connection() as conn:
+        find_nearby_restaurants(
+            conn,
+            origin='central-library',
+            category='korean',
+            walk_minutes=15,
+            kakao_client=client,
+            limit=10,
+        )
+        filtered = find_nearby_restaurants(
+            conn,
+            origin='central-library',
+            category='korean',
+            walk_minutes=15,
+            kakao_client=ExplodingKakaoClient(),
+            budget_max=15000,
+            open_now=True,
+            limit=1,
+        )
+
+    assert client.calls == 1
+    assert len(filtered) == 1
+    assert filtered[0].source_tag == 'kakao_local_cache'
+
+
+@pytest.mark.parametrize(
+    ("hours_text", "at", "expected"),
+    [
+        ("중식 11:30 ~ 14:00", "2026-03-16T12:00:00+09:00", True),
+        ("08:00-21:00", "2026-03-16T07:00:00+09:00", False),
+        ("평일 08:00~19:00 토 10:00~16:00 (일/공휴일휴무)", "2026-03-15T11:00:00+09:00", False),
+        ("mon-fri 08:30-22:00", "2026-03-16T09:00:00+09:00", True),
+        ("24시간 운영", "2026-03-15T03:00:00+09:00", True),
+        ("휴무", "2026-03-16T12:00:00+09:00", False),
+        ("문의", "2026-03-16T12:00:00+09:00", None),
+    ],
+)
+def test_find_nearby_restaurants_marks_open_now_from_facility_hours(
+    app_env,
+    hours_text,
+    at,
+    expected,
+):
+    init_db()
+    seed_demo(force=True)
+    with connection() as conn:
+        library = get_place(conn, "central-library")
+        replace_restaurants(
+            conn,
+            [
+                _restaurant_row(
+                    slug="cafe-dream",
+                    name="카페드림",
+                    latitude=library.latitude + 0.0001,
+                    longitude=library.longitude + 0.0001,
+                    category="cafe",
+                )
+            ],
+        )
+        update_place_opening_hours(
+            conn,
+            "central-library",
+            {"카페드림": hours_text},
+            last_synced_at="2026-03-13T09:00:00+09:00",
+        )
+
+        items = find_nearby_restaurants(
+            conn,
+            origin="central-library",
+            walk_minutes=15,
+            at=datetime.fromisoformat(at),
+        )
+
+    assert items[0].open_now is expected
+
+
+def test_find_nearby_restaurants_open_now_filters_closed_but_keeps_unknown(app_env):
+    init_db()
+    seed_demo(force=True)
+    with connection() as conn:
+        library = get_place(conn, "central-library")
+        replace_restaurants(
+            conn,
+            [
+                _restaurant_row(
+                    slug="cafe-dream",
+                    name="카페드림",
+                    latitude=library.latitude + 0.0001,
+                    longitude=library.longitude + 0.0001,
+                    category="cafe",
+                ),
+                _restaurant_row(
+                    slug="unknown-bap",
+                    name="알수없음식당",
+                    latitude=library.latitude + 0.0002,
+                    longitude=library.longitude + 0.0002,
+                ),
+            ],
+        )
+        update_place_opening_hours(
+            conn,
+            "central-library",
+            {"카페드림": "평일 08:00~19:00 토 10:00~16:00 (일/공휴일휴무)"},
+            last_synced_at="2026-03-13T09:00:00+09:00",
+        )
+
+        all_items = find_nearby_restaurants(
+            conn,
+            origin="central-library",
+            walk_minutes=15,
+            at=datetime.fromisoformat("2026-03-15T11:00:00+09:00"),
+        )
+        filtered = find_nearby_restaurants(
+            conn,
+            origin="central-library",
+            walk_minutes=15,
+            at=datetime.fromisoformat("2026-03-15T11:00:00+09:00"),
+            open_now=True,
+        )
+
+    open_by_name = {item.name: item.open_now for item in all_items}
+    assert open_by_name["카페드림"] is False
+    assert open_by_name["알수없음식당"] is None
+    assert [item.name for item in filtered] == ["알수없음식당"]
 
 
 class FakeCampusMapSource:

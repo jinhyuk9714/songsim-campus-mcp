@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -54,6 +56,7 @@ class NearbyRestaurant(Restaurant):
     distance_meters: int | None = None
     estimated_walk_minutes: int | None = None
     origin: str
+    open_now: bool | None = None
 
 
 class Notice(BaseModel):
@@ -82,12 +85,22 @@ class TransportGuide(BaseModel):
 class Profile(BaseModel):
     id: str
     display_name: str = ""
+    department: str | None = None
+    student_year: int | None = None
+    admission_type: str | None = None
     created_at: str
     updated_at: str
 
 
 class ProfileCreateRequest(BaseModel):
     display_name: str = ""
+
+
+class ProfileUpdateRequest(BaseModel):
+    display_name: str | None = None
+    department: str | None = None
+    student_year: int | None = None
+    admission_type: str | None = None
 
 
 class ProfileCourseRef(BaseModel):
@@ -100,6 +113,44 @@ class ProfileCourseRef(BaseModel):
 class ProfileNoticePreferences(BaseModel):
     categories: list[str] = Field(default_factory=list)
     keywords: list[str] = Field(default_factory=list)
+
+
+class ProfileInterests(BaseModel):
+    tags: list[str] = Field(default_factory=list)
+
+
+class SyncRun(BaseModel):
+    id: int
+    target: str
+    status: str
+    params: dict[str, int | str] = Field(default_factory=dict)
+    summary: dict[str, int] = Field(default_factory=dict)
+    error_text: str | None = None
+    started_at: str
+    finished_at: str | None = None
+
+
+class CacheObservability(BaseModel):
+    fresh_hit: int = 0
+    stale_hit: int = 0
+    live_fetch_success: int = 0
+    live_fetch_error: int = 0
+    local_fallback: int = 0
+    recent_events: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class SyncObservability(BaseModel):
+    recent_events: list[dict[str, Any]] = Field(default_factory=list)
+    last_failure_at: str | None = None
+    last_failure_message: str | None = None
+
+
+class ObservabilitySnapshot(BaseModel):
+    process_started_at: str
+    cache: CacheObservability = Field(default_factory=CacheObservability)
+    sync: SyncObservability = Field(default_factory=SyncObservability)
+    datasets: list[dict[str, Any]] = Field(default_factory=list)
+    recent_sync_runs: list[SyncRun] = Field(default_factory=list)
 
 
 class MealRecommendation(BaseModel):
@@ -115,6 +166,16 @@ class MealRecommendationResponse(BaseModel):
     next_place: Place | None = None
     available_minutes: int | None = None
     reason: str | None = None
+
+
+class MatchedNotice(BaseModel):
+    notice: Notice
+    matched_reasons: list[str] = Field(default_factory=list)
+
+
+class MatchedCourse(BaseModel):
+    course: Course
+    matched_reasons: list[str] = Field(default_factory=list)
 
 
 class Period(BaseModel):
