@@ -39,6 +39,8 @@ def _kakao_cache_row(*, name: str = "가톨릭백반") -> dict[str, object]:
         "description": "경기 부천시 원미구",
         "source_tag": "kakao_local_cache",
         "last_synced_at": "2026-03-14T10:00:00+09:00",
+        "kakao_place_id": "242731511",
+        "source_url": "https://place.map.kakao.com/242731511",
     }
 
 
@@ -70,7 +72,7 @@ def test_observability_counts_fresh_cache_hits(app_env, monkeypatch, caplog):
 
     assert results
     assert snapshot.cache.fresh_hit == 1
-    assert snapshot.cache.recent_events[0]["decision"] == "fresh_hit"
+    assert any(event["decision"] == "fresh_hit" for event in snapshot.cache.recent_events)
     assert "event=restaurant_cache_decision" in caplog.text
 
 
@@ -108,7 +110,7 @@ def test_observability_uses_stale_cache_when_live_fetch_fails(app_env, monkeypat
     assert results
     assert snapshot.cache.live_fetch_error == 1
     assert snapshot.cache.stale_hit == 1
-    assert snapshot.cache.recent_events[0]["decision"] == "stale_hit"
+    assert any(event["decision"] == "stale_hit" for event in snapshot.cache.recent_events)
     assert "event=restaurant_cache_decision" in caplog.text
 
 
@@ -125,6 +127,43 @@ def test_observability_counts_local_fallback_when_no_cache_or_kakao(app_env, cap
     assert snapshot.cache.local_fallback == 1
     assert snapshot.cache.recent_events[0]["decision"] == "local_fallback"
     assert "event=restaurant_cache_decision" in caplog.text
+
+
+def test_observability_tracks_restaurant_hours_cache_paths(app_env, caplog):
+    caplog.set_level(logging.INFO)
+    init_db()
+    seed_demo(force=True)
+
+    with connection() as conn:
+        repo.replace_restaurant_cache_snapshot(
+            conn,
+            origin_slug="central-library",
+            kakao_query="한식",
+            radius_meters=15 * 75,
+            fetched_at="2026-03-14T10:00:00+09:00",
+            rows=[_kakao_cache_row()],
+        )
+        repo.upsert_restaurant_hours_cache(
+            conn,
+            kakao_place_id="242731511",
+            source_url="https://place.map.kakao.com/242731511",
+            raw_payload={"open_hours": {}},
+            opening_hours={"fri": "08:00 ~ 21:00"},
+            fetched_at="2026-03-14T10:00:00+09:00",
+        )
+
+        find_nearby_restaurants(
+            conn,
+            origin="central-library",
+            category="korean",
+            walk_minutes=15,
+            at=datetime.fromisoformat("2026-03-20T12:00:00+09:00"),
+        )
+        snapshot = get_observability_snapshot(conn)
+
+    assert snapshot.cache.restaurant_hours_fresh_hit == 1
+    assert snapshot.cache.recent_events[0]["decision"] == "restaurant_hours_fresh_hit"
+    assert "event=restaurant_hours_cache_decision" in caplog.text
 
 
 def test_run_admin_sync_updates_observability_for_success_and_failure(

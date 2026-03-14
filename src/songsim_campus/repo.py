@@ -10,6 +10,10 @@ JSON_COLUMNS = {
     "places": {"aliases_json": "aliases", "opening_hours_json": "opening_hours"},
     "restaurants": {"tags_json": "tags"},
     "restaurant_cache_items": {"tags_json": "tags"},
+    "restaurant_hours_cache": {
+        "raw_payload_json": "raw_payload",
+        "opening_hours_json": "opening_hours",
+    },
     "notices": {"labels_json": "labels"},
     "transport_guides": {"steps_json": "steps"},
     "profile_notice_preferences": {
@@ -27,6 +31,7 @@ JSON_DEFAULTS = {
     "aliases_json": [],
     "opening_hours_json": {},
     "tags_json": [],
+    "raw_payload_json": {},
     "labels_json": [],
     "steps_json": [],
     "categories_json": [],
@@ -363,9 +368,9 @@ def replace_restaurant_cache_snapshot(
         """
         INSERT INTO restaurant_cache_items (
             snapshot_id, item_order, restaurant_id, slug, name, category,
-            min_price, max_price, latitude, longitude, tags_json,
-            description, source_tag, last_synced_at
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            min_price, max_price, latitude, longitude, kakao_place_id,
+            source_url, tags_json, description, source_tag, last_synced_at
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """,
         [
             (
@@ -379,6 +384,8 @@ def replace_restaurant_cache_snapshot(
                 row.get("max_price"),
                 row.get("latitude"),
                 row.get("longitude"),
+                row.get("kakao_place_id"),
+                row.get("source_url"),
                 Jsonb(row.get("tags", [])),
                 row.get("description", ""),
                 row.get("source_tag", "kakao_local_cache"),
@@ -429,6 +436,8 @@ def list_restaurant_cache_items(
                 max_price,
                 latitude,
                 longitude,
+                kakao_place_id,
+                source_url,
                 tags_json,
                 description,
                 source_tag,
@@ -463,6 +472,8 @@ def list_restaurant_cache_items(
                 max_price,
                 latitude,
                 longitude,
+                kakao_place_id,
+                source_url,
                 tags_json,
                 description,
                 source_tag,
@@ -474,6 +485,56 @@ def list_restaurant_cache_items(
             (snapshot_id,),
         ).fetchall()
     return [_row_to_dict("restaurant_cache_items", row) for row in rows]
+
+
+def get_restaurant_hours_cache(
+    conn: psycopg.Connection,
+    *,
+    kakao_place_id: str,
+) -> dict[str, Any] | None:
+    row = conn.execute(
+        """
+        SELECT * FROM restaurant_hours_cache
+        WHERE kakao_place_id = %s
+        LIMIT 1
+        """,
+        (kakao_place_id,),
+    ).fetchone()
+    return _row_to_dict("restaurant_hours_cache", row) if row else None
+
+
+def upsert_restaurant_hours_cache(
+    conn: psycopg.Connection,
+    *,
+    kakao_place_id: str,
+    source_url: str | None,
+    raw_payload: dict[str, Any],
+    opening_hours: dict[str, str],
+    fetched_at: str,
+    source_tag: str = "kakao_place_detail_cache",
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO restaurant_hours_cache (
+            kakao_place_id, source_url, raw_payload_json,
+            opening_hours_json, fetched_at, source_tag
+        ) VALUES (%s, %s, %s, %s, %s, %s)
+        ON CONFLICT (kakao_place_id) DO UPDATE SET
+            source_url = EXCLUDED.source_url,
+            raw_payload_json = EXCLUDED.raw_payload_json,
+            opening_hours_json = EXCLUDED.opening_hours_json,
+            fetched_at = EXCLUDED.fetched_at,
+            source_tag = EXCLUDED.source_tag
+        """,
+        (
+            kakao_place_id,
+            source_url,
+            Jsonb(raw_payload),
+            Jsonb(opening_hours),
+            fetched_at,
+            source_tag,
+        ),
+    )
 
 
 def list_notices(

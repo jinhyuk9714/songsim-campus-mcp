@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime
+from pathlib import Path
 
 import httpx
 import pytest
 
+from songsim_campus import repo
 from songsim_campus.db import connection, init_db
 from songsim_campus.ingest.kakao_places import KakaoPlace
 from songsim_campus.repo import replace_places, replace_restaurants, update_place_opening_hours
@@ -27,6 +30,12 @@ from songsim_campus.services import (
     search_places,
     sync_official_snapshot,
 )
+
+FIXTURES_DIR = Path(__file__).with_name("fixtures")
+
+
+def _fixture_json(name: str) -> dict:
+    return json.loads((FIXTURES_DIR / name).read_text(encoding="utf-8"))
 
 
 def _restaurant_row(
@@ -215,6 +224,7 @@ class FakeKakaoClient:
                 address='경기 부천시 원미구',
                 latitude=37.48674,
                 longitude=126.80182,
+                place_id='1',
                 place_url='https://place.map.kakao.com/1',
             ),
             KakaoPlace(
@@ -223,6 +233,7 @@ class FakeKakaoClient:
                 address='경기 부천시 원미구',
                 latitude=37.48691,
                 longitude=126.80114,
+                place_id='2',
                 place_url='https://place.map.kakao.com/2',
             ),
         ]
@@ -479,6 +490,256 @@ def test_find_nearby_restaurants_open_now_filters_closed_but_keeps_unknown(app_e
     assert open_by_name["카페드림"] is False
     assert open_by_name["알수없음식당"] is None
     assert [item.name for item in filtered] == ["알수없음식당"]
+
+
+def test_find_nearby_restaurants_prefers_official_facility_hours_before_kakao_detail(
+    app_env,
+    monkeypatch,
+):
+    init_db()
+    seed_demo(force=True)
+    calls = {"detail": 0}
+
+    class ExplodingDetailClient:
+        def fetch_sync(self, place_id: str):
+            calls["detail"] += 1
+            raise AssertionError("detail client should not be used for official facility matches")
+
+    monkeypatch.setattr("songsim_campus.services.KakaoPlaceDetailClient", ExplodingDetailClient)
+
+    with connection() as conn:
+        repo.replace_restaurant_cache_snapshot(
+            conn,
+            origin_slug="central-library",
+            kakao_query="카페",
+            radius_meters=15 * 75,
+            fetched_at="2026-03-14T10:00:00+09:00",
+            rows=[
+                {
+                    "id": -1,
+                    "slug": "kakao-cafe-dream",
+                    "name": "카페드림",
+                    "category": "cafe",
+                    "min_price": None,
+                    "max_price": None,
+                    "latitude": 37.48695,
+                    "longitude": 126.79995,
+                    "tags": ["카페"],
+                    "description": "테스트 카페",
+                    "source_tag": "kakao_local_cache",
+                    "last_synced_at": "2026-03-14T10:00:00+09:00",
+                    "kakao_place_id": "242731511",
+                    "source_url": "https://place.map.kakao.com/242731511",
+                }
+            ],
+        )
+        update_place_opening_hours(
+            conn,
+            "central-library",
+            {"카페드림": "평일 08:00~19:00 토 10:00~16:00 (일/공휴일휴무)"},
+            last_synced_at="2026-03-13T09:00:00+09:00",
+        )
+
+        items = find_nearby_restaurants(
+            conn,
+            origin="central-library",
+            category="cafe",
+            walk_minutes=15,
+            at=datetime.fromisoformat("2026-03-15T11:00:00+09:00"),
+        )
+
+    assert items[0].open_now is False
+    assert calls["detail"] == 0
+
+
+def test_find_nearby_restaurants_reuses_fresh_kakao_hours_cache(app_env, monkeypatch):
+    init_db()
+    seed_demo(force=True)
+    calls = {"detail": 0}
+
+    class ExplodingDetailClient:
+        def fetch_sync(self, place_id: str):
+            calls["detail"] += 1
+            raise AssertionError("fresh hours cache should be used before detail fetch")
+
+    monkeypatch.setattr("songsim_campus.services.KakaoPlaceDetailClient", ExplodingDetailClient)
+
+    with connection() as conn:
+        repo.replace_restaurant_cache_snapshot(
+            conn,
+            origin_slug="central-library",
+            kakao_query="한식",
+            radius_meters=15 * 75,
+            fetched_at="2026-03-14T10:00:00+09:00",
+            rows=[
+                {
+                    "id": -1,
+                    "slug": "kakao-gatolic-bap",
+                    "name": "가톨릭백반",
+                    "category": "korean",
+                    "min_price": None,
+                    "max_price": None,
+                    "latitude": 37.48674,
+                    "longitude": 126.80182,
+                    "tags": ["한식"],
+                    "description": "경기 부천시 원미구",
+                    "source_tag": "kakao_local_cache",
+                    "last_synced_at": "2026-03-14T10:00:00+09:00",
+                    "kakao_place_id": "242731511",
+                    "source_url": "https://place.map.kakao.com/242731511",
+                }
+            ],
+        )
+        repo.upsert_restaurant_hours_cache(
+            conn,
+            kakao_place_id="242731511",
+            source_url="https://place.map.kakao.com/242731511",
+            raw_payload=_fixture_json("kakao_place_detail.json"),
+            opening_hours={
+                "mon": "08:00 ~ 21:00",
+                "tue": "08:00 ~ 21:00",
+                "wed": "08:00 ~ 21:00",
+                "thu": "08:00 ~ 21:00",
+                "fri": "08:00 ~ 21:00",
+                "sat": "10:00 ~ 18:00",
+                "sun": "휴무",
+            },
+            fetched_at="2026-03-14T10:00:00+09:00",
+        )
+
+        items = find_nearby_restaurants(
+            conn,
+            origin="central-library",
+            category="korean",
+            walk_minutes=15,
+            at=datetime.fromisoformat("2026-03-16T09:00:00+09:00"),
+        )
+
+    assert items[0].open_now is True
+    assert calls["detail"] == 0
+
+
+def test_find_nearby_restaurants_fetches_and_reuses_kakao_detail_hours(app_env):
+    init_db()
+    seed_demo(force=True)
+
+    class DetailAwareKakaoClient:
+        calls = 0
+
+        def search_sync(self, query: str, *, x=None, y=None, radius: int = 1000):
+            type(self).calls += 1
+            return [
+                KakaoPlace(
+                    name="가톨릭백반",
+                    category="음식점 > 한식",
+                    address="경기 부천시 원미구",
+                    latitude=37.48674,
+                    longitude=126.80182,
+                    place_id="242731511",
+                    place_url="https://place.map.kakao.com/242731511",
+                )
+            ]
+
+    class DetailClient:
+        calls = 0
+
+        def fetch_sync(self, place_id: str):
+            type(self).calls += 1
+            assert place_id == "242731511"
+            return _fixture_json("kakao_place_detail.json")
+
+    class ExplodingDetailClient:
+        calls = 0
+
+        def fetch_sync(self, place_id: str):
+            type(self).calls += 1
+            raise AssertionError("hours cache should be reused on the second call")
+
+    with connection() as conn:
+        first = find_nearby_restaurants(
+            conn,
+            origin="central-library",
+            category="korean",
+            walk_minutes=15,
+            at=datetime.fromisoformat("2026-03-17T10:00:00+09:00"),
+            kakao_client=DetailAwareKakaoClient(),
+            kakao_place_detail_client=DetailClient(),
+        )
+        second = find_nearby_restaurants(
+            conn,
+            origin="central-library",
+            category="korean",
+            walk_minutes=15,
+            at=datetime.fromisoformat("2026-03-17T10:00:00+09:00"),
+            kakao_client=ExplodingKakaoClient(),
+            kakao_place_detail_client=ExplodingDetailClient(),
+        )
+
+    assert DetailAwareKakaoClient.calls == 1
+    assert DetailClient.calls == 1
+    assert ExplodingDetailClient.calls == 0
+    assert first[0].open_now is True
+    assert second[0].open_now is True
+
+
+def test_find_nearby_restaurants_uses_stale_kakao_hours_cache_when_detail_fetch_fails(
+    app_env,
+    monkeypatch,
+):
+    init_db()
+    seed_demo(force=True)
+    now = datetime.fromisoformat("2026-03-18T10:00:00+09:00")
+    monkeypatch.setattr("songsim_campus.services._now", lambda: now)
+
+    class BrokenDetailClient:
+        def fetch_sync(self, place_id: str):
+            raise httpx.HTTPError("detail fetch failed")
+
+    with connection() as conn:
+        repo.replace_restaurant_cache_snapshot(
+            conn,
+            origin_slug="central-library",
+            kakao_query="한식",
+            radius_meters=15 * 75,
+            fetched_at="2026-03-18T09:00:00+09:00",
+            rows=[
+                {
+                    "id": -1,
+                    "slug": "kakao-gatolic-bap",
+                    "name": "가톨릭백반",
+                    "category": "korean",
+                    "min_price": None,
+                    "max_price": None,
+                    "latitude": 37.48674,
+                    "longitude": 126.80182,
+                    "tags": ["한식"],
+                    "description": "경기 부천시 원미구",
+                    "source_tag": "kakao_local_cache",
+                    "last_synced_at": "2026-03-18T09:00:00+09:00",
+                    "kakao_place_id": "242731511",
+                    "source_url": "https://place.map.kakao.com/242731511",
+                }
+            ],
+        )
+        repo.upsert_restaurant_hours_cache(
+            conn,
+            kakao_place_id="242731511",
+            source_url="https://place.map.kakao.com/242731511",
+            raw_payload=_fixture_json("kakao_place_detail.json"),
+            opening_hours={"wed": "08:00 ~ 21:00"},
+            fetched_at="2026-03-15T10:00:00+09:00",
+        )
+
+        items = find_nearby_restaurants(
+            conn,
+            origin="central-library",
+            category="korean",
+            walk_minutes=15,
+            at=datetime.fromisoformat("2026-03-18T10:00:00+09:00"),
+            kakao_place_detail_client=BrokenDetailClient(),
+        )
+
+    assert items[0].open_now is True
 
 
 class FakeCampusMapSource:

@@ -340,6 +340,7 @@ def test_nearby_restaurants_endpoint_reuses_kakao_cache(client, monkeypatch):
                     address="경기 부천시 원미구",
                     latitude=37.48674,
                     longitude=126.80182,
+                    place_id="1",
                     place_url="https://place.map.kakao.com/1",
                 )
             ]
@@ -361,6 +362,68 @@ def test_nearby_restaurants_endpoint_reuses_kakao_cache(client, monkeypatch):
     assert [item['name'] for item in first.json()] == [item['name'] for item in second.json()]
     assert all(item['source_tag'] == 'kakao_local' for item in first.json())
     assert all(item['source_tag'] == 'kakao_local_cache' for item in second.json())
+
+
+def test_nearby_restaurants_endpoint_uses_kakao_detail_hours(client, monkeypatch):
+    monkeypatch.setenv("SONGSIM_KAKAO_REST_API_KEY", "test-key")
+    clear_settings_cache()
+
+    class ApiHoursKakaoClient:
+        def __init__(self, api_key: str):
+            assert api_key == "test-key"
+
+        def search_sync(self, query: str, *, x=None, y=None, radius: int = 1000):
+            return [
+                services.KakaoPlace(
+                    name="가톨릭백반",
+                    category="음식점 > 한식",
+                    address="경기 부천시 원미구",
+                    latitude=37.48674,
+                    longitude=126.80182,
+                    place_id="242731511",
+                    place_url="https://place.map.kakao.com/242731511",
+                )
+            ]
+
+    class ApiHoursDetailClient:
+        def fetch_sync(self, place_id: str):
+            assert place_id == "242731511"
+            return {
+                "open_hours": {
+                    "all": {
+                        "periods": [
+                            {
+                                "period_title": "기본 영업시간",
+                                "days": [
+                                    {
+                                        "day_of_the_week": "월",
+                                        "on_days": {
+                                            "start_end_time_desc": "08:00 ~ 21:00"
+                                        },
+                                    }
+                                ],
+                            }
+                        ]
+                    }
+                }
+            }
+
+    monkeypatch.setattr("songsim_campus.services.KakaoLocalClient", ApiHoursKakaoClient)
+    monkeypatch.setattr("songsim_campus.services.KakaoPlaceDetailClient", ApiHoursDetailClient)
+
+    response = client.get(
+        "/restaurants/nearby",
+        params={
+            "origin": "central-library",
+            "category": "korean",
+            "open_now": True,
+            "at": "2026-03-16T09:00:00+09:00",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()[0]["name"] == "가톨릭백반"
+    assert response.json()[0]["open_now"] is True
 
 
 class ApiFacilitiesSource:

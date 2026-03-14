@@ -1,0 +1,39 @@
+{
+  "open_hours": {
+    "headline": {
+      "code": "OPEN",
+      "display_text": "영업중",
+      "display_text_info": "16:00에 영업 종료"
+    },
+    "headline_addition": {
+      "current_off_day_desc": "매주 일요일, 공휴일 휴무"
+    },
+    "all": {
+      "periods": [
+        {
+          "period_title": "기본 영업시간",
+          "days": [
+            { "day_of_the_week": "월", "on_days": { "start_end_time_desc": "08:00 ~ 21:00" } },
+            { "day_of_the_week": "화", "on_days": { "start_end_time_desc": "08:00 ~ 21:00" } },
+            { "day_of_the_week": "수", "on_days": { "start_end_time_desc": "08:00 ~ 21:00" } },
+            { "day_of_the_week": "목", "on_days": { "start_end_time_desc": "08:00 ~ 21:00" } },
+            { "day_of_the_week": "금", "on_days": { "start_end_time_desc": "08:00 ~ 21:00" } },
+            { "day_of_the_week": "토", "on_days": { "start_end_time_desc": "10:00 ~ 18:00" } },
+            { "day_of_the_week": "일", "off_days_desc": "휴무일" }
+          ]
+        },
+        {
+          "period_title": "브레이크타임",
+          "days": [
+            { "day_of_the_week": "월", "on_days": { "start_end_time_desc": "14:00 ~ 15:00" } },
+            { "day_of_the_week": "화", "on_days": { "start_end_time_desc": "14:00 ~ 15:00" } },
+            { "day_of_the_week": "수", "on_days": { "start_end_time_desc": "14:00 ~ 15:00" } },
+            { "day_of_the_week": "목", "on_days": { "start_end_time_desc": "14:00 ~ 15:00" } },
+            { "day_of_the_week": "금", "on_days": { "start_end_time_desc": "14:00 ~ 15:00" } }
+          ]
+        }
+      ],
+      "all_days_off_info": "매주 일요일, 공휴일"
+    }
+  }
+}

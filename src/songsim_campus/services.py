@@ -17,7 +17,13 @@ import httpx
 
 from . import repo
 from .db import get_connection
-from .ingest.kakao_places import KakaoLocalClient, KakaoPlace
+from .ingest.kakao_places import (
+    KakaoLocalClient,
+    KakaoPlace,
+    KakaoPlaceDetailClient,
+    extract_kakao_place_id,
+    parse_place_detail_opening_hours,
+)
 from .ingest.official_sources import (
     CampusFacilitiesSource,
     CampusMapSource,
@@ -113,6 +119,10 @@ def _new_observability_state(process_started_at: str | None = None) -> dict[str,
             "live_fetch_success": 0,
             "live_fetch_error": 0,
             "local_fallback": 0,
+            "restaurant_hours_fresh_hit": 0,
+            "restaurant_hours_stale_hit": 0,
+            "restaurant_hours_live_fetch_success": 0,
+            "restaurant_hours_live_fetch_error": 0,
             "recent_events": [],
         },
         "sync": {
@@ -169,6 +179,40 @@ def _record_cache_decision(
         origin_slug,
         kakao_query,
         radius_meters,
+        error_text or "",
+    )
+
+
+def _record_hours_cache_decision(
+    *,
+    decision: str,
+    kakao_place_id: str,
+    source_url: str | None,
+    error_text: str | None = None,
+) -> None:
+    cache_state = _OBSERVABILITY_STATE["cache"]
+    if decision in {
+        "restaurant_hours_fresh_hit",
+        "restaurant_hours_stale_hit",
+        "restaurant_hours_live_fetch_success",
+        "restaurant_hours_live_fetch_error",
+    }:
+        cache_state[decision] += 1
+    event = {
+        "decision": decision,
+        "origin_slug": "-",
+        "kakao_query": source_url or "-",
+        "radius_meters": kakao_place_id,
+        "occurred_at": _now_iso(),
+        "error_text": error_text,
+    }
+    _prepend_observability_event(cache_state["recent_events"], event)
+    logger.info(
+        "event=restaurant_hours_cache_decision decision=%s kakao_place_id=%s "
+        "source_url=%s error_text=%s",
+        decision,
+        kakao_place_id,
+        source_url or "",
         error_text or "",
     )
 
@@ -596,15 +640,123 @@ def _evaluate_open_now(hours_text: str, at: datetime) -> bool | None:
     return None
 
 
-def _restaurant_open_now(
-    restaurant_name: str,
-    facility_hours: dict[str, str],
-    at: datetime,
-) -> bool | None:
-    hours_text = facility_hours.get(_normalize_facility_name(restaurant_name))
+def _hours_cache_status(fetched_at: str, now: datetime) -> str:
+    try:
+        fetched = datetime.fromisoformat(fetched_at)
+    except ValueError:
+        return "expired"
+    if fetched.tzinfo is None:
+        fetched = fetched.astimezone()
+    age_minutes = (now - fetched).total_seconds() / 60
+    settings = get_settings()
+    if age_minutes <= settings.restaurant_hours_cache_ttl_minutes:
+        return "fresh"
+    if age_minutes <= settings.restaurant_hours_cache_stale_ttl_minutes:
+        return "stale"
+    return "expired"
+
+
+def _evaluate_open_now_from_map(opening_hours: dict[str, str], at: datetime) -> bool | None:
+    if not opening_hours:
+        return None
+    day_keys = {
+        0: "mon",
+        1: "tue",
+        2: "wed",
+        3: "thu",
+        4: "fri",
+        5: "sat",
+        6: "sun",
+    }
+    day_key = day_keys[at.weekday()]
+    hours_text = opening_hours.get(day_key)
+    if not hours_text and at.weekday() < 5:
+        hours_text = opening_hours.get("weekday")
     if not hours_text:
         return None
-    return _evaluate_open_now(hours_text, at)
+
+    is_open = _evaluate_open_now(hours_text, at)
+    if is_open is not True:
+        return is_open
+
+    break_text = opening_hours.get(f"{day_key}_break")
+    if break_text and _evaluate_open_now(break_text, at):
+        return False
+    return True
+
+
+def _restaurant_open_now(
+    conn: sqlite3.Connection,
+    restaurant_row: dict[str, Any],
+    facility_hours: dict[str, str],
+    at: datetime,
+    *,
+    kakao_place_detail_client: KakaoPlaceDetailClient | Any | None = None,
+) -> bool | None:
+    restaurant_name = str(restaurant_row.get("name") or "")
+    hours_text = facility_hours.get(_normalize_facility_name(restaurant_name))
+    if hours_text:
+        return _evaluate_open_now(hours_text, at)
+
+    if not _is_external_restaurant_route(restaurant_row.get("source_tag")):
+        return None
+
+    place_id = restaurant_row.get("kakao_place_id") or extract_kakao_place_id(
+        str(restaurant_row.get("source_url") or "")
+    )
+    if not place_id:
+        return None
+
+    current = _now()
+    cached = repo.get_restaurant_hours_cache(conn, kakao_place_id=place_id)
+    cache_state = (
+        _hours_cache_status(str(cached["fetched_at"]), current)
+        if cached is not None
+        else "expired"
+    )
+    if cached is not None and cache_state == "fresh":
+        _record_hours_cache_decision(
+            decision="restaurant_hours_fresh_hit",
+            kakao_place_id=place_id,
+            source_url=restaurant_row.get("source_url"),
+        )
+        return _evaluate_open_now_from_map(cached.get("opening_hours", {}), at)
+
+    if kakao_place_detail_client is None:
+        kakao_place_detail_client = KakaoPlaceDetailClient()
+
+    try:
+        payload = kakao_place_detail_client.fetch_sync(place_id)
+        opening_hours = parse_place_detail_opening_hours(payload)
+        repo.upsert_restaurant_hours_cache(
+            conn,
+            kakao_place_id=place_id,
+            source_url=restaurant_row.get("source_url"),
+            raw_payload=payload,
+            opening_hours=opening_hours,
+            fetched_at=_now_iso(),
+        )
+        _record_hours_cache_decision(
+            decision="restaurant_hours_live_fetch_success",
+            kakao_place_id=place_id,
+            source_url=restaurant_row.get("source_url"),
+        )
+        return _evaluate_open_now_from_map(opening_hours, at)
+    except (httpx.HTTPError, ValueError) as exc:
+        _record_hours_cache_decision(
+            decision="restaurant_hours_live_fetch_error",
+            kakao_place_id=place_id,
+            source_url=restaurant_row.get("source_url"),
+            error_text=str(exc),
+        )
+        if cached is not None and cache_state == "stale":
+            _record_hours_cache_decision(
+                decision="restaurant_hours_stale_hit",
+                kakao_place_id=place_id,
+                source_url=restaurant_row.get("source_url"),
+            )
+            return _evaluate_open_now_from_map(cached.get("opening_hours", {}), at)
+        return None
 
 
 def _parse_campus_walk_graph(payload: dict[str, Any]) -> dict[str, Any]:
@@ -1480,6 +1632,7 @@ def get_profile_meal_recommendations(
     category: str | None = None,
     limit: int = 10,
     open_now: bool = False,
+    kakao_place_detail_client: KakaoPlaceDetailClient | Any | None = None,
 ) -> MealRecommendationResponse:
     current = _coerce_datetime(at)
     resolved_year, resolved_semester = _current_year_and_semester(current)
@@ -1532,6 +1685,7 @@ def get_profile_meal_recommendations(
         limit=max(limit * 5, 20),
         at=current,
         open_now=open_now,
+        kakao_place_detail_client=kakao_place_detail_client,
     )
 
     items: list[MealRecommendation] = []
@@ -1625,6 +1779,8 @@ def _normalize_kakao_restaurant(place: KakaoPlace, *, fetched_at: str) -> dict[s
         "max_price": None,
         "latitude": place.latitude,
         "longitude": place.longitude,
+        "kakao_place_id": place.place_id or extract_kakao_place_id(place.place_url),
+        "source_url": place.place_url or None,
         "tags": [segment.strip() for segment in place.category.split(">") if segment.strip()][-2:],
         "description": place.address,
         "source_tag": "kakao_local",
@@ -1723,6 +1879,7 @@ def find_nearby_restaurants(
     at: datetime | None = None,
     open_now: bool = False,
     kakao_client: KakaoLocalClient | Any | None = None,
+    kakao_place_detail_client: KakaoPlaceDetailClient | Any | None = None,
 ) -> list[NearbyRestaurant]:
     current = _coerce_datetime(at)
     cache_now = _now()
@@ -1874,7 +2031,13 @@ def find_nearby_restaurants(
         )
         if estimated_walk_minutes > walk_minutes:
             continue
-        current_open_now = _restaurant_open_now(raw["name"], facility_hours, current)
+        current_open_now = _restaurant_open_now(
+            conn,
+            raw,
+            facility_hours,
+            current,
+            kakao_place_detail_client=kakao_place_detail_client,
+        )
         if open_now and current_open_now is False:
             continue
 

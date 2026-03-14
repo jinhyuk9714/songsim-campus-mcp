@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     kakao_rest_api_key: str | None = None
     restaurant_cache_ttl_minutes: int = 360
     restaurant_cache_stale_ttl_minutes: int = 1440
+    restaurant_hours_cache_ttl_minutes: int = 1440
+    restaurant_hours_cache_stale_ttl_minutes: int = 10080
     official_campus_id: str = "1"
     official_notice_pages: int = 1
     official_course_year: int | None = None

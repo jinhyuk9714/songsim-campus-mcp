@@ -520,6 +520,22 @@ def create_app() -> FastAPI:
             <h3>local_fallback</h3>
             <p class="count">{cache['local_fallback']}</p>
           </article>
+          <article class="card">
+            <h3>restaurant_hours_fresh_hit</h3>
+            <p class="count">{cache['restaurant_hours_fresh_hit']}</p>
+          </article>
+          <article class="card">
+            <h3>restaurant_hours_stale_hit</h3>
+            <p class="count">{cache['restaurant_hours_stale_hit']}</p>
+          </article>
+          <article class="card">
+            <h3>restaurant_hours_live_fetch_success</h3>
+            <p class="count">{cache['restaurant_hours_live_fetch_success']}</p>
+          </article>
+          <article class="card">
+            <h3>restaurant_hours_live_fetch_error</h3>
+            <p class="count">{cache['restaurant_hours_live_fetch_error']}</p>
+          </article>
         </div>
       </section>
       <section>

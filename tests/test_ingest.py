@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
+from songsim_campus.ingest.kakao_places import parse_place_detail_opening_hours
 from songsim_campus.ingest.official_sources import (
     CampusFacilitiesSource,
     CampusMapSource,
@@ -17,6 +19,10 @@ FIXTURES_DIR = Path(__file__).with_name("fixtures")
 
 def _fixture(name: str) -> str:
     return (FIXTURES_DIR / name).read_text(encoding="utf-8")
+
+
+def _fixture_json(name: str) -> dict:
+    return json.loads(_fixture(name))
 
 
 def test_campus_map_discovers_place_list_endpoint():
@@ -206,3 +212,40 @@ def test_transport_parser_extracts_modes_summaries_and_steps():
     bus = next(item for item in rows if item["title"] == "시내버스")
     assert bus["mode"] == "bus"
     assert bus["steps"][-1] == "후문 기준 : [금강맨션] 정류장 하차"
+
+
+def test_kakao_place_detail_parser_normalizes_weekdays_breaks_and_holidays():
+    opening_hours = parse_place_detail_opening_hours(_fixture_json("kakao_place_detail.json"))
+
+    assert opening_hours["mon"] == "08:00 ~ 21:00"
+    assert opening_hours["fri"] == "08:00 ~ 21:00"
+    assert opening_hours["sat"] == "10:00 ~ 18:00"
+    assert opening_hours["sun"] == "휴무"
+    assert opening_hours["mon_break"] == "14:00 ~ 15:00"
+    assert opening_hours["holiday_notice"] == "매주 일요일, 공휴일"
+
+
+def test_kakao_place_detail_parser_preserves_24_hour_days():
+    opening_hours = parse_place_detail_opening_hours(
+        {
+            "open_hours": {
+                "all": {
+                    "periods": [
+                        {
+                            "period_title": "기본 영업시간",
+                            "days": [
+                                {
+                                    "day_of_the_week": day,
+                                    "on_days": {"start_end_time_desc": "24시간 운영"},
+                                }
+                                for day in ("월", "화", "수", "목", "금", "토", "일")
+                            ],
+                        }
+                    ]
+                }
+            }
+        }
+    )
+
+    assert opening_hours["mon"] == "24시간 운영"
+    assert opening_hours["sun"] == "24시간 운영"

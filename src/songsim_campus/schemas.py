@@ -136,6 +136,10 @@ class CacheObservability(BaseModel):
     live_fetch_success: int = 0
     live_fetch_error: int = 0
     local_fallback: int = 0
+    restaurant_hours_fresh_hit: int = 0
+    restaurant_hours_stale_hit: int = 0
+    restaurant_hours_live_fetch_success: int = 0
+    restaurant_hours_live_fetch_error: int = 0
     recent_events: list[dict[str, Any]] = Field(default_factory=list)
 
 

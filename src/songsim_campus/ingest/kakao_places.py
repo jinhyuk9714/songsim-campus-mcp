@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
+from typing import Any
 
 import httpx
 
@@ -13,6 +15,7 @@ class KakaoPlace:
     latitude: float
     longitude: float
     place_url: str
+    place_id: str | None = None
 
 
 class KakaoLocalClient:
@@ -48,6 +51,7 @@ class KakaoLocalClient:
                     address=item.get("road_address_name") or item.get("address_name", ""),
                     latitude=float(item["y"]),
                     longitude=float(item["x"]),
+                    place_id=str(item.get("id") or "") or None,
                     place_url=item.get("place_url", ""),
                 )
             )
@@ -82,3 +86,89 @@ class KakaoLocalClient:
             response.raise_for_status()
             data = response.json()
         return self._parse_places(data)
+
+
+def extract_kakao_place_id(place_url: str) -> str | None:
+    match = re.search(r"/(\d+)(?:[/?#]|$)", place_url.strip())
+    return match.group(1) if match else None
+
+
+def parse_place_detail_opening_hours(payload: dict[str, Any]) -> dict[str, str]:
+    open_hours = payload.get("open_hours")
+    if not isinstance(open_hours, dict):
+        return {}
+    all_hours = open_hours.get("all")
+    if not isinstance(all_hours, dict):
+        return {}
+    periods = all_hours.get("periods")
+    if not isinstance(periods, list):
+        return {}
+
+    day_keys = {
+        "월": "mon",
+        "화": "tue",
+        "수": "wed",
+        "목": "thu",
+        "금": "fri",
+        "토": "sat",
+        "일": "sun",
+    }
+    normalized: dict[str, str] = {}
+    for period in periods:
+        if not isinstance(period, dict):
+            continue
+        title = str(period.get("period_title") or "").replace(" ", "")
+        suffix = ""
+        if "브레이크" in title:
+            suffix = "_break"
+        elif "라스트오더" in title or "마감주문" in title:
+            suffix = "_last_order"
+        days = period.get("days")
+        if not isinstance(days, list):
+            continue
+        for day in days:
+            if not isinstance(day, dict):
+                continue
+            day_key = day_keys.get(str(day.get("day_of_the_week") or "").strip())
+            if not day_key:
+                continue
+            on_days = day.get("on_days")
+            if isinstance(on_days, dict):
+                text = str(on_days.get("start_end_time_desc") or "").strip()
+                if text:
+                    normalized[f"{day_key}{suffix}"] = text
+                    continue
+            off_desc = str(day.get("off_days_desc") or "").strip()
+            if off_desc:
+                normalized[f"{day_key}{suffix}"] = "휴무"
+
+    holiday_notice = str(all_hours.get("all_days_off_info") or "").strip()
+    if holiday_notice:
+        normalized["holiday_notice"] = holiday_notice
+    return normalized
+
+
+class KakaoPlaceDetailClient:
+    BASE_URL = "https://place-api.map.kakao.com/places/panel3/{place_id}"
+
+    @staticmethod
+    def _headers() -> dict[str, str]:
+        return {
+            "Accept": "application/json, text/plain, */*",
+            "Referer": "https://place.map.kakao.com/",
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
+            ),
+            "appversion": "6.6.0",
+            "pf": "PC",
+        }
+
+    def fetch_sync(self, place_id: str) -> dict[str, Any]:
+        with httpx.Client(timeout=20) as client:
+            response = client.get(
+                self.BASE_URL.format(place_id=place_id),
+                headers=self._headers(),
+            )
+            response.raise_for_status()
+            return response.json()

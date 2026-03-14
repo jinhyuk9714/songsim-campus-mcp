@@ -31,6 +31,7 @@
 
 ## Phase 5 - Production hardening
 - [x] 식당 캐시 계층
+- [x] 식당 영업시간 source 확보
 - [x] 관측성
 - [x] 관리자 동기화 대시보드
 - [x] Postgres/PostGIS 이전

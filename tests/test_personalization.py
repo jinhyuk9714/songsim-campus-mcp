@@ -762,6 +762,7 @@ def test_meal_recommendations_reuse_kakao_cache(app_env, monkeypatch):
                     address="경기 부천시 원미구",
                     latitude=37.48674,
                     longitude=126.80182,
+                    place_id="1",
                     place_url="https://place.map.kakao.com/1",
                 )
             ]

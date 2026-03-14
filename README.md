@@ -228,8 +228,8 @@ SONGSIM_ADMIN_ENABLED=true uv run songsim-api
 
 ## 추천 확장 순서
 
-1. 식당 영업 데이터 소스 확보
-2. 운영 자동화
+1. 운영 자동화
+2. 개인화 품질 고도화
 
 ## 주의
 
@@ -238,6 +238,7 @@ SONGSIM_ADMIN_ENABLED=true uv run songsim-api
 - 강의실/운영시간은 학교 공지에 따라 바뀔 수 있으니 `last_synced_at`를 항상 노출하세요.
 - 맛집 추천은 LLM 자유생성보다 **거리, 예산, 영업 여부** 같은 하드 필터를 먼저 태우는 쪽이 안전합니다.
 - Kakao 식당 결과는 lazy cache로 재사용되므로 같은 조건의 재조회에서는 `source_tag`가 `kakao_local_cache`로 보일 수 있습니다.
+- 교내 식당은 학교 공식 운영시간을 우선 사용하고, 교외 Kakao 식당은 detail 페이지 기반 운영시간을 best-effort로 붙입니다.
 - 식당 추천의 이동시간은 캠퍼스 내부 구간만 정적 경로망으로 보정하고, 캠퍼스 밖 구간은 좌표 기반 추정을 유지합니다.
 - 외부 구간의 후보 식당 조회와 거리 계산은 PostGIS를 사용합니다.
 - `/admin/sync`는 `SONGSIM_ADMIN_ENABLED=true`일 때만 열리고, loopback 클라이언트에서만 접근됩니다.

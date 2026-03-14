@@ -79,6 +79,8 @@ CREATE TABLE IF NOT EXISTS restaurant_cache_items (
     max_price INTEGER,
     latitude DOUBLE PRECISION,
     longitude DOUBLE PRECISION,
+    kakao_place_id TEXT,
+    source_url TEXT,
     geom GEOGRAPHY(Point, 4326) GENERATED ALWAYS AS (
         CASE
             WHEN longitude IS NULL OR latitude IS NULL THEN NULL
@@ -91,6 +93,15 @@ CREATE TABLE IF NOT EXISTS restaurant_cache_items (
     last_synced_at TIMESTAMPTZ NOT NULL,
     PRIMARY KEY (snapshot_id, item_order),
     FOREIGN KEY (snapshot_id) REFERENCES restaurant_cache_snapshots(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS restaurant_hours_cache (
+    kakao_place_id TEXT PRIMARY KEY,
+    source_url TEXT,
+    raw_payload_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    opening_hours_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    fetched_at TIMESTAMPTZ NOT NULL,
+    source_tag TEXT NOT NULL DEFAULT 'kakao_place_detail_cache'
 );
 
 CREATE TABLE IF NOT EXISTS notices (
@@ -155,6 +166,8 @@ CREATE TABLE IF NOT EXISTS profile_interests (
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS department TEXT;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS student_year INTEGER;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS admission_type TEXT;
+ALTER TABLE restaurant_cache_items ADD COLUMN IF NOT EXISTS kakao_place_id TEXT;
+ALTER TABLE restaurant_cache_items ADD COLUMN IF NOT EXISTS source_url TEXT;
 
 CREATE TABLE IF NOT EXISTS sync_runs (
     id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -177,6 +190,8 @@ CREATE INDEX IF NOT EXISTS idx_restaurant_cache_key
 ON restaurant_cache_snapshots(origin_slug, kakao_query, radius_meters);
 CREATE INDEX IF NOT EXISTS idx_restaurant_cache_items_geom
 ON restaurant_cache_items USING GIST (geom);
+CREATE INDEX IF NOT EXISTS idx_restaurant_hours_cache_fetched_at
+ON restaurant_hours_cache(fetched_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notices_published_at ON notices(published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_transport_guides_mode ON transport_guides(mode);
 CREATE INDEX IF NOT EXISTS idx_profile_courses_profile_id ON profile_courses(profile_id);

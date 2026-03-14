@@ -55,6 +55,20 @@ def test_init_db_creates_postgis_schema(app_env):
             WHERE table_name = 'profile_interests' AND column_name = 'tags_json'
             """
         ).fetchone()
+        restaurant_hours = conn.execute(
+            """
+            SELECT data_type
+            FROM information_schema.columns
+            WHERE table_name = 'restaurant_hours_cache' AND column_name = 'opening_hours_json'
+            """
+        ).fetchone()
+        restaurant_cache_place_id = conn.execute(
+            """
+            SELECT data_type
+            FROM information_schema.columns
+            WHERE table_name = 'restaurant_cache_items' AND column_name = 'kakao_place_id'
+            """
+        ).fetchone()
         geom_index = conn.execute(
             """
             SELECT indexname
@@ -69,4 +83,6 @@ def test_init_db_creates_postgis_schema(app_env):
     assert sync_started["data_type"] == "timestamp with time zone"
     assert profile_department["data_type"] == "text"
     assert profile_interests["data_type"] == "jsonb"
+    assert restaurant_hours["data_type"] == "jsonb"
+    assert restaurant_cache_place_id["data_type"] == "text"
     assert geom_index["indexname"] == "idx_restaurants_geom"
