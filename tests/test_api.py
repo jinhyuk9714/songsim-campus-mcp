@@ -5,7 +5,11 @@ from fastapi.testclient import TestClient
 from songsim_campus import services
 from songsim_campus.api import create_app
 from songsim_campus.db import connection
-from songsim_campus.repo import replace_restaurants, update_place_opening_hours
+from songsim_campus.repo import (
+    replace_notices,
+    replace_restaurants,
+    update_place_opening_hours,
+)
 from songsim_campus.services import (
     refresh_facility_hours_from_facilities_page,
     refresh_transport_guides_from_location_page,
@@ -109,6 +113,112 @@ def test_public_readonly_mode_exposes_gpt_actions_openapi(app_env, monkeypatch):
         == "findNearbyRestaurants"
     )
     assert payload["paths"]["/transport"]["get"]["operationId"] == "listTransportGuides"
+
+
+def test_public_readonly_mode_exposes_gpt_actions_openapi_v2(app_env, monkeypatch):
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    monkeypatch.setenv("SONGSIM_PUBLIC_HTTP_URL", "https://songsim-api.onrender.com")
+    clear_settings_cache()
+
+    app = create_app()
+    with TestClient(app) as public_client:
+        response = public_client.get("/gpt-actions-openapi-v2.json")
+
+    clear_settings_cache()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["info"]["title"] == "Songsim Campus GPT Actions v2"
+    assert payload["servers"] == [{"url": "https://songsim-api.onrender.com"}]
+    assert set(payload["paths"]) == {
+        "/gpt/places",
+        "/gpt/notices",
+        "/gpt/restaurants/nearby",
+    }
+    assert payload["paths"]["/gpt/places"]["get"]["operationId"] == "searchPlacesForGpt"
+    assert payload["paths"]["/gpt/notices"]["get"]["operationId"] == "listLatestNoticesForGpt"
+    assert (
+        payload["paths"]["/gpt/restaurants/nearby"]["get"]["operationId"]
+        == "findNearbyRestaurantsForGpt"
+    )
+
+
+def test_gpt_places_endpoint_returns_compact_summary_payload(client):
+    response = client.get("/gpt/places", params={"query": "도서관", "limit": 1})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload) == 1
+    assert payload[0] == {
+        "name": "중앙도서관",
+        "canonical_name": "중앙도서관",
+        "aliases": ["도서관", "중도"],
+        "category": "library",
+        "short_location": "자료 열람과 시험기간 공부에 쓰는 중심 공간",
+        "coordinates": {"latitude": 37.48643, "longitude": 126.80164},
+        "highlights": [
+            "별칭: 도서관, 중도",
+            "자료 열람과 시험기간 공부에 쓰는 중심 공간",
+            "운영: mon-fri: 08:30-22:00 / sat: 09:00-17:00",
+        ],
+    }
+
+
+def test_gpt_notices_endpoint_returns_normalized_category_and_summary_preview(client):
+    long_summary = (
+        "중앙도서관 이용 학생을 위한 장학 연계 프로그램 안내입니다. "
+        "자세한 일정과 신청 자격, 제출 서류를 확인해 주세요. "
+        "설명이 길어져도 GPT 응답에서는 짧은 미리보기만 내려가야 합니다. "
+        "추가 문의는 도서관 장학 담당 부서로 연락해 주세요."
+    )
+    with connection() as conn:
+        replace_notices(
+            conn,
+            [
+                {
+                    "title": "중앙도서관 장학 안내",
+                    "category": "place",
+                    "published_at": "2026-03-08",
+                    "summary": long_summary,
+                    "labels": ["도서관", "장학"],
+                    "source_url": "https://example.edu/notices/central-library-aid",
+                    "source_tag": "demo",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                }
+            ],
+        )
+
+    response = client.get("/gpt/notices", params={"limit": 1})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload[0]["title"] == "중앙도서관 장학 안내"
+    assert payload[0]["category_display"] == "general"
+    assert payload[0]["published_at"] == "2026-03-08"
+    assert payload[0]["source_url"] == "https://example.edu/notices/central-library-aid"
+    assert payload[0]["summary"].endswith("...")
+    assert len(payload[0]["summary"]) <= 160
+    assert payload[0]["summary"] != long_summary
+
+
+def test_gpt_nearby_restaurants_endpoint_returns_compact_summary_payload(client):
+    response = client.get(
+        "/gpt/restaurants/nearby",
+        params={"origin": "central-library", "category": "western", "limit": 1},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload) == 1
+    assert payload[0] == {
+        "name": "도서관파스타",
+        "category_display": "양식",
+        "distance_meters": 31,
+        "estimated_walk_minutes": 1,
+        "price_hint": "11,000~15,000원",
+        "open_now": None,
+        "location_hint": "도서관 근처 데모 양식집",
+    }
 
 
 def test_public_readonly_mode_exposes_privacy_page(app_env, monkeypatch):

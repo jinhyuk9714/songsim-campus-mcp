@@ -10,7 +10,7 @@
 
 - Remote MCP: ChatGPT, Claude, Codex 같은 클라이언트에서 직접 연결
 - HTTP API: 장소, 과목, 공지, 식당, 교통 안내 조회
-- Shared GPT: ChatGPT GPT Builder에서 Actions로 붙여 `chatgpt.com/g/...` 링크로 공개
+- Shared GPT: ChatGPT GPT Builder에서 GPT 전용 v2 Actions schema로 붙여 `chatgpt.com/g/...` 링크로 공개
 - Local full mode: profile, timetable, admin sync, observability, automation 운영
 
 공개 MCP 사용 패턴은 이 순서를 기준으로 보면 됩니다.
@@ -173,7 +173,8 @@ uv run songsim-api
 ```
 
 문서: `http://127.0.0.1:8000/docs`
-GPT Actions import용 축소 스키마: `http://127.0.0.1:8000/gpt-actions-openapi.json`
+Shared GPT용 v2 schema: `http://127.0.0.1:8000/gpt-actions-openapi-v2.json`
+기존 Actions schema(v1): `http://127.0.0.1:8000/gpt-actions-openapi.json`
 
 ### 5. MCP 서버 실행
 

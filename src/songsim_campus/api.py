@@ -16,8 +16,12 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from .db import connection, get_connection, init_db
 from .schemas import (
     Course,
+    GptNearbyRestaurantResult,
+    GptNoticeResult,
+    GptPlaceResult,
     MatchedCourse,
     MatchedNotice,
+    McpCoordinates,
     MealRecommendationResponse,
     NearbyRestaurant,
     Notice,
@@ -103,6 +107,54 @@ GPT_ACTION_PATHS: dict[str, dict[str, str]] = {
     },
 }
 
+GPT_ACTION_V2_PATHS: dict[str, dict[str, str]] = {
+    "/gpt/places": {
+        "operationId": "searchPlacesForGpt",
+        "summary": "Find campus places with concise summaries",
+        "description": (
+            "Use when the user asks where a Songsim campus building, landmark, or facility is. "
+            "Returns concise names, aliases, short location hints, and coordinates "
+            "that are easy to summarize."
+        ),
+    },
+    "/gpt/notices": {
+        "operationId": "listLatestNoticesForGpt",
+        "summary": "List latest public notices with short previews",
+        "description": (
+            "Use when the user wants the latest Songsim public notices. "
+            "Returns normalized notice categories and short summary previews."
+        ),
+    },
+    "/gpt/restaurants/nearby": {
+        "operationId": "findNearbyRestaurantsForGpt",
+        "summary": "Find nearby restaurants with concise hints",
+        "description": (
+            "Use when the user asks for food near a Songsim campus place. "
+            "Returns concise restaurant summaries with distance, walk time, price "
+            "hints, and open_now."
+        ),
+    },
+}
+
+GPT_NOTICE_CATEGORY_DISPLAY = {
+    "academic": "academic",
+    "scholarship": "scholarship",
+    "employment": "employment",
+    "event": "event",
+    "facility": "facility",
+    "library": "library",
+    "general": "general",
+    "place": "general",
+}
+
+GPT_RESTAURANT_CATEGORY_DISPLAY = {
+    "korean": "한식",
+    "western": "양식",
+    "japanese": "일식",
+    "chinese": "중식",
+    "cafe": "카페",
+}
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -156,11 +208,96 @@ def create_app() -> FastAPI:
     public_readonly = settings.app_mode == "public_readonly"
     app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
 
-    def build_gpt_actions_openapi(request: Request) -> dict[str, object]:
+    def _truncate_preview(text: str, *, limit: int) -> str:
+        normalized = " ".join(text.split())
+        if len(normalized) <= limit:
+            return normalized
+        return normalized[: max(0, limit - 3)].rstrip() + "..."
+
+    def _format_opening_hours_preview(opening_hours: dict[str, str]) -> str | None:
+        if not opening_hours:
+            return None
+        preview_items = []
+        for key, value in sorted(opening_hours.items()):
+            preview_items.append(f"{key}: {value}")
+            if len(preview_items) == 2:
+                break
+        return " / ".join(preview_items)
+
+    def _restaurant_price_hint(restaurant: NearbyRestaurant) -> str | None:
+        if restaurant.min_price is not None and restaurant.max_price is not None:
+            if restaurant.min_price == restaurant.max_price:
+                return f"{restaurant.min_price:,}원"
+            return f"{restaurant.min_price:,}~{restaurant.max_price:,}원"
+        if restaurant.min_price is not None:
+            return f"{restaurant.min_price:,}원부터"
+        if restaurant.max_price is not None:
+            return f"{restaurant.max_price:,}원 이하"
+        return None
+
+    def _gpt_restaurant_category_label(restaurant: NearbyRestaurant) -> str:
+        return GPT_RESTAURANT_CATEGORY_DISPLAY.get(
+            restaurant.category,
+            restaurant.tags[0] if restaurant.tags else "식당",
+        )
+
+    def _serialize_gpt_place(place: Place) -> dict[str, object]:
+        highlights: list[str] = []
+        if place.aliases:
+            highlights.append(f"별칭: {', '.join(place.aliases[:3])}")
+        if place.description:
+            highlights.append(_truncate_preview(place.description, limit=80))
+        opening_preview = _format_opening_hours_preview(place.opening_hours)
+        if opening_preview:
+            highlights.append(f"운영: {opening_preview}")
+        coordinates = None
+        if place.latitude is not None and place.longitude is not None:
+            coordinates = McpCoordinates(latitude=place.latitude, longitude=place.longitude)
+        return GptPlaceResult(
+            name=place.name,
+            canonical_name=place.name,
+            aliases=place.aliases,
+            category=place.category,
+            short_location=place.description or None,
+            coordinates=coordinates,
+            highlights=highlights,
+        ).model_dump(exclude_none=True)
+
+    def _serialize_gpt_notice(notice: Notice) -> dict[str, object]:
+        return GptNoticeResult(
+            title=notice.title,
+            category_display=GPT_NOTICE_CATEGORY_DISPLAY.get(notice.category, "general"),
+            published_at=notice.published_at,
+            summary=_truncate_preview(notice.summary, limit=120),
+            source_url=notice.source_url,
+        ).model_dump(exclude_none=True)
+
+    def _serialize_gpt_nearby_restaurant(restaurant: NearbyRestaurant) -> dict[str, object]:
+        return GptNearbyRestaurantResult(
+            name=restaurant.name,
+            category_display=_gpt_restaurant_category_label(restaurant),
+            distance_meters=restaurant.distance_meters,
+            estimated_walk_minutes=restaurant.estimated_walk_minutes,
+            price_hint=_restaurant_price_hint(restaurant),
+            open_now=restaurant.open_now,
+            location_hint=(
+                _truncate_preview(restaurant.description, limit=80)
+                if restaurant.description
+                else None
+            ),
+        ).model_dump()
+
+    def _build_filtered_openapi(
+        request: Request,
+        *,
+        title: str,
+        description: str,
+        path_metadata: dict[str, dict[str, str]],
+    ) -> dict[str, object]:
         source_spec = copy.deepcopy(app.openapi())
         public_http_url = settings.public_http_url or str(request.base_url).rstrip("/")
         filtered_paths: dict[str, object] = {}
-        for path, metadata in GPT_ACTION_PATHS.items():
+        for path, metadata in path_metadata.items():
             operation = copy.deepcopy(source_spec["paths"][path]["get"])
             operation["operationId"] = metadata["operationId"]
             operation["summary"] = metadata["summary"]
@@ -169,16 +306,33 @@ def create_app() -> FastAPI:
         return {
             "openapi": source_spec["openapi"],
             "info": {
-                "title": "Songsim Campus GPT Actions",
+                "title": title,
                 "version": source_spec["info"]["version"],
-                "description": (
-                    "Slimmed-down read-only actions schema for ChatGPT GPT Actions."
-                ),
+                "description": description,
             },
             "servers": [{"url": public_http_url}],
             "paths": filtered_paths,
             "components": source_spec.get("components", {}),
         }
+
+    def build_gpt_actions_openapi(request: Request) -> dict[str, object]:
+        return _build_filtered_openapi(
+            request,
+            title="Songsim Campus GPT Actions",
+            description="Slimmed-down read-only actions schema for ChatGPT GPT Actions.",
+            path_metadata=GPT_ACTION_PATHS,
+        )
+
+    def build_gpt_actions_openapi_v2(request: Request) -> dict[str, object]:
+        return _build_filtered_openapi(
+            request,
+            title="Songsim Campus GPT Actions v2",
+            description=(
+                "GPT-focused actions schema with concise place, notice, and nearby "
+                "restaurant responses."
+            ),
+            path_metadata=GPT_ACTION_V2_PATHS,
+        )
 
     def ensure_admin_request_allowed(request: Request) -> None:
         client_host = request.client.host if request.client else ""
@@ -591,7 +745,8 @@ def create_app() -> FastAPI:
           <p>
             <a class="pill primary" href="{html.escape(docs_url)}">Open API Docs</a>
             <a class="pill" href="/openapi.json">OpenAPI JSON</a>
-            <a class="pill" href="/gpt-actions-openapi.json">GPT Actions OpenAPI</a>
+            <a class="pill" href="/gpt-actions-openapi-v2.json">GPT Actions OpenAPI v2</a>
+            <a class="pill" href="/gpt-actions-openapi.json">GPT Actions OpenAPI v1</a>
             <a class="pill" href="{html.escape(privacy_url)}">Privacy Policy</a>
             {admin_link}
           </p>
@@ -617,6 +772,7 @@ def create_app() -> FastAPI:
             <li><code>/restaurants/nearby</code> walkable food recommendations</li>
             <li><code>/notices</code> latest public campus notices</li>
             <li><code>/transport</code> Songsim transit guides</li>
+            <li><code>/gpt/*</code> concise GPT-friendly summaries for shared GPT actions</li>
           </ul>
         </article>
         <article class="card">
@@ -1089,9 +1245,63 @@ def create_app() -> FastAPI:
     def gpt_actions_openapi(request: Request) -> JSONResponse:
         return JSONResponse(build_gpt_actions_openapi(request))
 
+    @app.get("/gpt-actions-openapi-v2.json")
+    def gpt_actions_openapi_v2(request: Request) -> JSONResponse:
+        return JSONResponse(build_gpt_actions_openapi_v2(request))
+
     @app.get("/periods", response_model=list[Period])
     def periods() -> list[Period]:
         return get_class_periods()
+
+    @app.get("/gpt/places", response_model=list[GptPlaceResult])
+    def gpt_places(
+        query: str = Query(default="", description="건물/시설/도서관 검색어"),
+        category: str | None = Query(default=None),
+        limit: int = Query(default=10, ge=1, le=50),
+    ) -> list[GptPlaceResult]:
+        with connection() as conn:
+            places = search_places(conn, query=query, category=category, limit=limit)
+        return [GptPlaceResult.model_validate(_serialize_gpt_place(place)) for place in places]
+
+    @app.get("/gpt/notices", response_model=list[GptNoticeResult])
+    def gpt_notices(
+        category: str | None = Query(default=None),
+        limit: int = Query(default=10, ge=1, le=50),
+    ) -> list[GptNoticeResult]:
+        with connection() as conn:
+            notices = list_latest_notices(conn, category=category, limit=limit)
+        return [GptNoticeResult.model_validate(_serialize_gpt_notice(notice)) for notice in notices]
+
+    @app.get("/gpt/restaurants/nearby", response_model=list[GptNearbyRestaurantResult])
+    def gpt_restaurants_nearby(
+        origin: str = Query(description="출발 건물 slug 또는 이름"),
+        at: datetime | None = Query(default=None),
+        category: str | None = Query(default=None),
+        budget_max: int | None = Query(default=None, ge=0),
+        open_now: bool = Query(default=False),
+        walk_minutes: int = Query(default=15, ge=1, le=60),
+        limit: int = Query(default=10, ge=1, le=50),
+    ) -> list[GptNearbyRestaurantResult]:
+        with connection() as conn:
+            try:
+                restaurants = find_nearby_restaurants(
+                    conn,
+                    origin=origin,
+                    at=at,
+                    category=category,
+                    budget_max=budget_max,
+                    open_now=open_now,
+                    walk_minutes=walk_minutes,
+                    limit=limit,
+                )
+            except NotFoundError as exc:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return [
+            GptNearbyRestaurantResult.model_validate(
+                _serialize_gpt_nearby_restaurant(restaurant)
+            )
+            for restaurant in restaurants
+        ]
 
     @app.get("/places", response_model=list[Place])
     def places(

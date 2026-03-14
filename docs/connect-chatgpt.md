@@ -25,18 +25,21 @@
 
 ChatGPT의 `chatgpt.com/g/...` 링크를 만들고 싶다면 MCP connector 대신 GPT Builder의 `Actions`를 사용합니다. 다만 제품의 기본 표면은 MCP이고, GPT는 그 위에 얹는 공개 포장층으로 생각하면 됩니다.
 
-- Actions schema URL: `https://your-public-api-url/gpt-actions-openapi.json`
+- Actions schema URL: `https://your-public-api-url/gpt-actions-openapi-v2.json`
 - Privacy Policy URL: `https://your-public-api-url/privacy`
 - 인증: `None`
-- 추천 endpoint 집합: 장소, 과목, 공지, 주변 식당, 교통 안내
+- 추천 endpoint 집합: GPT 전용 요약 endpoint 3개
+  - `/gpt/places`
+  - `/gpt/notices`
+  - `/gpt/restaurants/nearby`
+- 기존 `gpt-actions-openapi.json`은 회귀용으로 유지되지만, Shared GPT는 v2 schema를 기본으로 사용
 
 ## 연결 후 바로 해볼 질문
 
 - `성심교정 중앙도서관 위치 알려줘`
-- `2026년 1학기 자료구조 과목 찾아줘`
+- `최신 장학 공지 3개 보여줘`
 - `중앙도서관 근처에서 걸어서 10분 안쪽 밥집 추천해줘`
 - `최신 장학 공지 보여줘`
-- `성심교정 지하철 오는 길 알려줘`
 
 ## 기대 동작
 
