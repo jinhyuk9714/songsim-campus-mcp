@@ -77,6 +77,38 @@ def test_mcp_profile_tools_share_timetable_service_data(app_env):
                     "raw_schedule": "월7~8(K201)",
                     "source_tag": "test",
                     "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "year": 2026,
+                    "semester": 1,
+                    "code": "CSE201",
+                    "title": "컴정 1학년 프로젝트입문",
+                    "professor": "테스트교수",
+                    "department": "컴퓨터정보공학부",
+                    "section": "02",
+                    "day_of_week": "수",
+                    "period_start": 4,
+                    "period_end": 5,
+                    "room": "K202",
+                    "raw_schedule": "수4~5(K202)",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "year": 2026,
+                    "semester": 1,
+                    "code": "CSE201",
+                    "title": "컴정 1학년 프로젝트입문",
+                    "professor": "테스트교수",
+                    "department": "컴퓨터정보공학부",
+                    "section": "02",
+                    "day_of_week": "수",
+                    "period_start": 4,
+                    "period_end": 5,
+                    "room": "K202",
+                    "raw_schedule": "수4~5(K202)",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
                 }
             ],
         )
@@ -128,6 +160,22 @@ def test_mcp_profile_personalization_tools_share_service_data(app_env):
                     "raw_schedule": "화3~4(K201)",
                     "source_tag": "test",
                     "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "year": 2026,
+                    "semester": 1,
+                    "code": "CSE201",
+                    "title": "컴정 1학년 프로젝트입문",
+                    "professor": "테스트교수",
+                    "department": "컴퓨터정보공학부",
+                    "section": "02",
+                    "day_of_week": "수",
+                    "period_start": 4,
+                    "period_end": 5,
+                    "room": "K202",
+                    "raw_schedule": "수4~5(K202)",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
                 }
             ],
         )
@@ -164,6 +212,7 @@ def test_mcp_profile_personalization_tools_share_service_data(app_env):
     assert updated_payload['department'] == '컴퓨터정보공학부'
     assert interests_payload['tags'] == ['scholarship', 'language']
     assert course_payload['course']['code'] == 'CSE201'
+    assert course_payload['course']['section'] == '02'
     assert course_payload['matched_reasons'] == ['department:컴퓨터정보공학부', 'student_year:1']
 
 

@@ -27,6 +27,7 @@
 - [x] 관심 공지 필터링
 - [x] 식사/동선 추천
 - [x] 학과/학년/관심사 기반 개인화
+- [x] 공지 relevance 정렬 + 과목 대표 분반 추천
 
 ## Phase 5 - Production hardening
 - [x] 식당 캐시 계층

@@ -59,6 +59,7 @@ FACILITIES_SOURCE_URL = "https://www.catholic.ac.kr/ko/campuslife/restaurant.do"
 TRANSPORT_SOURCE_URL = "https://www.catholic.ac.kr/ko/about/location_songsim.do"
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 CAMPUS_WALK_GRAPH_PATH = DATA_DIR / "campus_walk_graph.json"
+PERSONALIZATION_RULES_PATH = DATA_DIR / "personalization_rules.json"
 SYNC_DATASET_TABLES = ("places", "courses", "notices", "transport_guides")
 ADMIN_SYNC_TARGETS = {
     "snapshot",
@@ -70,32 +71,6 @@ ADMIN_SYNC_TARGETS = {
     "transport_guides",
 }
 ALLOWED_ADMISSION_TYPES = {"general", "freshman", "transfer", "exchange"}
-ALLOWED_PROFILE_INTERESTS = {
-    "scholarship",
-    "internship",
-    "employment",
-    "graduation",
-    "exchange",
-    "startup",
-    "language",
-    "volunteer",
-}
-INTEREST_KEYWORDS = {
-    "scholarship": ["장학", "장학금", "장학생", "scholarship"],
-    "internship": ["인턴", "인턴십", "현장실습", "internship"],
-    "employment": ["취업", "채용", "진로", "커리어", "employment"],
-    "graduation": ["졸업", "졸업예정", "졸업요건", "graduation"],
-    "exchange": ["교환학생", "파견", "exchange"],
-    "startup": ["창업", "스타트업", "startup"],
-    "language": ["어학", "영어", "토익", "토플", "language"],
-    "volunteer": ["봉사", "사회공헌", "volunteer"],
-}
-ADMISSION_TYPE_KEYWORDS = {
-    "general": [],
-    "freshman": ["신입생", "새내기"],
-    "transfer": ["편입", "편입생"],
-    "exchange": ["교환학생", "파견학생"],
-}
 CLASS_PERIODS = [
     (1, "09:00", "09:50"),
     (2, "10:00", "10:50"),
@@ -427,10 +402,7 @@ def _normalize_interest_tags(tags: list[str]) -> list[str]:
 def _student_year_keywords(student_year: int | None) -> list[str]:
     if student_year is None:
         return []
-    keywords = [f"{student_year}학년"]
-    if student_year == 1:
-        keywords.append("신입생")
-    return keywords
+    return list(_load_personalization_rules()["student_year_keywords"].get(student_year, []))
 
 
 def _joined_notice_text(item: dict[str, Any]) -> str:
@@ -450,14 +422,16 @@ def _joined_course_text(course: Course) -> str:
     ).lower()
 
 
-def _sort_matched_notices(items: list[MatchedNotice]) -> list[MatchedNotice]:
-    return sorted(
+def _sort_matched_notices(items: list[tuple[int, MatchedNotice]]) -> list[MatchedNotice]:
+    ranked = sorted(
         items,
         key=lambda item: (
-            -date.fromisoformat(item.notice.published_at).toordinal(),
-            item.notice.title,
+            -item[0],
+            -date.fromisoformat(item[1].notice.published_at).toordinal(),
+            item[1].notice.title,
         ),
     )
+    return [item for _, item in ranked]
 
 
 def _normalize_facility_name(value: str) -> str:
@@ -822,6 +796,106 @@ def _dedupe_reasons(reasons: list[str]) -> list[str]:
     return result
 
 
+def _normalize_match_text(value: str) -> str:
+    return "".join(char for char in value.lower() if not char.isspace())
+
+
+def _validate_rules_keyword_map(
+    payload: object,
+    *,
+    label: str,
+    allow_empty_values: bool = True,
+) -> dict[str, list[str]]:
+    if not isinstance(payload, dict):
+        raise ValueError(f"{label} must be an object")
+    result: dict[str, list[str]] = {}
+    for raw_key, raw_values in payload.items():
+        key = str(raw_key).strip()
+        if not key:
+            raise ValueError(f"{label} keys must be non-empty strings")
+        if not isinstance(raw_values, list):
+            raise ValueError(f"{label}.{key} must be a list")
+        values = _unique_stripped([str(item) for item in raw_values if str(item).strip()])
+        if not values and not allow_empty_values:
+            raise ValueError(f"{label}.{key} must include at least one keyword")
+        result[key] = values
+    return result
+
+
+def _parse_personalization_rules(payload: dict[str, Any]) -> dict[str, Any]:
+    departments = _validate_rules_keyword_map(
+        payload.get("departments"),
+        label="departments",
+        allow_empty_values=False,
+    )
+    student_year_keywords_raw = _validate_rules_keyword_map(
+        payload.get("student_year_keywords"),
+        label="student_year_keywords",
+        allow_empty_values=False,
+    )
+    student_year_keywords: dict[int, list[str]] = {}
+    for raw_year, keywords in student_year_keywords_raw.items():
+        if not raw_year.isdigit():
+            raise ValueError("student_year_keywords keys must be integers")
+        year = int(raw_year)
+        if year < 1 or year > 6:
+            raise ValueError("student_year_keywords keys must be between 1 and 6")
+        student_year_keywords[year] = keywords
+
+    admission_type_keywords = _validate_rules_keyword_map(
+        payload.get("admission_type_keywords"),
+        label="admission_type_keywords",
+        allow_empty_values=True,
+    )
+    if set(admission_type_keywords) != ALLOWED_ADMISSION_TYPES:
+        raise ValueError(
+            "admission_type_keywords must define general, freshman, transfer, exchange"
+        )
+
+    interests = _validate_rules_keyword_map(
+        payload.get("interests"),
+        label="interests",
+        allow_empty_values=False,
+    )
+    return {
+        "departments": departments,
+        "student_year_keywords": student_year_keywords,
+        "admission_type_keywords": admission_type_keywords,
+        "interests": interests,
+    }
+
+
+@lru_cache(maxsize=1)
+def _load_personalization_rules() -> dict[str, Any]:
+    payload = json.loads(PERSONALIZATION_RULES_PATH.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("personalization rules must be a JSON object")
+    return _parse_personalization_rules(payload)
+
+
+_DEFAULT_PERSONALIZATION_RULES = _load_personalization_rules()
+STUDENT_YEAR_KEYWORDS = _DEFAULT_PERSONALIZATION_RULES["student_year_keywords"]
+ADMISSION_TYPE_KEYWORDS = _DEFAULT_PERSONALIZATION_RULES["admission_type_keywords"]
+INTEREST_KEYWORDS = _DEFAULT_PERSONALIZATION_RULES["interests"]
+ALLOWED_PROFILE_INTERESTS = set(INTEREST_KEYWORDS)
+
+
+def _department_aliases(department: str | None) -> list[str]:
+    if not department:
+        return []
+    rules = _load_personalization_rules()
+    normalized = _normalize_match_text(department)
+    for canonical, aliases in rules["departments"].items():
+        pool = [canonical, *aliases]
+        if normalized in {_normalize_match_text(item) for item in pool}:
+            return _unique_stripped(pool)
+    return [department]
+
+
+def _contains_keyword(text: str, keyword: str) -> bool:
+    return _normalize_match_text(keyword) in _normalize_match_text(text)
+
+
 def _profile_notice_context_is_empty(
     profile: Profile,
     preferences: ProfileNoticePreferences,
@@ -839,60 +913,86 @@ def _profile_notice_context_is_empty(
     )
 
 
-def _notice_match_reasons(
+def _notice_match_result(
     item: dict[str, Any],
     *,
     preferences: ProfileNoticePreferences,
     profile: Profile,
     interests: ProfileInterests,
-) -> list[str]:
+) -> tuple[list[str], int]:
     reasons: list[str] = []
+    score = 0
     category = item["category"].lower()
     labels = [label.lower() for label in item.get("labels", [])]
     text = _joined_notice_text(item)
 
+    category_matched = False
     for raw_category in preferences.categories:
         normalized = raw_category.lower()
         if normalized == category or normalized in labels:
             reasons.append(f"category:{raw_category}")
+            category_matched = True
+    if category_matched:
+        score += 4
 
+    keyword_matched = False
     for keyword in preferences.keywords:
-        if keyword.lower() in text:
+        if _contains_keyword(text, keyword):
             reasons.append(f"keyword:{keyword}")
+            keyword_matched = True
+    if keyword_matched:
+        score += 3
 
-    if profile.department and profile.department.lower() in text:
+    if profile.department and any(
+        _contains_keyword(text, alias) for alias in _department_aliases(profile.department)
+    ):
         reasons.append(f"department:{profile.department}")
+        score += 3
 
     for keyword in _student_year_keywords(profile.student_year):
-        if keyword.lower() in text:
+        if _contains_keyword(text, keyword):
             reasons.append(f"student_year:{profile.student_year}")
+            score += 2
             break
 
     if profile.admission_type:
         for keyword in ADMISSION_TYPE_KEYWORDS[profile.admission_type]:
-            if keyword.lower() in text:
+            if _contains_keyword(text, keyword):
                 reasons.append(f"admission_type:{profile.admission_type}")
+                score += 2
                 break
 
+    interest_matched = False
     for tag in interests.tags:
-        if any(keyword.lower() in text for keyword in INTEREST_KEYWORDS[tag]):
+        if any(_contains_keyword(text, keyword) for keyword in INTEREST_KEYWORDS[tag]):
             reasons.append(f"interest:{tag}")
+            interest_matched = True
+    if interest_matched:
+        score += 2
 
-    return _dedupe_reasons(reasons)
+    return _dedupe_reasons(reasons), score
 
 
-def _course_match_reasons(course: Course, *, profile: Profile) -> list[str]:
+def _course_match_result(course: Course, *, profile: Profile) -> tuple[list[str], int]:
     reasons: list[str] = []
+    score = 0
     text = _joined_course_text(course)
     if profile.department:
-        department = profile.department.lower()
-        if department in (course.department or "").lower() or department in course.title.lower():
+        aliases = _department_aliases(profile.department)
+        in_department = any(_contains_keyword(course.department or "", alias) for alias in aliases)
+        in_title = any(_contains_keyword(course.title, alias) for alias in aliases)
+        if in_department or in_title:
             reasons.append(f"department:{profile.department}")
+        if in_department:
+            score += 5
+        if in_title:
+            score += 3
     for keyword in _student_year_keywords(profile.student_year):
-        if keyword.lower() in text:
+        if _contains_keyword(text, keyword):
             reasons.append(f"student_year:{profile.student_year}")
+            score += 2
             break
-    return reasons
+    return _dedupe_reasons(reasons), score
 
 
 def get_class_periods() -> list[Period]:
@@ -1283,19 +1383,22 @@ def list_profile_notices(
     if _profile_notice_context_is_empty(profile, preferences, interests):
         raise InvalidRequestError("Profile has no personalization context.")
 
-    matched: list[MatchedNotice] = []
-    for item in repo.list_notices(conn, limit=max(limit * 5, 100)):
-        reasons = _notice_match_reasons(
+    matched: list[tuple[int, MatchedNotice]] = []
+    for item in repo.list_notices(conn, limit=max(limit * 20, 200)):
+        reasons, score = _notice_match_result(
             item,
             preferences=preferences,
             profile=profile,
             interests=interests,
         )
-        if reasons:
+        if reasons and score > 0:
             matched.append(
-                MatchedNotice(
-                    notice=Notice.model_validate(item),
-                    matched_reasons=reasons,
+                (
+                    score,
+                    MatchedNotice(
+                        notice=Notice.model_validate(item),
+                        matched_reasons=reasons,
+                    ),
                 )
             )
     return _sort_matched_notices(matched)[:limit]
@@ -1317,8 +1420,8 @@ def get_profile_course_recommendations(
     resolved_year, resolved_semester = _current_year_and_semester()
     selected_year = year or resolved_year
     selected_semester = semester or resolved_semester
-    excluded = {
-        (item["code"], item["section"])
+    excluded_codes = {
+        item["code"]
         for item in repo.list_profile_courses(
             conn,
             profile_id,
@@ -1326,7 +1429,7 @@ def get_profile_course_recommendations(
             semester=selected_semester,
         )
     }
-    matched: list[MatchedCourse] = []
+    grouped: dict[str, tuple[int, MatchedCourse]] = {}
     for item in repo.search_courses(
         conn,
         query=query,
@@ -1335,22 +1438,34 @@ def get_profile_course_recommendations(
         limit=max(limit * 20, 500),
     ):
         course = Course.model_validate(item)
-        if (course.code, course.section or "") in excluded:
+        if course.code in excluded_codes:
             continue
-        reasons = _course_match_reasons(course, profile=profile)
-        if not reasons:
+        reasons, score = _course_match_result(course, profile=profile)
+        if not reasons or score <= 0:
             continue
-        matched.append(MatchedCourse(course=course, matched_reasons=reasons))
+        current = grouped.get(course.code)
+        candidate = (score, MatchedCourse(course=course, matched_reasons=reasons))
+        if current is None:
+            grouped[course.code] = candidate
+            continue
+        current_score, current_item = current
+        current_section = current_item.course.section or ""
+        candidate_section = course.section or ""
+        if (
+            score > current_score
+            or (
+                score == current_score
+                and (candidate_section, course.title, course.code)
+                < (current_section, current_item.course.title, current_item.course.code)
+            )
+        ):
+            grouped[course.code] = candidate
 
-    matched.sort(
-        key=lambda item: (
-            0 if any(reason.startswith("department:") for reason in item.matched_reasons) else 1,
-            0 if any(reason.startswith("student_year:") for reason in item.matched_reasons) else 1,
-            item.course.title,
-            item.course.code,
-        )
+    matched = sorted(
+        grouped.values(),
+        key=lambda item: (-item[0], item[1].course.title, item[1].course.code),
     )
-    return matched[:limit]
+    return [item for _, item in matched[:limit]]
 
 
 def get_profile_meal_recommendations(

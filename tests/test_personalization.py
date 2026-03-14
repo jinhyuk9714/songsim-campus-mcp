@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime
+from pathlib import Path
 
 import pytest
 
@@ -19,8 +21,12 @@ from songsim_campus.schemas import (
 )
 from songsim_campus.seed import seed_demo
 from songsim_campus.services import (
+    ADMISSION_TYPE_KEYWORDS,
+    INTEREST_KEYWORDS,
+    STUDENT_YEAR_KEYWORDS,
     InvalidRequestError,
     KakaoPlace,
+    _load_personalization_rules,
     create_profile,
     get_place,
     get_profile_course_recommendations,
@@ -223,14 +229,14 @@ def test_profile_notices_match_profile_context_and_return_reasons(app_env):
                     "academic",
                     summary="수강신청 일정 안내",
                     labels=["학사"],
-                    published_at="2026-03-11",
+                    published_at="2026-03-12",
                 ),
                 _notice_row(
                     "커리어 특강 안내",
                     "event",
                     summary="진로와 자기소개서 특강",
                     labels=["특강"],
-                    published_at="2026-03-12",
+                    published_at="2026-03-13",
                 ),
                 _notice_row(
                     "컴퓨터정보공학부 신입생 장학금 안내",
@@ -254,8 +260,8 @@ def test_profile_notices_match_profile_context_and_return_reasons(app_env):
 
     assert [item.notice.title for item in notices] == [
         "컴퓨터정보공학부 신입생 장학금 안내",
-        "커리어 특강 안내",
         "2026학년도 1학기 수강신청 안내",
+        "커리어 특강 안내",
     ]
     assert notices[0].matched_reasons == [
         "department:컴퓨터정보공학부",
@@ -263,11 +269,49 @@ def test_profile_notices_match_profile_context_and_return_reasons(app_env):
         "admission_type:exchange",
         "interest:scholarship",
     ]
-    assert notices[1].matched_reasons == ["keyword:자기소개서"]
-    assert notices[2].matched_reasons == ["category:academic"]
+    assert notices[1].matched_reasons == ["category:academic"]
+    assert notices[2].matched_reasons == ["keyword:자기소개서"]
 
 
-def test_profile_course_recommendations_prioritize_department_and_exclude_timetable(app_env):
+def test_profile_notice_scoring_does_not_double_count_same_reason_type(app_env):
+    init_db()
+    with connection() as conn:
+        profile = create_profile(conn)
+        set_profile_notice_preferences(
+            conn,
+            profile.id,
+            ProfileNoticePreferences(categories=["academic"], keywords=[]),
+        )
+        replace_notices(
+            conn,
+            [
+                _notice_row(
+                    "학사 안내 A",
+                    "academic",
+                    summary="학사 공지",
+                    labels=["academic", "academic"],
+                    published_at="2026-03-12",
+                ),
+                _notice_row(
+                    "학사 안내 B",
+                    "event",
+                    summary="일반 행사",
+                    labels=["academic"],
+                    published_at="2026-03-13",
+                ),
+            ],
+        )
+
+        notices = list_profile_notices(conn, profile.id)
+
+    assert [item.notice.title for item in notices] == ["학사 안내 B", "학사 안내 A"]
+    assert notices[0].matched_reasons == ["category:academic"]
+    assert notices[1].matched_reasons == ["category:academic"]
+
+
+def test_profile_course_recommendations_group_sections_pick_representative_and_exclude_code(
+    app_env,
+):
     init_db()
     seed_demo(force=True)
     with connection() as conn:
@@ -289,6 +333,15 @@ def test_profile_course_recommendations_prioritize_department_and_exclude_timeta
                     period_start=3,
                     period_end=4,
                     room="K201",
+                ),
+                _course_row(
+                    code="CSE102",
+                    title="컴정 1학년 프로젝트입문",
+                    day="수",
+                    period_start=5,
+                    period_end=6,
+                    room="K202",
+                    section="02",
                 ),
                 _course_row(
                     code="HIS101",
@@ -330,7 +383,95 @@ def test_profile_course_recommendations_prioritize_department_and_exclude_timeta
             )
 
     assert [item.course.code for item in items] == ["CSE102"]
+    assert items[0].course.section == "02"
     assert items[0].matched_reasons == ["department:컴퓨터정보공학부", "student_year:1"]
+
+
+def test_profile_course_recommendations_apply_query_before_personalized_ranking(app_env):
+    init_db()
+    seed_demo(force=True)
+    with connection() as conn:
+        replace_courses(
+            conn,
+            [
+                _course_row(
+                    code="CSE201",
+                    title="컴정 1학년 프로젝트입문",
+                    day="월",
+                    period_start=3,
+                    period_end=4,
+                    room="K201",
+                    section="01",
+                ),
+                _course_row(
+                    code="CSE301",
+                    title="컴퓨터정보공학부 세미나",
+                    day="화",
+                    period_start=5,
+                    period_end=6,
+                    room="K202",
+                    section="01",
+                ),
+            ],
+        )
+        profile = create_profile(conn)
+        update_profile(
+            conn,
+            profile.id,
+            ProfileUpdateRequest(department="컴퓨터정보공학부", student_year=1),
+        )
+
+        items = get_profile_course_recommendations(
+            conn,
+            profile.id,
+            year=2026,
+            semester=1,
+            query="프로젝트",
+        )
+
+    assert [item.course.code for item in items] == ["CSE201"]
+
+
+def test_profile_personalization_rules_file_validates_contract(tmp_path: Path, monkeypatch):
+    broken = tmp_path / "personalization_rules.json"
+    broken.write_text(
+        json.dumps(
+            {
+                "departments": {"컴퓨터정보공학부": "컴정"},
+                "student_year_keywords": {"1": ["1학년"]},
+                "admission_type_keywords": ADMISSION_TYPE_KEYWORDS,
+                "interests": INTEREST_KEYWORDS,
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("songsim_campus.services.PERSONALIZATION_RULES_PATH", broken)
+    _load_personalization_rules.cache_clear()
+
+    with pytest.raises(ValueError):
+        _load_personalization_rules()
+
+    valid = tmp_path / "personalization_rules_valid.json"
+    valid.write_text(
+        json.dumps(
+            {
+                "departments": {"컴퓨터정보공학부": ["컴정", "컴퓨터정보공학부"]},
+                "student_year_keywords": STUDENT_YEAR_KEYWORDS,
+                "admission_type_keywords": ADMISSION_TYPE_KEYWORDS,
+                "interests": INTEREST_KEYWORDS,
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("songsim_campus.services.PERSONALIZATION_RULES_PATH", valid)
+    _load_personalization_rules.cache_clear()
+
+    loaded = _load_personalization_rules()
+
+    assert "컴퓨터정보공학부" in loaded["departments"]
+    _load_personalization_rules.cache_clear()
 
 
 def test_meal_recommendations_use_next_course_destination_when_room_maps_to_place(app_env):

@@ -93,6 +93,22 @@ def test_profile_patch_interests_and_course_recommendations_endpoints(client):
                     "raw_schedule": "화3~4(K201)",
                     "source_tag": "test",
                     "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "year": 2026,
+                    "semester": 1,
+                    "code": "CSE201",
+                    "title": "컴정 1학년 프로젝트입문",
+                    "professor": "테스트교수",
+                    "department": "컴퓨터정보공학부",
+                    "section": "02",
+                    "day_of_week": "수",
+                    "period_start": 4,
+                    "period_end": 5,
+                    "room": "K202",
+                    "raw_schedule": "수4~5(K202)",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
                 }
             ],
         )
@@ -106,6 +122,16 @@ def test_profile_patch_interests_and_course_recommendations_endpoints(client):
                     "summary": "장학 신청 공지",
                     "labels": ["컴퓨터정보공학부", "신입생"],
                     "source_url": "https://example.edu/notices/2",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "title": "자기소개서 특강 안내",
+                    "category": "event",
+                    "published_at": "2026-03-13",
+                    "summary": "커리어 자기소개서 첨삭 특강",
+                    "labels": ["특강"],
+                    "source_url": "https://example.edu/notices/3",
                     "source_tag": "test",
                     "last_synced_at": "2026-03-13T09:00:00+09:00",
                 }
@@ -147,8 +173,10 @@ def test_profile_patch_interests_and_course_recommendations_endpoints(client):
         "admission_type:freshman",
         "interest:scholarship",
     ]
+    assert notices_response.json()[0]["notice"]["title"] == "컴퓨터정보공학부 신입생 장학금 안내"
     assert courses_response.status_code == 200
     assert courses_response.json()[0]["course"]["code"] == "CSE201"
+    assert courses_response.json()[0]["course"]["section"] == "02"
 
 
 def test_profile_personalization_endpoints_validate_payloads(client):
