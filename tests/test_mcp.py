@@ -354,6 +354,7 @@ def test_mcp_public_readonly_mode_registers_only_read_only_tools(app_env, monkey
         "tool_get_place",
         "tool_search_courses",
         "tool_get_class_periods",
+        "tool_list_estimated_empty_classrooms",
         "tool_find_nearby_restaurants",
         "tool_list_latest_notices",
         "tool_list_transport_guides",
@@ -383,6 +384,7 @@ def test_mcp_public_readonly_mode_registers_prompts_and_extended_resources(app_e
         "prompt_find_place",
         "prompt_search_courses",
         "prompt_latest_notices",
+        "prompt_find_empty_classrooms",
         "prompt_find_nearby_restaurants",
         "prompt_transport_guide",
     }
@@ -433,6 +435,8 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
     assert "slug" in tools["tool_get_place"]["description"]
     assert "과목명" in tools["tool_search_courses"]["description"]
     assert "교수" in tools["tool_search_courses"]["description"]
+    assert "예상 공실" in tools["tool_list_estimated_empty_classrooms"]["description"]
+    assert "니콜스관" in tools["tool_list_estimated_empty_classrooms"]["description"]
     assert "출발지" in tools["tool_find_nearby_restaurants"]["description"]
     assert "alias" in tools["tool_find_nearby_restaurants"]["description"]
     assert "예산" in tools["tool_find_nearby_restaurants"]["description"]
@@ -460,6 +464,30 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
 def test_mcp_public_prompts_explain_tool_selection_flow(app_env, monkeypatch):
     pytest.importorskip('mcp.server.fastmcp')
     monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+
+def test_mcp_public_empty_classroom_prompt_explains_estimate_flow(app_env, monkeypatch):
+    pytest.importorskip('mcp.server.fastmcp')
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        prompt = await mcp.get_prompt(
+            "prompt_find_empty_classrooms",
+            {"building": "니콜스관"},
+        )
+        return prompt
+
+    prompt = asyncio.run(main())
+    message = prompt.messages[0].content.text
+
+    assert "tool_list_estimated_empty_classrooms" in message
+    assert "building=니콜스관" in message
+    assert "예상 공실" in message
+    assert "tool_search_places" in message
+
     clear_settings_cache()
 
     async def main():
@@ -498,7 +526,9 @@ def test_mcp_public_usage_and_class_period_resources_are_readable(app_env, monke
 
     assert "read-only" in usage_content
     assert "tool_search_places" in usage_content
+    assert "tool_list_estimated_empty_classrooms" in usage_content
     assert "tool_find_nearby_restaurants" in usage_content
+    assert "예상 공실" in usage_content
     assert "profile" in usage_content
     assert "중도" in usage_content
     assert periods_payload[0]["period"] == 1
@@ -627,6 +657,53 @@ def test_mcp_public_nearby_restaurants_accept_origin_alias(app_env, monkeypatch)
 
     assert alias_payload["name"] == slug_payload["name"]
     assert alias_payload["category_display"] == slug_payload["category_display"]
+
+    clear_settings_cache()
+
+
+def test_mcp_public_empty_classrooms_tool_supports_building_alias(app_env, monkeypatch):
+    pytest.importorskip('mcp.server.fastmcp')
+    init_db()
+    seed_demo(force=True)
+    with connection() as conn:
+        replace_courses(
+            conn,
+            [
+                {
+                    "year": 2026,
+                    "semester": 1,
+                    "code": "CSE332",
+                    "title": "데이터베이스",
+                    "professor": "김가톨",
+                    "department": "컴퓨터정보공학부",
+                    "section": "01",
+                    "day_of_week": "월",
+                    "period_start": 5,
+                    "period_end": 6,
+                    "room": "N201",
+                    "raw_schedule": "월5~6(N201)",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                }
+            ],
+        )
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        result = await mcp.call_tool(
+            'tool_list_estimated_empty_classrooms',
+            {'building': 'N관', 'at': '2026-03-16T10:15:00+09:00'},
+        )
+        return _tool_payloads(result)[0]
+
+    payload = asyncio.run(main())
+
+    assert payload["building"]["slug"] == "nichols-hall"
+    assert payload["estimate_note"].startswith("공식 시간표 기준 예상 공실입니다.")
+    assert payload["items"][0]["room"] == "N201"
+    assert payload["items"][0]["next_occupied_at"] == "2026-03-16T13:00:00+09:00"
 
     clear_settings_cache()
 

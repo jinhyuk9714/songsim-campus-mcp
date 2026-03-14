@@ -9,6 +9,7 @@
 ## 주 사용 시나리오
 
 - 성심교정 장소와 건물 검색
+- 강의동 기준 예상 빈 강의실 조회
 - 개설과목 조회
 - 최신 공지 조회
 - 출발 장소 기준 주변 식당 조회
@@ -19,7 +20,7 @@ Codex에서는 이 MCP가 공개 제품의 기준 표면입니다. HTTP API나 S
 ## 추천 사용 흐름
 
 1. `songsim://usage-guide` resource로 공개 범위를 확인
-2. prompt_find_place / prompt_search_courses / prompt_latest_notices / prompt_find_nearby_restaurants / prompt_transport_guide 중 하나를 먼저 사용
+2. prompt_find_place / prompt_find_empty_classrooms / prompt_search_courses / prompt_latest_notices / prompt_find_nearby_restaurants / prompt_transport_guide 중 하나를 먼저 사용
 3. prompt가 가리키는 tool로 실제 조회
 
 ## 예시 요청
@@ -34,6 +35,7 @@ Codex에서는 이 MCP가 공개 제품의 기준 표면입니다. HTTP API나 S
 - `성심교정 중앙도서관 위치 알려줘`
 - `중도 어디야?`
 - `학생식당 있는 건물 뭐야?`
+- `니콜스관인데 지금 예상 빈 강의실 있어?`
 - `2026년 1학기 객체지향 과목 찾아줘`
 - `김가톨 교수 수업 알려줘`
 - `최신 학사 공지 2개 보여줘`

@@ -47,6 +47,7 @@ from .services import (
     get_profile_interests,
     get_profile_meal_recommendations,
     get_profile_timetable,
+    list_estimated_empty_classrooms,
     list_latest_notices,
     list_profile_notices,
     list_transport_guides,
@@ -228,15 +229,20 @@ def _public_usage_guide() -> str:
                 "then tool_get_place when you know the slug."
             ),
             (
-                "4. Use tool_find_nearby_restaurants for walkable food "
+                "4. Use tool_list_estimated_empty_classrooms for timetable-based "
+                "예상 공실 조회 in a lecture building like 니콜스관 or N관."
+            ),
+            (
+                "5. Use tool_find_nearby_restaurants for walkable food "
                 "recommendations from a campus origin. You can pass a slug, 대표 이름, "
                 "or a clear alias like 중도."
             ),
-            "5. Use tool_list_latest_notices for latest notices; category is optional.",
+            "6. Use tool_list_latest_notices for latest notices; category is optional.",
             "",
             "Example questions:",
             "- 성심교정 중앙도서관 위치 알려줘",
             "- 최신 장학 공지 3개 보여줘",
+            "- 니콜스관인데 지금 예상 빈 강의실 있어?",
             "- 중앙도서관 근처 밥집 추천해줘",
             "- 중도 근처 밥집 추천해줘",
         ]
@@ -421,6 +427,38 @@ def build_mcp():
             )
 
         @mcp.prompt(
+            name="prompt_find_empty_classrooms",
+            description=(
+                "Explain how to find timetable-based estimated empty classrooms in a building."
+            ),
+        )
+        def prompt_find_empty_classrooms(
+            building: Annotated[
+                str,
+                Field(
+                    description=(
+                        "강의실을 확인할 건물 slug, 대표 이름, 또는 alias. "
+                        "예: nichols-hall, 니콜스관, N관"
+                    )
+                ),
+            ],
+            at: Annotated[
+                str | None,
+                Field(description="optional ISO 8601 timestamp for the evaluation time"),
+            ] = None,
+            year: Annotated[int | None, Field(description="optional academic year")] = None,
+            semester: Annotated[int | None, Field(description="optional semester")] = None,
+            limit: Annotated[int, Field(description="최대 결과 수")] = 10,
+        ):
+            return (
+                "Use songsim://usage-guide first if you need the public MCP rules.\n"
+                f"Then call tool_list_estimated_empty_classrooms with building={building}, "
+                f"at={at or '<optional>'}, year={year}, semester={semester}, limit={limit}.\n"
+                "This flow returns timetable-based 예상 공실, not live occupancy.\n"
+                "If the building name is unclear, use tool_search_places first."
+            )
+
+        @mcp.prompt(
             name="prompt_transport_guide",
             description="Explain how to fetch subway or bus transport guidance for Songsim campus.",
         )
@@ -533,6 +571,69 @@ def build_mcp():
     )
     def tool_get_class_periods():
         return [item.model_dump() for item in get_class_periods()]
+
+    @mcp.tool(
+        description=(
+            (
+                "강의동에서 지금 비어 있을 가능성이 높은 강의실을 "
+                "시간표 기준으로 찾을 때 사용합니다. "
+                "building은 slug, 대표 이름, alias(예: 니콜스관, N관)를 받을 수 있습니다. "
+                "결과는 실시간 점유가 아닌 예상 공실이며, 다음 점유 시각을 함께 보여줍니다."
+            )
+            if public_readonly
+            else "시간표 기준으로 특정 건물의 예상 빈 강의실을 찾습니다."
+        ),
+        meta=tool_meta,
+    )
+    def tool_list_estimated_empty_classrooms(
+        building: Annotated[
+            str,
+            Field(
+                description=(
+                    "강의실을 확인할 건물 slug, 대표 이름, 또는 alias. "
+                    "예: nichols-hall, 니콜스관, N관"
+                )
+            ),
+        ],
+        at: Annotated[
+            str | None,
+            Field(description="기준 시각 ISO 8601 문자열. 없으면 현재 시각을 사용합니다."),
+        ] = None,
+        year: Annotated[
+            int | None,
+            Field(description="학년도. 없으면 기준 시각의 현재 학기를 사용합니다."),
+        ] = None,
+        semester: Annotated[
+            int | None,
+            Field(description="학기. 없으면 기준 시각의 현재 학기를 사용합니다."),
+        ] = None,
+        limit: Annotated[int, Field(description="최대 결과 수. 기본값은 10입니다.")] = 10,
+    ):
+        with connection() as conn:
+            try:
+                from datetime import datetime
+
+                parsed_at = datetime.fromisoformat(at) if at else None
+                payload = list_estimated_empty_classrooms(
+                    conn,
+                    building=building,
+                    at=parsed_at,
+                    year=year,
+                    semester=semester,
+                    limit=limit,
+                )
+                return payload.model_dump()
+            except NotFoundError as exc:
+                if public_readonly:
+                    return _serialize_public_error(exc)
+                return {"error": str(exc)}
+            except ValueError:
+                exc = InvalidRequestError(
+                    "Invalid 'at' timestamp. Use ISO 8601, for example 2026-03-16T10:15:00+09:00."
+                )
+                if public_readonly:
+                    return _serialize_public_error(exc)
+                return {"error": str(exc)}
 
     @mcp.tool(
         description=(

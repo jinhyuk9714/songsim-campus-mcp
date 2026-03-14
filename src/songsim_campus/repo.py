@@ -323,6 +323,27 @@ def search_courses(
     return [_normalize_record(dict(row)) for row in rows]
 
 
+def list_courses_with_rooms(
+    conn: psycopg.Connection,
+    *,
+    year: int,
+    semester: int,
+) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT *
+        FROM courses
+        WHERE year = %s
+          AND semester = %s
+          AND room IS NOT NULL
+          AND BTRIM(room) <> ''
+        ORDER BY room, day_of_week, period_start, title, code, section
+        """,
+        (year, semester),
+    ).fetchall()
+    return [_normalize_record(dict(row)) for row in rows]
+
+
 def list_restaurants(conn: psycopg.Connection) -> list[dict[str, Any]]:
     rows = conn.execute("SELECT * FROM restaurants ORDER BY name").fetchall()
     return [_row_to_dict("restaurants", row) for row in rows]

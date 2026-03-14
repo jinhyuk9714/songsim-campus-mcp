@@ -219,6 +219,7 @@ uv run songsim-mcp --transport streamable-http
 ```bash
 curl 'http://127.0.0.1:8000/places?query=도서관'
 curl 'http://127.0.0.1:8000/courses?query=객체지향&year=2026&semester=1'
+curl 'http://127.0.0.1:8000/classrooms/empty?building=%EB%8B%88%EC%BD%9C%EC%8A%A4%EA%B4%80&at=2026-03-16T10:15:00%2B09:00'
 curl 'http://127.0.0.1:8000/restaurants/nearby?origin=central-library&budget_max=10000&walk_minutes=15'
 curl 'http://127.0.0.1:8000/restaurants/nearby?origin=central-library&open_now=true&at=2026-03-15T11:00:00%2B09:00'
 curl 'http://127.0.0.1:8000/transport?mode=subway'
@@ -234,6 +235,19 @@ SONGSIM_ADMIN_ENABLED=true uv run songsim-api
 # 관측성 JSON은 http://127.0.0.1:8000/admin/observability.json
 # 자동화를 켜면 같은 앱 안에서 snapshot sync + cache cleanup이 주기적으로 실행됨
 ```
+
+## 대표 MCP 테스트 질문
+
+- `성심교정 중앙도서관 위치 알려줘`
+- `중도 어디야?`
+- `니콜스관인데 지금 예상 빈 강의실 있어?`
+- `N관 기준으로 오늘 비어 있는 강의실 보여줘`
+- `2026년 1학기 객체지향 과목 찾아줘`
+- `김가톨 교수 수업 알려줘`
+- `최신 학사 공지 2개 보여줘`
+- `장학 공지 최신순으로 3개 보여줘`
+- `중앙도서관 근처 한식만 찾아줘`
+- `성심교정 지하철 오는 길 알려줘`
 
 ## 이미 들어있는 도메인 모델
 

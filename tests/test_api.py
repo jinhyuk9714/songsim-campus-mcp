@@ -6,6 +6,7 @@ from songsim_campus import services
 from songsim_campus.api import create_app
 from songsim_campus.db import connection
 from songsim_campus.repo import (
+    replace_courses,
     replace_notices,
     replace_restaurants,
     update_place_opening_hours,
@@ -134,12 +135,17 @@ def test_public_readonly_mode_exposes_gpt_actions_openapi_v2(app_env, monkeypatc
         "/gpt/places",
         "/gpt/notices",
         "/gpt/restaurants/nearby",
+        "/gpt/classrooms/empty",
     }
     assert payload["paths"]["/gpt/places"]["get"]["operationId"] == "searchPlacesForGpt"
     assert payload["paths"]["/gpt/notices"]["get"]["operationId"] == "listLatestNoticesForGpt"
     assert (
         payload["paths"]["/gpt/restaurants/nearby"]["get"]["operationId"]
         == "findNearbyRestaurantsForGpt"
+    )
+    assert (
+        payload["paths"]["/gpt/classrooms/empty"]["get"]["operationId"]
+        == "listEstimatedEmptyClassroomsForGpt"
     )
 
 
@@ -219,6 +225,137 @@ def test_gpt_nearby_restaurants_endpoint_returns_compact_summary_payload(client)
         "open_now": None,
         "location_hint": "도서관 근처 데모 양식집",
     }
+
+
+def test_classrooms_empty_endpoint_returns_estimated_empty_rooms_for_building_alias(client):
+    with connection() as conn:
+        replace_courses(
+            conn,
+            [
+                {
+                    "year": 2026,
+                    "semester": 1,
+                    "code": "CSE110",
+                    "title": "컴퓨팅사고",
+                    "professor": "테스트교수",
+                    "department": "컴퓨터정보공학부",
+                    "section": "01",
+                    "day_of_week": "월",
+                    "period_start": 2,
+                    "period_end": 3,
+                    "room": "N101",
+                    "raw_schedule": "월2~3(N101)",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "year": 2026,
+                    "semester": 1,
+                    "code": "CSE332",
+                    "title": "데이터베이스",
+                    "professor": "김가톨",
+                    "department": "컴퓨터정보공학부",
+                    "section": "01",
+                    "day_of_week": "월",
+                    "period_start": 5,
+                    "period_end": 6,
+                    "room": "N201",
+                    "raw_schedule": "월5~6(N201)",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "year": 2026,
+                    "semester": 1,
+                    "code": "CSE210",
+                    "title": "알고리즘",
+                    "professor": "박성심",
+                    "department": "컴퓨터정보공학부",
+                    "section": "01",
+                    "day_of_week": "화",
+                    "period_start": 1,
+                    "period_end": 2,
+                    "room": "N301",
+                    "raw_schedule": "화1~2(N301)",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+
+    response = client.get(
+        "/classrooms/empty",
+        params={"building": "N관", "at": "2026-03-16T10:15:00+09:00", "limit": 5},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["building"]["slug"] == "nichols-hall"
+    assert payload["building"]["name"] == "니콜스관"
+    assert payload["year"] == 2026
+    assert payload["semester"] == 1
+    assert payload["estimate_note"].startswith("공식 시간표 기준 예상 공실입니다.")
+    assert [item["room"] for item in payload["items"]] == ["N301", "N201"]
+    assert payload["items"][0]["available_now"] is True
+    assert payload["items"][0]["next_occupied_at"] is None
+    assert payload["items"][1]["next_occupied_at"] == "2026-03-16T13:00:00+09:00"
+    assert "데이터베이스" in (payload["items"][1]["next_course_summary"] or "")
+
+
+def test_classrooms_empty_endpoint_rejects_non_classroom_place(client):
+    response = client.get(
+        "/classrooms/empty",
+        params={"building": "정문", "at": "2026-03-16T10:15:00+09:00"},
+    )
+
+    assert response.status_code == 400
+    assert "강의실 기반 건물" in response.json()["detail"]
+
+
+def test_classrooms_empty_endpoint_returns_404_for_missing_building(client):
+    response = client.get(
+        "/classrooms/empty",
+        params={"building": "없는건물", "at": "2026-03-16T10:15:00+09:00"},
+    )
+
+    assert response.status_code == 404
+
+
+def test_gpt_empty_classrooms_endpoint_returns_estimate_payload(client):
+    with connection() as conn:
+        replace_courses(
+            conn,
+            [
+                {
+                    "year": 2026,
+                    "semester": 1,
+                    "code": "CSE332",
+                    "title": "데이터베이스",
+                    "professor": "김가톨",
+                    "department": "컴퓨터정보공학부",
+                    "section": "01",
+                    "day_of_week": "월",
+                    "period_start": 5,
+                    "period_end": 6,
+                    "room": "N201",
+                    "raw_schedule": "월5~6(N201)",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                }
+            ],
+        )
+
+    response = client.get(
+        "/gpt/classrooms/empty",
+        params={"building": "니콜스", "at": "2026-03-16T10:15:00+09:00"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["building"]["slug"] == "nichols-hall"
+    assert payload["items"][0]["room"] == "N201"
+    assert payload["items"][0]["available_now"] is True
+    assert payload["items"][0]["next_occupied_at"] == "2026-03-16T13:00:00+09:00"
 
 
 def test_public_readonly_mode_exposes_privacy_page(app_env, monkeypatch):

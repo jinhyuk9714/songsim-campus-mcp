@@ -150,6 +150,30 @@ class GptNearbyRestaurantResult(BaseModel):
     location_hint: str | None = None
 
 
+class EmptyClassroomBuilding(BaseModel):
+    slug: str
+    name: str
+    canonical_name: str
+    category: str
+    aliases: list[str] = Field(default_factory=list)
+
+
+class EstimatedEmptyClassroom(BaseModel):
+    room: str
+    available_now: bool = True
+    next_occupied_at: str | None = None
+    next_course_summary: str | None = None
+
+
+class EstimatedEmptyClassroomResponse(BaseModel):
+    building: EmptyClassroomBuilding
+    evaluated_at: str
+    year: int
+    semester: int
+    estimate_note: str
+    items: list[EstimatedEmptyClassroom] = Field(default_factory=list)
+
+
 class Profile(BaseModel):
     id: str
     display_name: str = ""

@@ -16,6 +16,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from .db import connection, get_connection, init_db
 from .schemas import (
     Course,
+    EstimatedEmptyClassroomResponse,
     GptNearbyRestaurantResult,
     GptNoticeResult,
     GptPlaceResult,
@@ -51,6 +52,7 @@ from .services import (
     get_profile_timetable,
     get_readiness_snapshot,
     get_sync_dashboard_state,
+    list_estimated_empty_classrooms,
     list_latest_notices,
     list_profile_notices,
     list_restaurants,
@@ -132,6 +134,15 @@ GPT_ACTION_V2_PATHS: dict[str, dict[str, str]] = {
             "Use when the user asks for food near a Songsim campus place. "
             "Returns concise restaurant summaries with distance, walk time, price "
             "hints, and open_now."
+        ),
+    },
+    "/gpt/classrooms/empty": {
+        "operationId": "listEstimatedEmptyClassroomsForGpt",
+        "summary": "Find estimated empty classrooms in a building",
+        "description": (
+            "Use when the user asks which classrooms are likely empty right now in a "
+            "Songsim lecture building. Returns timetable-based estimated availability, "
+            "not live occupancy."
         ),
     },
 }
@@ -621,6 +632,7 @@ def create_app() -> FastAPI:
         example_prompts = [
             "성심교정 중앙도서관 위치 알려줘",
             "2026년 1학기 객체지향 과목 찾아줘",
+            "니콜스관인데 지금 예상 빈 강의실 있어?",
             "중앙도서관 근처 밥집 추천해줘",
             "최신 장학 공지 보여줘",
             "성심교정 지하철 오는 길 알려줘",
@@ -769,6 +781,7 @@ def create_app() -> FastAPI:
           <ul>
             <li><code>/places</code> campus places and landmarks</li>
             <li><code>/courses</code> public course offerings</li>
+            <li><code>/classrooms/empty</code> timetable-based estimated empty classrooms</li>
             <li><code>/restaurants/nearby</code> walkable food recommendations</li>
             <li><code>/notices</code> latest public campus notices</li>
             <li><code>/transport</code> Songsim transit guides</li>
@@ -780,8 +793,8 @@ def create_app() -> FastAPI:
           <ul>
             <li>Read <code>songsim://usage-guide</code> for the public MCP rules</li>
             <li>
-              Use prompts to pick the first tool for places, notices, restaurants,
-              or transport
+              Use prompts to pick the first tool for places, empty classrooms,
+              notices, restaurants, or transport
             </li>
             <li>Call tools after the prompt narrows the correct public read-only flow</li>
           </ul>
@@ -1305,6 +1318,29 @@ def create_app() -> FastAPI:
             for restaurant in restaurants
         ]
 
+    @app.get("/gpt/classrooms/empty", response_model=EstimatedEmptyClassroomResponse)
+    def gpt_empty_classrooms(
+        building: str = Query(description="강의실을 확인할 건물 slug, 대표 이름, 또는 alias"),
+        at: datetime | None = Query(default=None),
+        year: int | None = Query(default=None),
+        semester: int | None = Query(default=None),
+        limit: int = Query(default=10, ge=1, le=50),
+    ) -> EstimatedEmptyClassroomResponse:
+        with connection() as conn:
+            try:
+                return list_estimated_empty_classrooms(
+                    conn,
+                    building=building,
+                    at=at,
+                    year=year,
+                    semester=semester,
+                    limit=limit,
+                )
+            except NotFoundError as exc:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+            except InvalidRequestError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.get("/places", response_model=list[Place])
     def places(
         query: str = Query(default="", description="건물/시설/도서관 검색어"),
@@ -1357,6 +1393,29 @@ def create_app() -> FastAPI:
                     budget_max=budget_max,
                     open_now=open_now,
                     walk_minutes=walk_minutes,
+                    limit=limit,
+                )
+            except NotFoundError as exc:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+            except InvalidRequestError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/classrooms/empty", response_model=EstimatedEmptyClassroomResponse)
+    def classrooms_empty(
+        building: str = Query(description="강의실을 확인할 건물 slug, 대표 이름, 또는 alias"),
+        at: datetime | None = Query(default=None),
+        year: int | None = Query(default=None),
+        semester: int | None = Query(default=None),
+        limit: int = Query(default=10, ge=1, le=50),
+    ) -> EstimatedEmptyClassroomResponse:
+        with connection() as conn:
+            try:
+                return list_estimated_empty_classrooms(
+                    conn,
+                    building=building,
+                    at=at,
+                    year=year,
+                    semester=semester,
                     limit=limit,
                 )
             except NotFoundError as exc:

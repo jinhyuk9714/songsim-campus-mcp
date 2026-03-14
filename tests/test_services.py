@@ -19,6 +19,7 @@ from songsim_campus.services import (
     find_nearby_restaurants,
     get_class_periods,
     get_place,
+    list_estimated_empty_classrooms,
     list_latest_notices,
     list_transport_guides,
     refresh_courses_from_subject_search,
@@ -120,6 +121,131 @@ def test_find_nearby_restaurants_accepts_facility_alias_as_origin(app_env):
 
     assert [item.name for item in alias_items] == [item.name for item in slug_items]
     assert all(item.origin == "student-center" for item in alias_items)
+
+
+def test_list_estimated_empty_classrooms_resolves_building_alias_and_sorts_available_rooms(app_env):
+    init_db()
+    seed_demo(force=True)
+    with connection() as conn:
+        repo.replace_courses(
+            conn,
+            [
+                {
+                    "year": 2026,
+                    "semester": 1,
+                    "code": "CSE110",
+                    "title": "컴퓨팅사고",
+                    "professor": "테스트교수",
+                    "department": "컴퓨터정보공학부",
+                    "section": "01",
+                    "day_of_week": "월",
+                    "period_start": 2,
+                    "period_end": 3,
+                    "room": "N101",
+                    "raw_schedule": "월2~3(N101)",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "year": 2026,
+                    "semester": 1,
+                    "code": "CSE332",
+                    "title": "데이터베이스",
+                    "professor": "김가톨",
+                    "department": "컴퓨터정보공학부",
+                    "section": "01",
+                    "day_of_week": "월",
+                    "period_start": 5,
+                    "period_end": 6,
+                    "room": "N201",
+                    "raw_schedule": "월5~6(N201)",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "year": 2026,
+                    "semester": 1,
+                    "code": "CSE210",
+                    "title": "알고리즘",
+                    "professor": "박성심",
+                    "department": "컴퓨터정보공학부",
+                    "section": "01",
+                    "day_of_week": "화",
+                    "period_start": 1,
+                    "period_end": 2,
+                    "room": "N301",
+                    "raw_schedule": "화1~2(N301)",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+        evaluated_at = datetime.fromisoformat("2026-03-16T10:15:00+09:00")
+        by_name = list_estimated_empty_classrooms(conn, building="니콜스관", at=evaluated_at)
+        by_alias = list_estimated_empty_classrooms(conn, building="N관", at=evaluated_at)
+
+    assert by_name.building.slug == "nichols-hall"
+    assert by_alias.building.slug == "nichols-hall"
+    assert by_name.evaluated_at == "2026-03-16T10:15:00+09:00"
+    assert by_name.estimate_note.startswith("공식 시간표 기준 예상 공실입니다.")
+    assert [item.room for item in by_name.items] == ["N301", "N201"]
+    assert [item.room for item in by_alias.items] == ["N301", "N201"]
+    assert all(item.available_now is True for item in by_name.items)
+    assert by_name.items[0].next_occupied_at is None
+    assert by_name.items[0].next_course_summary is None
+    assert by_name.items[1].next_occupied_at == "2026-03-16T13:00:00+09:00"
+    assert "데이터베이스" in (by_name.items[1].next_course_summary or "")
+    assert "월5~6(N201)" in (by_name.items[1].next_course_summary or "")
+
+
+def test_list_estimated_empty_classrooms_returns_empty_with_note_when_building_has_no_room_data(
+    app_env,
+):
+    init_db()
+    seed_demo(force=True)
+    with connection() as conn:
+        repo.replace_courses(
+            conn,
+            [
+                {
+                    "year": 2026,
+                    "semester": 1,
+                    "code": "CSE332",
+                    "title": "데이터베이스",
+                    "professor": "김가톨",
+                    "department": "컴퓨터정보공학부",
+                    "section": "01",
+                    "day_of_week": "월",
+                    "period_start": 5,
+                    "period_end": 6,
+                    "room": "N201",
+                    "raw_schedule": "월5~6(N201)",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                }
+            ],
+        )
+        payload = list_estimated_empty_classrooms(
+            conn,
+            building="김수환관",
+            at=datetime.fromisoformat("2026-03-16T10:15:00+09:00"),
+        )
+
+    assert payload.building.slug == "kim-soo-hwan-hall"
+    assert payload.items == []
+    assert "시간표 데이터를 찾지 못했습니다" in payload.estimate_note
+
+
+def test_list_estimated_empty_classrooms_rejects_non_classroom_place(app_env):
+    init_db()
+    seed_demo(force=True)
+
+    with connection() as conn, pytest.raises(InvalidRequestError, match="강의실 기반 건물"):
+        list_estimated_empty_classrooms(
+            conn,
+            building="정문",
+            at=datetime.fromisoformat("2026-03-16T10:15:00+09:00"),
+        )
 
 
 def test_find_nearby_restaurants_uses_campus_graph_for_external_routes(app_env):

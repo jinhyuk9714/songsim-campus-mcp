@@ -37,6 +37,9 @@ from .schemas import (
     AutomationObservability,
     CacheObservability,
     Course,
+    EmptyClassroomBuilding,
+    EstimatedEmptyClassroom,
+    EstimatedEmptyClassroomResponse,
     MatchedCourse,
     MatchedNotice,
     MealRecommendation,
@@ -97,6 +100,10 @@ CLASS_PERIODS = [
 
 logger = logging.getLogger(__name__)
 OBSERVABILITY_EVENT_LIMIT = 10
+EMPTY_CLASSROOM_ESTIMATE_NOTE = (
+    "공식 시간표 기준 예상 공실입니다. 실시간 점유는 반영되지 않습니다."
+)
+CLASSROOM_BUILDING_CATEGORIES = {"building", "library"}
 
 
 class NotFoundError(ValueError):
@@ -488,6 +495,16 @@ def _period_start_minutes(period: int | None) -> int | None:
     for item_period, start, _ in CLASS_PERIODS:
         if item_period == period:
             hour, minute = start.split(":")
+            return int(hour) * 60 + int(minute)
+    return None
+
+
+def _period_end_minutes(period: int | None) -> int | None:
+    if period is None:
+        return None
+    for item_period, _, end in CLASS_PERIODS:
+        if item_period == period:
+            hour, minute = end.split(":")
             return int(hour) * 60 + int(minute)
     return None
 
@@ -1901,6 +1918,120 @@ def get_profile_meal_recommendations(
     )
 
 
+def list_estimated_empty_classrooms(
+    conn: sqlite3.Connection,
+    *,
+    building: str,
+    at: datetime | None = None,
+    year: int | None = None,
+    semester: int | None = None,
+    limit: int = 10,
+) -> EstimatedEmptyClassroomResponse:
+    current = _coerce_datetime(at)
+    resolved_year, resolved_semester = _current_year_and_semester(current)
+    target_building = _resolve_building_place(conn, building)
+    courses = [
+        Course.model_validate(row)
+        for row in repo.list_courses_with_rooms(
+            conn,
+            year=year or resolved_year,
+            semester=semester or resolved_semester,
+        )
+    ]
+
+    by_room: dict[str, list[Course]] = {}
+    for course in courses:
+        mapped_place = _resolve_place_from_room(conn, course.room)
+        if mapped_place is None or mapped_place.slug != target_building.slug or not course.room:
+            continue
+        by_room.setdefault(course.room, []).append(course)
+
+    if not by_room:
+        return EstimatedEmptyClassroomResponse(
+            building=_serialize_empty_classroom_building(target_building),
+            evaluated_at=current.isoformat(timespec="seconds"),
+            year=year or resolved_year,
+            semester=semester or resolved_semester,
+            estimate_note=(
+                f"{EMPTY_CLASSROOM_ESTIMATE_NOTE} "
+                "해당 건물의 강의실 시간표 데이터를 찾지 못했습니다."
+            ),
+            items=[],
+        )
+
+    current_day = _day_label_from_datetime(current)
+    current_minutes = current.hour * 60 + current.minute
+    items: list[EstimatedEmptyClassroom] = []
+    for room, room_courses in by_room.items():
+        same_day_courses = [course for course in room_courses if course.day_of_week == current_day]
+        is_occupied = False
+        next_course: Course | None = None
+        next_start_minutes: int | None = None
+
+        for course in same_day_courses:
+            start_minutes = _period_start_minutes(course.period_start)
+            end_minutes = _period_end_minutes(course.period_end)
+            if (
+                start_minutes is not None
+                and end_minutes is not None
+                and start_minutes <= current_minutes <= end_minutes
+            ):
+                is_occupied = True
+                break
+            if (
+                start_minutes is not None
+                and start_minutes > current_minutes
+                and (next_start_minutes is None or start_minutes < next_start_minutes)
+            ):
+                next_start_minutes = start_minutes
+                next_course = course
+
+        if is_occupied:
+            continue
+
+        next_occupied_at = _combine_date_and_minutes(current, next_start_minutes)
+        items.append(
+            EstimatedEmptyClassroom(
+                room=room,
+                available_now=True,
+                next_occupied_at=(
+                    next_occupied_at.isoformat(timespec="seconds")
+                    if next_occupied_at is not None
+                    else None
+                ),
+                next_course_summary=(
+                    _course_schedule_summary(next_course) if next_course is not None else None
+                ),
+            )
+        )
+
+    items.sort(
+        key=lambda item: (
+            0 if item.next_occupied_at is None else 1,
+            (
+                -datetime.fromisoformat(item.next_occupied_at).timestamp()
+                if item.next_occupied_at is not None
+                else 0
+            ),
+            item.room,
+        )
+    )
+
+    estimate_note = (
+        EMPTY_CLASSROOM_ESTIMATE_NOTE
+        if items
+        else f"{EMPTY_CLASSROOM_ESTIMATE_NOTE} 현재 기준으로 비어 있는 강의실이 없습니다."
+    )
+    return EstimatedEmptyClassroomResponse(
+        building=_serialize_empty_classroom_building(target_building),
+        evaluated_at=current.isoformat(timespec="seconds"),
+        year=year or resolved_year,
+        semester=semester or resolved_semester,
+        estimate_note=estimate_note,
+        items=items[:limit],
+    )
+
+
 def _haversine_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> int:
     radius = 6371000
     phi1, phi2 = math.radians(lat1), math.radians(lat2)
@@ -1970,29 +2101,100 @@ def _restaurant_cache_key(
     )
 
 
-def _format_ambiguous_origin_error(origin: str, matches: list[dict[str, Any]]) -> str:
+def _format_ambiguous_place_error(
+    identifier: str,
+    matches: list[dict[str, Any]],
+    *,
+    label: str,
+) -> str:
     candidates = ", ".join(f"{item['name']} ({item['slug']})" for item in matches[:3])
-    return f"Ambiguous origin: {origin}. Try one of: {candidates}."
+    return f"Ambiguous {label}: {identifier}. Try one of: {candidates}."
 
 
-def _resolve_origin_place(conn: sqlite3.Connection, origin: str) -> dict[str, Any]:
-    place = repo.get_place_by_slug(conn, origin)
+def _resolve_place_reference(
+    conn: sqlite3.Connection,
+    identifier: str,
+    *,
+    label: str,
+    not_found_prefix: str,
+) -> dict[str, Any]:
+    place = repo.get_place_by_slug(conn, identifier)
     if place is not None:
         return place
 
-    name_matches = repo.list_places_by_exact_name(conn, origin)
+    name_matches = repo.list_places_by_exact_name(conn, identifier)
     if len(name_matches) == 1:
         return name_matches[0]
     if len(name_matches) > 1:
-        raise InvalidRequestError(_format_ambiguous_origin_error(origin, name_matches))
+        raise InvalidRequestError(
+            _format_ambiguous_place_error(identifier, name_matches, label=label)
+        )
 
-    alias_matches = repo.list_places_by_exact_alias(conn, origin)
+    alias_matches = repo.list_places_by_exact_alias(conn, identifier)
     if len(alias_matches) == 1:
         return alias_matches[0]
     if len(alias_matches) > 1:
-        raise InvalidRequestError(_format_ambiguous_origin_error(origin, alias_matches))
+        raise InvalidRequestError(
+            _format_ambiguous_place_error(identifier, alias_matches, label=label)
+        )
 
-    raise NotFoundError(f"Origin place not found: {origin}")
+    raise NotFoundError(f"{not_found_prefix}: {identifier}")
+
+
+def _resolve_origin_place(conn: sqlite3.Connection, origin: str) -> dict[str, Any]:
+    return _resolve_place_reference(
+        conn,
+        origin,
+        label="origin",
+        not_found_prefix="Origin place not found",
+    )
+
+
+def _resolve_building_place(conn: sqlite3.Connection, building: str) -> Place:
+    row = _resolve_place_reference(
+        conn,
+        building,
+        label="building",
+        not_found_prefix="Building not found",
+    )
+    if row["category"] not in CLASSROOM_BUILDING_CATEGORIES:
+        raise InvalidRequestError(
+            "선택한 장소는 강의실 기반 건물이 아닙니다. "
+            "니콜스관이나 김수환관 같은 강의동을 입력해 주세요."
+        )
+    return Place.model_validate(row)
+
+
+def _combine_date_and_minutes(current: datetime, minutes: int | None) -> datetime | None:
+    if minutes is None:
+        return None
+    return current.replace(
+        hour=minutes // 60,
+        minute=minutes % 60,
+        second=0,
+        microsecond=0,
+    )
+
+
+def _course_schedule_summary(course: Course) -> str:
+    summary = course.title
+    if course.section:
+        summary += f" ({course.code}-{course.section})"
+    elif course.code:
+        summary += f" ({course.code})"
+    if course.raw_schedule:
+        summary += f" / {course.raw_schedule}"
+    return summary
+
+
+def _serialize_empty_classroom_building(place: Place) -> EmptyClassroomBuilding:
+    return EmptyClassroomBuilding(
+        slug=place.slug,
+        name=place.name,
+        canonical_name=place.name,
+        category=place.category,
+        aliases=place.aliases,
+    )
 
 
 def _cache_status(fetched_at: str, now: datetime) -> str:
