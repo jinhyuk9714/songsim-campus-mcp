@@ -325,3 +325,33 @@ def test_mcp_nearby_restaurant_tool_reuses_kakao_cache(app_env, monkeypatch):
     assert McpCacheKakaoClient.calls == 1
     assert first_payload['source_tag'] == 'kakao_local'
     assert second_payload['source_tag'] == 'kakao_local_cache'
+
+
+def test_mcp_public_readonly_mode_registers_only_read_only_tools(app_env, monkeypatch):
+    pytest.importorskip('mcp.server.fastmcp')
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        tools = await mcp.list_tools()
+        resources = await mcp.list_resources()
+        return [tool.name for tool in tools], [str(resource.uri) for resource in resources]
+
+    tool_names, resource_uris = asyncio.run(main())
+
+    assert set(tool_names) == {
+        "tool_search_places",
+        "tool_get_place",
+        "tool_search_courses",
+        "tool_get_class_periods",
+        "tool_find_nearby_restaurants",
+        "tool_list_latest_notices",
+        "tool_list_transport_guides",
+    }
+    assert "tool_create_profile" not in tool_names
+    assert "tool_get_profile_notices" not in tool_names
+    assert "songsim://source-registry" in resource_uris
+    assert "songsim://transport-guide" in resource_uris
+
+    clear_settings_cache()

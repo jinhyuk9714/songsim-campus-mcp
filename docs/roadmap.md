@@ -36,3 +36,4 @@
 - [x] 관리자 동기화 대시보드
 - [x] 앱 내부 운영 자동화
 - [x] Postgres/PostGIS 이전
+- [x] Public read-only remote MCP mode

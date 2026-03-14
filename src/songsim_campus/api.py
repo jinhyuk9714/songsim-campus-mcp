@@ -117,6 +117,7 @@ async def lifespan(_: FastAPI):
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    public_readonly = settings.app_mode == "public_readonly"
     app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
 
     def ensure_admin_request_allowed(request: Request) -> None:
@@ -386,6 +387,158 @@ def create_app() -> FastAPI:
           </thead>
           <tbody>{runs_html}</tbody>
         </table>
+      </section>
+    </main>
+  </body>
+</html>
+"""
+
+    def render_landing_page(request: Request) -> str:
+        public_http_url = settings.public_http_url or str(request.base_url).rstrip("/")
+        docs_url = f"{public_http_url}/docs"
+        mcp_url = (
+            settings.public_mcp_url
+            or "Set SONGSIM_PUBLIC_MCP_URL to show the public MCP URL."
+        )
+        example_prompts = [
+            "성심교정 중앙도서관 위치 알려줘",
+            "2026년 1학기 객체지향 과목 찾아줘",
+            "중앙도서관 근처 밥집 추천해줘",
+            "최신 장학 공지 보여줘",
+            "성심교정 지하철 오는 길 알려줘",
+            "도보 10분 안쪽 카페만 보여줘",
+        ]
+        product_mode = "Public Read-only" if public_readonly else "Local Full"
+        admin_link = (
+            '<a class="pill" href="/admin/sync">Admin Sync</a>'
+            if settings.admin_enabled and not public_readonly
+            else ""
+        )
+        examples_html = "".join(
+            f"<li>{html.escape(prompt)}</li>"
+            for prompt in example_prompts
+        )
+        return f"""
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Songsim Campus MCP</title>
+    <style>
+      :root {{
+        color-scheme: light;
+        --bg: #f5f1e7;
+        --surface: #fffdf8;
+        --ink: #162126;
+        --muted: #5f6b6f;
+        --line: #d5ccb6;
+        --accent: #174f7a;
+        --accent-2: #1c7c54;
+      }}
+      * {{ box-sizing: border-box; }}
+      body {{
+        margin: 0;
+        font-family: Georgia, "Noto Serif KR", serif;
+        background:
+          radial-gradient(circle at top left, rgba(23,79,122,0.08), transparent 32%),
+          linear-gradient(180deg, #faf5ea 0%, var(--bg) 100%);
+        color: var(--ink);
+      }}
+      main {{ max-width: 1080px; margin: 0 auto; padding: 36px 20px 56px; }}
+      h1 {{ margin: 0 0 10px; font-size: 2.4rem; }}
+      p.lead {{ margin: 0 0 24px; color: var(--muted); font-size: 1.04rem; }}
+      .hero {{
+        display: grid;
+        grid-template-columns: 1.4fr 1fr;
+        gap: 18px;
+        align-items: stretch;
+      }}
+      .card {{
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        padding: 18px;
+        box-shadow: 0 12px 30px rgba(22,33,38,0.06);
+      }}
+      .meta {{ color: var(--muted); font-size: 0.92rem; }}
+      .pill {{
+        display: inline-flex;
+        align-items: center;
+        border-radius: 999px;
+        padding: 8px 12px;
+        background: #eaf2f7;
+        color: var(--accent);
+        text-decoration: none;
+        font-weight: 700;
+        margin-right: 8px;
+      }}
+      .primary {{ background: var(--accent-2); color: white; }}
+      code {{
+        display: block;
+        padding: 12px;
+        border-radius: 12px;
+        background: #f3efe5;
+        border: 1px solid #e0d6bf;
+        overflow-x: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }}
+      ul {{ margin: 12px 0 0; padding-left: 18px; }}
+      section {{ margin-top: 28px; }}
+      .grid {{
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 14px;
+      }}
+      @media (max-width: 800px) {{
+        .hero {{ grid-template-columns: 1fr; }}
+      }}
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Songsim Campus MCP</h1>
+      <p class="lead">
+        Catholic University Songsim campus data server for places, courses, notices,
+        restaurants, and transit. Use the HTTP API directly or connect the remote MCP URL.
+      </p>
+      <div class="hero">
+        <section class="card">
+          <p class="meta">Mode: {html.escape(product_mode)}</p>
+          <p>
+            This server exposes verified Songsim campus data through a public read-only API
+            surface and a remote MCP endpoint that can be connected from ChatGPT, Claude,
+            or Codex-style clients.
+          </p>
+          <p>
+            <a class="pill primary" href="{html.escape(docs_url)}">Open API Docs</a>
+            <a class="pill" href="/openapi.json">OpenAPI JSON</a>
+            {admin_link}
+          </p>
+        </section>
+        <section class="card">
+          <h2>Public URLs</h2>
+          <p class="meta">HTTP API</p>
+          <code>{html.escape(public_http_url)}</code>
+          <p class="meta">Remote MCP</p>
+          <code>{html.escape(mcp_url)}</code>
+        </section>
+      </div>
+      <section class="grid">
+        <article class="card">
+          <h2>What To Ask</h2>
+          <ul>{examples_html}</ul>
+        </article>
+        <article class="card">
+          <h2>Core Endpoints</h2>
+          <ul>
+            <li><code>/places</code> campus places and landmarks</li>
+            <li><code>/courses</code> public course offerings</li>
+            <li><code>/restaurants/nearby</code> walkable food recommendations</li>
+            <li><code>/notices</code> latest public campus notices</li>
+            <li><code>/transport</code> Songsim transit guides</li>
+          </ul>
+        </article>
       </section>
     </main>
   </body>
@@ -705,6 +858,10 @@ def create_app() -> FastAPI:
     def health() -> dict[str, bool]:
         return {"ok": True}
 
+    @app.get("/", response_class=HTMLResponse)
+    def landing(request: Request) -> HTMLResponse:
+        return HTMLResponse(render_landing_page(request))
+
     @app.get("/readyz")
     def ready() -> dict[str, object]:
         return get_readiness_snapshot()
@@ -786,154 +943,164 @@ def create_app() -> FastAPI:
         with connection() as conn:
             return list_transport_guides(conn, mode=mode, limit=limit)
 
-    @app.post("/profiles", response_model=Profile)
-    def create_profile_endpoint(payload: ProfileCreateRequest | None = None) -> Profile:
-        with connection() as conn:
-            return create_profile(conn, display_name=(payload.display_name if payload else ""))
-
-    @app.patch("/profiles/{profile_id}", response_model=Profile)
-    def update_profile_endpoint(
-        profile_id: str,
-        payload: ProfileUpdateRequest,
-    ) -> Profile:
-        with connection() as conn:
-            try:
-                return update_profile(conn, profile_id, payload)
-            except NotFoundError as exc:
-                raise HTTPException(status_code=404, detail=str(exc)) from exc
-            except InvalidRequestError as exc:
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    @app.put("/profiles/{profile_id}/timetable", response_model=list[Course])
-    def set_profile_timetable_endpoint(
-        profile_id: str,
-        courses: list[ProfileCourseRef],
-    ) -> list[Course]:
-        with connection() as conn:
-            try:
-                return set_profile_timetable(conn, profile_id, courses)
-            except NotFoundError as exc:
-                raise HTTPException(status_code=404, detail=str(exc)) from exc
-            except InvalidRequestError as exc:
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    @app.get("/profiles/{profile_id}/timetable", response_model=list[Course])
-    def get_profile_timetable_endpoint(
-        profile_id: str,
-        year: int | None = Query(default=None),
-        semester: int | None = Query(default=None),
-    ) -> list[Course]:
-        with connection() as conn:
-            try:
-                return get_profile_timetable(conn, profile_id, year=year, semester=semester)
-            except NotFoundError as exc:
-                raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-    @app.put("/profiles/{profile_id}/notice-preferences", response_model=ProfileNoticePreferences)
-    def set_profile_notice_preferences_endpoint(
-        profile_id: str,
-        preferences: ProfileNoticePreferences,
-    ) -> ProfileNoticePreferences:
-        with connection() as conn:
-            try:
-                return set_profile_notice_preferences(conn, profile_id, preferences)
-            except NotFoundError as exc:
-                raise HTTPException(status_code=404, detail=str(exc)) from exc
-            except InvalidRequestError as exc:
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    @app.put("/profiles/{profile_id}/interests", response_model=ProfileInterests)
-    def set_profile_interests_endpoint(
-        profile_id: str,
-        interests: ProfileInterests,
-    ) -> ProfileInterests:
-        with connection() as conn:
-            try:
-                return set_profile_interests(conn, profile_id, interests)
-            except NotFoundError as exc:
-                raise HTTPException(status_code=404, detail=str(exc)) from exc
-            except InvalidRequestError as exc:
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    @app.get("/profiles/{profile_id}/interests", response_model=ProfileInterests)
-    def get_profile_interests_endpoint(profile_id: str) -> ProfileInterests:
-        with connection() as conn:
-            try:
-                return get_profile_interests(conn, profile_id)
-            except NotFoundError as exc:
-                raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-    @app.get("/profiles/{profile_id}/notices", response_model=list[MatchedNotice])
-    def get_profile_notices_endpoint(
-        profile_id: str,
-        limit: int = Query(default=10, ge=1, le=50),
-    ) -> list[MatchedNotice]:
-        with connection() as conn:
-            try:
-                return list_profile_notices(conn, profile_id, limit=limit)
-            except NotFoundError as exc:
-                raise HTTPException(status_code=404, detail=str(exc)) from exc
-            except InvalidRequestError as exc:
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    @app.get("/profiles/{profile_id}/courses/recommended", response_model=list[MatchedCourse])
-    def get_profile_course_recommendations_endpoint(
-        profile_id: str,
-        year: int | None = Query(default=None),
-        semester: int | None = Query(default=None),
-        query: str = Query(default=""),
-        limit: int = Query(default=10, ge=1, le=50),
-    ) -> list[MatchedCourse]:
-        with connection() as conn:
-            try:
-                return get_profile_course_recommendations(
+    if not public_readonly:
+        @app.post("/profiles", response_model=Profile)
+        def create_profile_endpoint(payload: ProfileCreateRequest | None = None) -> Profile:
+            with connection() as conn:
+                return create_profile(
                     conn,
-                    profile_id,
-                    year=year,
-                    semester=semester,
-                    query=query,
-                    limit=limit,
+                    display_name=(payload.display_name if payload else ""),
                 )
-            except NotFoundError as exc:
-                raise HTTPException(status_code=404, detail=str(exc)) from exc
-            except InvalidRequestError as exc:
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    @app.get(
-        "/profiles/{profile_id}/meal-recommendations",
-        response_model=MealRecommendationResponse,
-    )
-    def get_profile_meal_recommendations_endpoint(
-        profile_id: str,
-        origin: str = Query(description="출발 건물 slug 또는 이름"),
-        at: datetime | None = Query(default=None),
-        year: int | None = Query(default=None),
-        semester: int | None = Query(default=None),
-        budget_max: int | None = Query(default=None, ge=0),
-        category: str | None = Query(default=None),
-        open_now: bool = Query(default=False),
-        limit: int = Query(default=10, ge=1, le=50),
-    ) -> MealRecommendationResponse:
-        with connection() as conn:
-            try:
-                return get_profile_meal_recommendations(
-                    conn,
-                    profile_id,
-                    origin=origin,
-                    at=at,
-                    year=year,
-                    semester=semester,
-                    budget_max=budget_max,
-                    category=category,
-                    limit=limit,
-                    open_now=open_now,
-                )
-            except NotFoundError as exc:
-                raise HTTPException(status_code=404, detail=str(exc)) from exc
-            except InvalidRequestError as exc:
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
+        @app.patch("/profiles/{profile_id}", response_model=Profile)
+        def update_profile_endpoint(
+            profile_id: str,
+            payload: ProfileUpdateRequest,
+        ) -> Profile:
+            with connection() as conn:
+                try:
+                    return update_profile(conn, profile_id, payload)
+                except NotFoundError as exc:
+                    raise HTTPException(status_code=404, detail=str(exc)) from exc
+                except InvalidRequestError as exc:
+                    raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    if settings.admin_enabled:
+        @app.put("/profiles/{profile_id}/timetable", response_model=list[Course])
+        def set_profile_timetable_endpoint(
+            profile_id: str,
+            courses: list[ProfileCourseRef],
+        ) -> list[Course]:
+            with connection() as conn:
+                try:
+                    return set_profile_timetable(conn, profile_id, courses)
+                except NotFoundError as exc:
+                    raise HTTPException(status_code=404, detail=str(exc)) from exc
+                except InvalidRequestError as exc:
+                    raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        @app.get("/profiles/{profile_id}/timetable", response_model=list[Course])
+        def get_profile_timetable_endpoint(
+            profile_id: str,
+            year: int | None = Query(default=None),
+            semester: int | None = Query(default=None),
+        ) -> list[Course]:
+            with connection() as conn:
+                try:
+                    return get_profile_timetable(conn, profile_id, year=year, semester=semester)
+                except NotFoundError as exc:
+                    raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+        @app.put(
+            "/profiles/{profile_id}/notice-preferences",
+            response_model=ProfileNoticePreferences,
+        )
+        def set_profile_notice_preferences_endpoint(
+            profile_id: str,
+            preferences: ProfileNoticePreferences,
+        ) -> ProfileNoticePreferences:
+            with connection() as conn:
+                try:
+                    return set_profile_notice_preferences(conn, profile_id, preferences)
+                except NotFoundError as exc:
+                    raise HTTPException(status_code=404, detail=str(exc)) from exc
+                except InvalidRequestError as exc:
+                    raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        @app.put("/profiles/{profile_id}/interests", response_model=ProfileInterests)
+        def set_profile_interests_endpoint(
+            profile_id: str,
+            interests: ProfileInterests,
+        ) -> ProfileInterests:
+            with connection() as conn:
+                try:
+                    return set_profile_interests(conn, profile_id, interests)
+                except NotFoundError as exc:
+                    raise HTTPException(status_code=404, detail=str(exc)) from exc
+                except InvalidRequestError as exc:
+                    raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        @app.get("/profiles/{profile_id}/interests", response_model=ProfileInterests)
+        def get_profile_interests_endpoint(profile_id: str) -> ProfileInterests:
+            with connection() as conn:
+                try:
+                    return get_profile_interests(conn, profile_id)
+                except NotFoundError as exc:
+                    raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+        @app.get("/profiles/{profile_id}/notices", response_model=list[MatchedNotice])
+        def get_profile_notices_endpoint(
+            profile_id: str,
+            limit: int = Query(default=10, ge=1, le=50),
+        ) -> list[MatchedNotice]:
+            with connection() as conn:
+                try:
+                    return list_profile_notices(conn, profile_id, limit=limit)
+                except NotFoundError as exc:
+                    raise HTTPException(status_code=404, detail=str(exc)) from exc
+                except InvalidRequestError as exc:
+                    raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        @app.get(
+            "/profiles/{profile_id}/courses/recommended",
+            response_model=list[MatchedCourse],
+        )
+        def get_profile_course_recommendations_endpoint(
+            profile_id: str,
+            year: int | None = Query(default=None),
+            semester: int | None = Query(default=None),
+            query: str = Query(default=""),
+            limit: int = Query(default=10, ge=1, le=50),
+        ) -> list[MatchedCourse]:
+            with connection() as conn:
+                try:
+                    return get_profile_course_recommendations(
+                        conn,
+                        profile_id,
+                        year=year,
+                        semester=semester,
+                        query=query,
+                        limit=limit,
+                    )
+                except NotFoundError as exc:
+                    raise HTTPException(status_code=404, detail=str(exc)) from exc
+                except InvalidRequestError as exc:
+                    raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        @app.get(
+            "/profiles/{profile_id}/meal-recommendations",
+            response_model=MealRecommendationResponse,
+        )
+        def get_profile_meal_recommendations_endpoint(
+            profile_id: str,
+            origin: str = Query(description="출발 건물 slug 또는 이름"),
+            at: datetime | None = Query(default=None),
+            year: int | None = Query(default=None),
+            semester: int | None = Query(default=None),
+            budget_max: int | None = Query(default=None, ge=0),
+            category: str | None = Query(default=None),
+            open_now: bool = Query(default=False),
+            limit: int = Query(default=10, ge=1, le=50),
+        ) -> MealRecommendationResponse:
+            with connection() as conn:
+                try:
+                    return get_profile_meal_recommendations(
+                        conn,
+                        profile_id,
+                        origin=origin,
+                        at=at,
+                        year=year,
+                        semester=semester,
+                        budget_max=budget_max,
+                        category=category,
+                        limit=limit,
+                        open_now=open_now,
+                    )
+                except NotFoundError as exc:
+                    raise HTTPException(status_code=404, detail=str(exc)) from exc
+                except InvalidRequestError as exc:
+                    raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if settings.admin_enabled and not public_readonly:
         @app.get("/admin/sync", response_class=HTMLResponse)
         def admin_sync_dashboard(request: Request) -> HTMLResponse:
             ensure_admin_request_allowed(request)

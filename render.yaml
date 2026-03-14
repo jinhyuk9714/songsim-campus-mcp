@@ -1,0 +1,55 @@
+services:
+  - type: web
+    name: songsim-public-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -e .
+    startCommand: bash -lc 'SONGSIM_APP_HOST=0.0.0.0 SONGSIM_APP_PORT=$PORT songsim-api'
+    healthCheckPath: /healthz
+    envVars:
+      - key: SONGSIM_DATABASE_URL
+        sync: false
+      - key: SONGSIM_KAKAO_REST_API_KEY
+        sync: false
+      - key: SONGSIM_PUBLIC_HTTP_URL
+        sync: false
+      - key: SONGSIM_PUBLIC_MCP_URL
+        sync: false
+      - key: SONGSIM_APP_MODE
+        value: public_readonly
+      - key: SONGSIM_SEED_DEMO_ON_START
+        value: "false"
+      - key: SONGSIM_SYNC_OFFICIAL_ON_START
+        value: "false"
+      - key: SONGSIM_AUTOMATION_ENABLED
+        value: "true"
+      - key: SONGSIM_AUTOMATION_TICK_SECONDS
+        value: "60"
+      - key: SONGSIM_AUTOMATION_SNAPSHOT_INTERVAL_MINUTES
+        value: "360"
+      - key: SONGSIM_AUTOMATION_CACHE_CLEANUP_INTERVAL_MINUTES
+        value: "720"
+
+  - type: web
+    name: songsim-public-mcp
+    runtime: python
+    plan: free
+    buildCommand: pip install -e '.[mcp]'
+    startCommand: bash -lc 'SONGSIM_APP_HOST=0.0.0.0 SONGSIM_APP_PORT=$PORT songsim-mcp --transport streamable-http'
+    envVars:
+      - key: SONGSIM_DATABASE_URL
+        sync: false
+      - key: SONGSIM_KAKAO_REST_API_KEY
+        sync: false
+      - key: SONGSIM_PUBLIC_HTTP_URL
+        sync: false
+      - key: SONGSIM_PUBLIC_MCP_URL
+        sync: false
+      - key: SONGSIM_APP_MODE
+        value: public_readonly
+      - key: SONGSIM_SEED_DEMO_ON_START
+        value: "false"
+      - key: SONGSIM_SYNC_OFFICIAL_ON_START
+        value: "false"
+      - key: SONGSIM_AUTOMATION_ENABLED
+        value: "false"

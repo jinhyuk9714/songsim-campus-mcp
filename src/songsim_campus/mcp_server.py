@@ -48,7 +48,20 @@ def build_mcp():
             "Run `uv sync --extra mcp` or `pip install -e '.[mcp]'`."
         ) from exc
 
-    mcp = FastMCP("Songsim Campus Assistant", json_response=True)
+    settings = get_settings()
+    public_readonly = settings.app_mode == "public_readonly"
+    mcp = FastMCP(
+        "Songsim Campus MCP",
+        instructions=(
+            "Use this server to answer Songsim campus questions about places, courses, "
+            "notices, nearby restaurants, and transport."
+        ),
+        website_url=settings.public_http_url or None,
+        host=settings.app_host,
+        port=settings.app_port,
+        streamable_http_path="/mcp",
+        json_response=True,
+    )
 
     @mcp.resource("songsim://source-registry")
     def source_registry() -> str:
@@ -67,8 +80,7 @@ def build_mcp():
 
     @mcp.tool(
         description=(
-            "Search Songsim campus buildings and landmarks "
-            "by Korean name, alias, or category."
+            "성심교정 건물, 도서관, 기준 위치를 한국어 이름이나 별칭으로 찾습니다."
         )
     )
     def tool_search_places(query: str = "", category: str | None = None, limit: int = 10):
@@ -80,8 +92,7 @@ def build_mcp():
 
     @mcp.tool(
         description=(
-            "Get one campus place by slug or exact Korean name "
-            "when you already know the destination."
+            "이미 목적지를 알고 있을 때 장소 slug 또는 정확한 이름으로 한 곳을 가져옵니다."
         )
     )
     def tool_get_place(identifier: str):
@@ -93,8 +104,7 @@ def build_mcp():
 
     @mcp.tool(
         description=(
-            "Search public course offerings by course title, "
-            "code, professor, year, and semester."
+            "현재 공개된 성심교정 개설과목을 과목명, 코드, 교수, 학기 조건으로 찾습니다."
         )
     )
     def tool_search_courses(
@@ -117,8 +127,7 @@ def build_mcp():
 
     @mcp.tool(
         description=(
-            "Return the fixed Songsim class-period timetable "
-            "so period numbers can be converted to clock times."
+            "성심교정 교시 번호를 실제 시간으로 바꿀 수 있도록 고정 교시표를 반환합니다."
         )
     )
     def tool_get_class_periods():
@@ -126,8 +135,7 @@ def build_mcp():
 
     @mcp.tool(
         description=(
-            "Find walkable nearby restaurants from a campus place "
-            "with optional cuisine and budget filters."
+            "캠퍼스 출발지 기준으로 걸어갈 수 있는 주변 식당을 예산과 카테고리 조건으로 찾습니다."
         )
     )
     def tool_find_nearby_restaurants(
@@ -162,8 +170,7 @@ def build_mcp():
 
     @mcp.tool(
         description=(
-            "List the latest campus notices, optionally narrowed "
-            "to categories such as academic or scholarship."
+            "최신 성심교정 공지를 가져오고, 필요하면 academic이나 scholarship 같은 범주로 좁힙니다."
         )
     )
     def tool_list_latest_notices(category: str | None = None, limit: int = 10):
@@ -175,8 +182,7 @@ def build_mcp():
 
     @mcp.tool(
         description=(
-            "List static Songsim campus transit guides for subway and bus access, "
-            "optionally filtered by mode."
+            "성심교정 지하철·버스 접근 안내를 가져오고, 필요하면 교통수단 모드로 좁힙니다."
         )
     )
     def tool_list_transport_guides(mode: str | None = None, limit: int = 20):
@@ -186,210 +192,214 @@ def build_mcp():
                 for item in list_transport_guides(conn, mode=mode, limit=limit)
             ]
 
-    @mcp.tool(
-        description=(
-            "Create a local profile id for timetable, notice, "
-            "and meal-personalization flows."
+    if not public_readonly:
+        @mcp.tool(
+            description=(
+                "Create a local profile id for timetable, notice, "
+                "and meal-personalization flows."
+            )
         )
-    )
-    def tool_create_profile(display_name: str = ""):
-        with connection() as conn:
-            return create_profile(conn, display_name=display_name).model_dump()
+        def tool_create_profile(display_name: str = ""):
+            with connection() as conn:
+                return create_profile(conn, display_name=display_name).model_dump()
 
-    @mcp.tool(
-        description=(
-            "Update one local profile's display name, department, student year, "
-            "or admission type."
+        @mcp.tool(
+            description=(
+                "Update one local profile's display name, department, student year, "
+                "or admission type."
+            )
         )
-    )
-    def tool_update_profile(
-        profile_id: str,
-        display_name: str | None = None,
-        department: str | None = None,
-        student_year: int | None = None,
-        admission_type: str | None = None,
-    ):
-        with connection() as conn:
-            try:
-                payload: dict[str, object] = {}
-                if display_name is not None:
-                    payload["display_name"] = display_name
-                if department is not None:
-                    payload["department"] = department
-                if student_year is not None:
-                    payload["student_year"] = student_year
-                if admission_type is not None:
-                    payload["admission_type"] = admission_type
-                return update_profile(
-                    conn,
-                    profile_id,
-                    ProfileUpdateRequest(**payload),
-                ).model_dump()
-            except (NotFoundError, InvalidRequestError) as exc:
-                return {"error": str(exc)}
-
-    @mcp.tool(
-        description=(
-            "Replace a profile timetable using official course keys: "
-            "year, semester, code, section."
-        )
-    )
-    def tool_set_profile_timetable(profile_id: str, courses: list[dict[str, int | str]]):
-        with connection() as conn:
-            try:
-                refs = [ProfileCourseRef.model_validate(item) for item in courses]
-                return [
-                    item.model_dump()
-                    for item in set_profile_timetable(conn, profile_id, refs)
-                ]
-            except (NotFoundError, InvalidRequestError) as exc:
-                return {"error": str(exc)}
-
-    @mcp.tool(
-        description="Get the current stored timetable for one local profile id."
-    )
-    def tool_get_profile_timetable(
-        profile_id: str,
-        year: int | None = None,
-        semester: int | None = None,
-    ):
-        with connection() as conn:
-            try:
-                return [
-                    item.model_dump()
-                    for item in get_profile_timetable(
+        def tool_update_profile(
+            profile_id: str,
+            display_name: str | None = None,
+            department: str | None = None,
+            student_year: int | None = None,
+            admission_type: str | None = None,
+        ):
+            with connection() as conn:
+                try:
+                    payload: dict[str, object] = {}
+                    if display_name is not None:
+                        payload["display_name"] = display_name
+                    if department is not None:
+                        payload["department"] = department
+                    if student_year is not None:
+                        payload["student_year"] = student_year
+                    if admission_type is not None:
+                        payload["admission_type"] = admission_type
+                    return update_profile(
                         conn,
                         profile_id,
-                        year=year,
-                        semester=semester,
-                    )
-                ]
-            except NotFoundError as exc:
-                return {"error": str(exc)}
+                        ProfileUpdateRequest(**payload),
+                    ).model_dump()
+                except (NotFoundError, InvalidRequestError) as exc:
+                    return {"error": str(exc)}
 
-    @mcp.tool(
-        description="Save notice categories and keywords for one local profile id."
-    )
-    def tool_set_profile_notice_preferences(
-        profile_id: str,
-        categories: list[str] | None = None,
-        keywords: list[str] | None = None,
-    ):
-        with connection() as conn:
-            try:
-                return set_profile_notice_preferences(
-                    conn,
-                    profile_id,
-                    ProfileNoticePreferences(
-                        categories=categories or [],
-                        keywords=keywords or [],
-                    ),
-                ).model_dump()
-            except (NotFoundError, InvalidRequestError) as exc:
-                return {"error": str(exc)}
-
-    @mcp.tool(
-        description="Save normalized interest tags for one local profile id."
-    )
-    def tool_set_profile_interests(profile_id: str, tags: list[str] | None = None):
-        with connection() as conn:
-            try:
-                return set_profile_interests(
-                    conn,
-                    profile_id,
-                    ProfileInterests(tags=tags or []),
-                ).model_dump()
-            except (NotFoundError, InvalidRequestError) as exc:
-                return {"error": str(exc)}
-
-    @mcp.tool(
-        description="Get the current stored interest tags for one local profile id."
-    )
-    def tool_get_profile_interests(profile_id: str):
-        with connection() as conn:
-            try:
-                return get_profile_interests(conn, profile_id).model_dump()
-            except NotFoundError as exc:
-                return {"error": str(exc)}
-
-    @mcp.tool(
-        description="List notices that match one profile's saved preferences and profile context."
-    )
-    def tool_get_profile_notices(profile_id: str, limit: int = 10):
-        with connection() as conn:
-            try:
-                return [
-                    item.model_dump()
-                    for item in list_profile_notices(conn, profile_id, limit=limit)
-                ]
-            except (NotFoundError, InvalidRequestError) as exc:
-                return {"error": str(exc)}
-
-    @mcp.tool(
-        description=(
-            "Recommend courses for one profile using department and student-year context, "
-            "excluding courses already in the timetable."
+        @mcp.tool(
+            description=(
+                "Replace a profile timetable using official course keys: "
+                "year, semester, code, section."
+            )
         )
-    )
-    def tool_get_profile_course_recommendations(
-        profile_id: str,
-        year: int | None = None,
-        semester: int | None = None,
-        query: str = "",
-        limit: int = 10,
-    ):
-        with connection() as conn:
-            try:
-                return [
-                    item.model_dump()
-                    for item in get_profile_course_recommendations(
+        def tool_set_profile_timetable(profile_id: str, courses: list[dict[str, int | str]]):
+            with connection() as conn:
+                try:
+                    refs = [ProfileCourseRef.model_validate(item) for item in courses]
+                    return [
+                        item.model_dump()
+                        for item in set_profile_timetable(conn, profile_id, refs)
+                    ]
+                except (NotFoundError, InvalidRequestError) as exc:
+                    return {"error": str(exc)}
+
+        @mcp.tool(
+            description="Get the current stored timetable for one local profile id."
+        )
+        def tool_get_profile_timetable(
+            profile_id: str,
+            year: int | None = None,
+            semester: int | None = None,
+        ):
+            with connection() as conn:
+                try:
+                    return [
+                        item.model_dump()
+                        for item in get_profile_timetable(
+                            conn,
+                            profile_id,
+                            year=year,
+                            semester=semester,
+                        )
+                    ]
+                except NotFoundError as exc:
+                    return {"error": str(exc)}
+
+        @mcp.tool(
+            description="Save notice categories and keywords for one local profile id."
+        )
+        def tool_set_profile_notice_preferences(
+            profile_id: str,
+            categories: list[str] | None = None,
+            keywords: list[str] | None = None,
+        ):
+            with connection() as conn:
+                try:
+                    return set_profile_notice_preferences(
                         conn,
                         profile_id,
+                        ProfileNoticePreferences(
+                            categories=categories or [],
+                            keywords=keywords or [],
+                        ),
+                    ).model_dump()
+                except (NotFoundError, InvalidRequestError) as exc:
+                    return {"error": str(exc)}
+
+        @mcp.tool(
+            description="Save normalized interest tags for one local profile id."
+        )
+        def tool_set_profile_interests(profile_id: str, tags: list[str] | None = None):
+            with connection() as conn:
+                try:
+                    return set_profile_interests(
+                        conn,
+                        profile_id,
+                        ProfileInterests(tags=tags or []),
+                    ).model_dump()
+                except (NotFoundError, InvalidRequestError) as exc:
+                    return {"error": str(exc)}
+
+        @mcp.tool(
+            description="Get the current stored interest tags for one local profile id."
+        )
+        def tool_get_profile_interests(profile_id: str):
+            with connection() as conn:
+                try:
+                    return get_profile_interests(conn, profile_id).model_dump()
+                except NotFoundError as exc:
+                    return {"error": str(exc)}
+
+        @mcp.tool(
+            description=(
+                "List notices that match one profile's saved preferences "
+                "and profile context."
+            )
+        )
+        def tool_get_profile_notices(profile_id: str, limit: int = 10):
+            with connection() as conn:
+                try:
+                    return [
+                        item.model_dump()
+                        for item in list_profile_notices(conn, profile_id, limit=limit)
+                    ]
+                except (NotFoundError, InvalidRequestError) as exc:
+                    return {"error": str(exc)}
+
+        @mcp.tool(
+            description=(
+                "Recommend courses for one profile using department and student-year context, "
+                "excluding courses already in the timetable."
+            )
+        )
+        def tool_get_profile_course_recommendations(
+            profile_id: str,
+            year: int | None = None,
+            semester: int | None = None,
+            query: str = "",
+            limit: int = 10,
+        ):
+            with connection() as conn:
+                try:
+                    return [
+                        item.model_dump()
+                        for item in get_profile_course_recommendations(
+                            conn,
+                            profile_id,
+                            year=year,
+                            semester=semester,
+                            query=query,
+                            limit=limit,
+                        )
+                    ]
+                except (NotFoundError, InvalidRequestError) as exc:
+                    return {"error": str(exc)}
+
+        @mcp.tool(
+            description=(
+                "Recommend meals from an origin place using one profile's timetable, budget, "
+                "and optional category filters."
+            )
+        )
+        def tool_get_profile_meal_recommendations(
+            profile_id: str,
+            origin: str,
+            at: str | None = None,
+            year: int | None = None,
+            semester: int | None = None,
+            budget_max: int | None = None,
+            category: str | None = None,
+            open_now: bool = False,
+            limit: int = 10,
+        ):
+            with connection() as conn:
+                try:
+                    from datetime import datetime
+
+                    parsed_at = datetime.fromisoformat(at) if at else None
+                    return get_profile_meal_recommendations(
+                        conn,
+                        profile_id,
+                        origin=origin,
+                        at=parsed_at,
                         year=year,
                         semester=semester,
-                        query=query,
+                        budget_max=budget_max,
+                        category=category,
                         limit=limit,
-                    )
-                ]
-            except (NotFoundError, InvalidRequestError) as exc:
-                return {"error": str(exc)}
-
-    @mcp.tool(
-        description=(
-            "Recommend meals from an origin place using one profile's timetable, budget, "
-            "and optional category filters."
-        )
-    )
-    def tool_get_profile_meal_recommendations(
-        profile_id: str,
-        origin: str,
-        at: str | None = None,
-        year: int | None = None,
-        semester: int | None = None,
-        budget_max: int | None = None,
-        category: str | None = None,
-        open_now: bool = False,
-        limit: int = 10,
-    ):
-        with connection() as conn:
-            try:
-                from datetime import datetime
-
-                parsed_at = datetime.fromisoformat(at) if at else None
-                return get_profile_meal_recommendations(
-                    conn,
-                    profile_id,
-                    origin=origin,
-                    at=parsed_at,
-                    year=year,
-                    semester=semester,
-                    budget_max=budget_max,
-                    category=category,
-                    limit=limit,
-                    open_now=open_now,
-                ).model_dump()
-            except (NotFoundError, InvalidRequestError, ValueError) as exc:
-                return {"error": str(exc)}
+                        open_now=open_now,
+                    ).model_dump()
+                except (NotFoundError, InvalidRequestError, ValueError) as exc:
+                    return {"error": str(exc)}
 
     return mcp
 

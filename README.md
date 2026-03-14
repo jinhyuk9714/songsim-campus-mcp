@@ -1,6 +1,28 @@
-# Songsim Campus Starter Kit
+# Songsim Campus MCP
 
-가톨릭대학교 성심교정 전용 생활 도우미를 만들기 위한 **Codex 친화형 스타터킷**입니다.
+가톨릭대학교 성심교정 전용 데이터를 **HTTP API + 원격 MCP 서버**로 제공하는 프로젝트입니다.
+
+공개 배포에서는 `read-only` 원격 MCP처럼 동작하고, 로컬 full 모드에서는 admin, sync, observability, 개인화 실험까지 함께 쓸 수 있습니다.
+
+## 공개 사용 방식
+
+- HTTP API: 장소, 과목, 공지, 식당, 교통 안내 조회
+- Remote MCP: ChatGPT, Claude, Codex 같은 클라이언트에서 직접 연결
+- Local full mode: profile, timetable, admin sync, observability, automation 운영
+
+## 공개 테스트 배포 기준
+
+- API URL 하나
+- MCP URL 하나
+- Render free web service 2개
+- Supabase free Postgres 1개
+
+관련 문서:
+
+- [Render 배포 가이드](/Users/sungjh/Projects/songsim-campus-mcp/docs/deploy-render.md)
+- [ChatGPT 연결 가이드](/Users/sungjh/Projects/songsim-campus-mcp/docs/connect-chatgpt.md)
+- [Claude 연결 가이드](/Users/sungjh/Projects/songsim-campus-mcp/docs/connect-claude.md)
+- [Codex 연결 가이드](/Users/sungjh/Projects/songsim-campus-mcp/docs/connect-codex.md)
 
 이 스타터킷은 처음부터 복잡한 인프라를 얹지 않고, 아래 흐름을 가장 빠르게 검증하는 데 초점을 둡니다.
 
@@ -77,6 +99,14 @@ pip install -e '.[dev,mcp,scrape]'
 
 ```bash
 cp .env.example .env
+```
+
+공개 read-only 배포를 만들려면 아래 값을 사용합니다.
+
+```bash
+SONGSIM_APP_MODE=public_readonly
+SONGSIM_PUBLIC_HTTP_URL=https://your-public-api-url
+SONGSIM_PUBLIC_MCP_URL=https://your-public-mcp-url/mcp
 ```
 
 로컬 DB를 먼저 올립니다.
@@ -254,3 +284,4 @@ SONGSIM_ADMIN_ENABLED=true uv run songsim-api
 - `/admin/sync`는 `SONGSIM_ADMIN_ENABLED=true`일 때만 열리고, loopback 클라이언트에서만 접근됩니다.
 - `/readyz`는 DB와 핵심 테이블 접근성을 점검하고, `/admin/observability`와 `/admin/observability.json`은 최근 sync/cache 상태를 로컬에서만 보여줍니다.
 - `SONGSIM_AUTOMATION_ENABLED=true`이면 앱 내부 스케줄러가 advisory lock 기반으로 `snapshot`과 `cache_cleanup` job을 자동 실행합니다.
+- `SONGSIM_APP_MODE=public_readonly`이면 공개 read-only surface만 노출하고 `/profiles/*`, `/admin/*`는 숨겨집니다.

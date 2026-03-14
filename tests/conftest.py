@@ -103,6 +103,9 @@ def app_env(postgres_server, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("SONGSIM_SEED_DEMO_ON_START", "true")
     monkeypatch.setenv("SONGSIM_SYNC_OFFICIAL_ON_START", "false")
     monkeypatch.setenv("SONGSIM_ADMIN_ENABLED", "false")
+    monkeypatch.setenv("SONGSIM_APP_MODE", "local_full")
+    monkeypatch.setenv("SONGSIM_PUBLIC_HTTP_URL", "")
+    monkeypatch.setenv("SONGSIM_PUBLIC_MCP_URL", "")
     monkeypatch.setenv("SONGSIM_KAKAO_REST_API_KEY", "")
     clear_settings_cache()
     yield database_url
@@ -112,6 +115,9 @@ def app_env(postgres_server, monkeypatch: pytest.MonkeyPatch):
     os.environ.pop("SONGSIM_SEED_DEMO_ON_START", None)
     os.environ.pop("SONGSIM_SYNC_OFFICIAL_ON_START", None)
     os.environ.pop("SONGSIM_ADMIN_ENABLED", None)
+    os.environ.pop("SONGSIM_APP_MODE", None)
+    os.environ.pop("SONGSIM_PUBLIC_HTTP_URL", None)
+    os.environ.pop("SONGSIM_PUBLIC_MCP_URL", None)
     os.environ.pop("SONGSIM_KAKAO_REST_API_KEY", None)
     os.environ.pop("SONGSIM_DATABASE_PATH", None)
 

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from fastapi.testclient import TestClient
+
 from songsim_campus import services
+from songsim_campus.api import create_app
 from songsim_campus.db import connection
 from songsim_campus.repo import replace_restaurants, update_place_opening_hours
 from songsim_campus.services import (
@@ -40,6 +43,36 @@ def test_admin_observability_routes_are_disabled_by_default(client):
 
     assert html_response.status_code == 404
     assert json_response.status_code == 404
+
+
+def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    monkeypatch.setenv("SONGSIM_ADMIN_ENABLED", "true")
+    monkeypatch.setenv("SONGSIM_PUBLIC_HTTP_URL", "https://songsim-api.onrender.com")
+    monkeypatch.setenv("SONGSIM_PUBLIC_MCP_URL", "https://songsim-mcp.onrender.com/mcp")
+    clear_settings_cache()
+
+    app = create_app()
+    with TestClient(app) as public_client:
+        landing = public_client.get("/")
+        docs = public_client.get("/docs")
+        openapi = public_client.get("/openapi.json")
+        places = public_client.get("/places", params={"query": "도서관"})
+        create_profile = public_client.post("/profiles", json={"display_name": "성심학생"})
+        admin_sync = public_client.get("/admin/sync")
+
+    clear_settings_cache()
+
+    assert landing.status_code == 200
+    assert "Songsim Campus MCP" in landing.text
+    assert "https://songsim-api.onrender.com" in landing.text
+    assert "https://songsim-mcp.onrender.com/mcp" in landing.text
+    assert docs.status_code == 200
+    assert places.status_code == 200
+    assert create_profile.status_code == 404
+    assert admin_sync.status_code == 404
+    assert "/profiles" not in openapi.text
+    assert "/admin/sync" not in openapi.text
 
 
 def test_admin_sync_route_rejects_non_loopback(remote_admin_client):

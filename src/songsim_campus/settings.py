@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -20,6 +21,9 @@ class Settings(BaseSettings):
     seed_demo_on_start: bool = True
     sync_official_on_start: bool = False
     admin_enabled: bool = False
+    app_mode: Literal["local_full", "public_readonly"] = "local_full"
+    public_http_url: str | None = None
+    public_mcp_url: str | None = None
     automation_enabled: bool = False
     automation_tick_seconds: int = 60
     automation_snapshot_interval_minutes: int = 360

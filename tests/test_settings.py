@@ -69,6 +69,19 @@ def test_settings_parse_admin_enabled(monkeypatch):
     assert settings.admin_enabled is True
 
 
+def test_settings_parse_public_mode_and_urls(monkeypatch):
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    monkeypatch.setenv("SONGSIM_PUBLIC_HTTP_URL", "https://songsim-api.onrender.com")
+    monkeypatch.setenv("SONGSIM_PUBLIC_MCP_URL", "https://songsim-mcp.onrender.com/mcp")
+    clear_settings_cache()
+
+    settings = Settings()
+
+    assert settings.app_mode == "public_readonly"
+    assert settings.public_http_url == "https://songsim-api.onrender.com"
+    assert settings.public_mcp_url == "https://songsim-mcp.onrender.com/mcp"
+
+
 def test_settings_parse_automation_defaults(monkeypatch):
     monkeypatch.setenv("SONGSIM_AUTOMATION_ENABLED", "true")
     monkeypatch.setenv("SONGSIM_AUTOMATION_TICK_SECONDS", "30")
@@ -90,6 +103,9 @@ def test_env_example_documents_2026_first_semester_defaults():
 
     assert "SONGSIM_DATABASE_URL=postgresql://songsim:songsim@127.0.0.1:55432/songsim" in text
     assert "SONGSIM_ADMIN_ENABLED=false" in text
+    assert "SONGSIM_APP_MODE=local_full" in text
+    assert "SONGSIM_PUBLIC_HTTP_URL=" in text
+    assert "SONGSIM_PUBLIC_MCP_URL=" in text
     assert "SONGSIM_AUTOMATION_ENABLED=false" in text
     assert "SONGSIM_AUTOMATION_TICK_SECONDS=60" in text
     assert "SONGSIM_AUTOMATION_SNAPSHOT_INTERVAL_MINUTES=360" in text
