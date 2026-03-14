@@ -42,6 +42,7 @@ def test_run_admin_sync_records_success_history_for_snapshot(app_env, monkeypatc
         dashboard = get_sync_dashboard_state(conn)
 
     assert runs[0].id == run.id
+    assert runs[0].trigger == "manual"
     assert runs[0].params == {"campus": "2", "year": 2026, "semester": 1, "notice_pages": 2}
     assert dashboard["recent_runs"][0].id == run.id
 

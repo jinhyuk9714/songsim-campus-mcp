@@ -172,6 +172,7 @@ ALTER TABLE restaurant_cache_items ADD COLUMN IF NOT EXISTS source_url TEXT;
 CREATE TABLE IF NOT EXISTS sync_runs (
     id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     target TEXT NOT NULL,
+    trigger TEXT NOT NULL DEFAULT 'manual',
     status TEXT NOT NULL,
     params_json JSONB NOT NULL DEFAULT '{}'::jsonb,
     summary_json JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -179,6 +180,8 @@ CREATE TABLE IF NOT EXISTS sync_runs (
     started_at TIMESTAMPTZ NOT NULL,
     finished_at TIMESTAMPTZ
 );
+
+ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS trigger TEXT NOT NULL DEFAULT 'manual';
 
 CREATE INDEX IF NOT EXISTS idx_places_name ON places(name);
 CREATE INDEX IF NOT EXISTS idx_places_geom ON places USING GIST (geom);
@@ -196,3 +199,5 @@ CREATE INDEX IF NOT EXISTS idx_notices_published_at ON notices(published_at DESC
 CREATE INDEX IF NOT EXISTS idx_transport_guides_mode ON transport_guides(mode);
 CREATE INDEX IF NOT EXISTS idx_profile_courses_profile_id ON profile_courses(profile_id);
 CREATE INDEX IF NOT EXISTS idx_sync_runs_started_at ON sync_runs(started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sync_runs_trigger_target_started_at
+ON sync_runs(trigger, target, started_at DESC);

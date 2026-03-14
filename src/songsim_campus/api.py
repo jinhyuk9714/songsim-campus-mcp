@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import html
 import json
+import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
 from urllib.parse import parse_qs
@@ -10,7 +12,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from .db import connection, init_db
+from .db import connection, get_connection, init_db
 from .schemas import (
     Course,
     MatchedCourse,
@@ -48,28 +50,69 @@ from .services import (
     list_profile_notices,
     list_restaurants,
     list_transport_guides,
+    release_automation_leader,
     run_admin_sync,
+    run_automation_tick,
     search_courses,
     search_places,
+    set_automation_leader,
     set_profile_interests,
     set_profile_notice_preferences,
     set_profile_timetable,
     sync_official_snapshot,
+    try_acquire_automation_leader,
     update_profile,
 )
 from .settings import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
     settings = get_settings()
+    stop_event = asyncio.Event()
+    automation_task: asyncio.Task[None] | None = None
     if settings.sync_official_on_start:
         with connection() as conn:
             sync_official_snapshot(conn)
     elif settings.seed_demo_on_start:
         seed_demo(force=False)
-    yield
+    if settings.automation_enabled:
+        set_automation_leader(False)
+
+        async def automation_loop() -> None:
+            lock_conn = get_connection()
+            leader = False
+            try:
+                while not stop_event.is_set():
+                    if not leader:
+                        leader = await asyncio.to_thread(try_acquire_automation_leader, lock_conn)
+                        if not leader:
+                            logger.info("event=automation_lock_skipped")
+                    if leader:
+                        await asyncio.to_thread(run_automation_tick)
+                    try:
+                        await asyncio.wait_for(
+                            stop_event.wait(),
+                            timeout=settings.automation_tick_seconds,
+                        )
+                    except TimeoutError:
+                        continue
+            finally:
+                if leader:
+                    await asyncio.to_thread(release_automation_leader, lock_conn)
+                lock_conn.close()
+                set_automation_leader(False)
+
+        automation_task = asyncio.create_task(automation_loop(), name="songsim-automation")
+    try:
+        yield
+    finally:
+        stop_event.set()
+        if automation_task is not None:
+            await automation_task
 
 
 def create_app() -> FastAPI:
@@ -87,6 +130,7 @@ def create_app() -> FastAPI:
     def render_admin_sync_page(state: dict[str, object]) -> str:
         datasets = state["datasets"]
         recent_runs = state["recent_runs"]
+        automation = state["automation"]
 
         def render_field(name: str, label: str, value: str = "") -> str:
             return (
@@ -162,6 +206,18 @@ def create_app() -> FastAPI:
             )
             for item in datasets
         )
+        automation_rows = "".join(
+            (
+                "<tr>"
+                f"<td>{html.escape(job.name)}</td>"
+                f"<td>{job.interval_minutes}</td>"
+                f"<td>{html.escape(str(job.last_run_at or '-'))}</td>"
+                f"<td>{html.escape(str(job.last_status or '-'))}</td>"
+                f"<td>{html.escape(str(job.next_due_at or '-'))}</td>"
+                "</tr>"
+            )
+            for job in automation.jobs
+        ) or "<tr><td colspan='5'>No automation jobs configured.</td></tr>"
         forms_html = "".join(
             (
                 "<form method='post' action='/admin/sync/run' class='card sync-form'>"
@@ -291,6 +347,25 @@ def create_app() -> FastAPI:
         <div class="grid">{dataset_cards}</div>
       </section>
       <section>
+        <h2>Automation Status</h2>
+        <p class="meta">
+          enabled: {'yes' if automation.enabled else 'no'} · leader:
+          {'yes' if automation.leader else 'no'}
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>job</th>
+              <th>interval_minutes</th>
+              <th>last_run_at</th>
+              <th>last_status</th>
+              <th>next_due_at</th>
+            </tr>
+          </thead>
+          <tbody>{automation_rows}</tbody>
+        </table>
+      </section>
+      <section>
         <h2>Run Sync</h2>
         <div class="forms">{forms_html}</div>
       </section>
@@ -322,6 +397,7 @@ def create_app() -> FastAPI:
         observability = state["observability"]
         cache = observability["cache"]
         sync = observability["sync"]
+        automation = observability["automation"]
         dataset_cards = "".join(
             (
                 "<article class='card'>"
@@ -385,6 +461,18 @@ def create_app() -> FastAPI:
             )
             for name, item in readiness["tables"].items()
         )
+        automation_rows = "".join(
+            (
+                "<tr>"
+                f"<td>{html.escape(str(job['name']))}</td>"
+                f"<td>{html.escape(str(job['interval_minutes']))}</td>"
+                f"<td>{html.escape(str(job['last_run_at'] or '-'))}</td>"
+                f"<td>{html.escape(str(job['last_status'] or '-'))}</td>"
+                f"<td>{html.escape(str(job['next_due_at'] or '-'))}</td>"
+                "</tr>"
+            )
+            for job in automation["jobs"]
+        ) or "<tr><td colspan='5'>No automation jobs configured.</td></tr>"
         return f"""
 <!doctype html>
 <html lang="en">
@@ -495,6 +583,25 @@ def create_app() -> FastAPI:
             </tr>
             {readiness_rows}
           </tbody>
+        </table>
+      </section>
+      <section>
+        <h2>Automation</h2>
+        <p class="meta">
+          enabled: {'yes' if automation['enabled'] else 'no'} · leader:
+          {'yes' if automation['leader'] else 'no'}
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>job</th>
+              <th>interval_minutes</th>
+              <th>last_run_at</th>
+              <th>last_status</th>
+              <th>next_due_at</th>
+            </tr>
+          </thead>
+          <tbody>{automation_rows}</tbody>
         </table>
       </section>
       <section>

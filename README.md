@@ -107,6 +107,15 @@ SONGSIM_OFFICIAL_COURSE_YEAR=2026
 SONGSIM_OFFICIAL_COURSE_SEMESTER=1
 ```
 
+앱 내부 자동화를 켜려면 `.env`에 아래 값을 추가하세요.
+
+```bash
+SONGSIM_AUTOMATION_ENABLED=true
+SONGSIM_AUTOMATION_TICK_SECONDS=60
+SONGSIM_AUTOMATION_SNAPSHOT_INTERVAL_MINUTES=360
+SONGSIM_AUTOMATION_CACHE_CLEANUP_INTERVAL_MINUTES=720
+```
+
 처음 DB만 만들고 싶으면:
 
 ```bash
@@ -153,6 +162,7 @@ curl 'http://127.0.0.1:8000/profiles/{profile_id}/meal-recommendations?origin=ce
 SONGSIM_ADMIN_ENABLED=true uv run songsim-api
 # 브라우저에서 http://127.0.0.1:8000/admin/sync 열기
 # 관측성 JSON은 http://127.0.0.1:8000/admin/observability.json
+# 자동화를 켜면 같은 앱 안에서 snapshot sync + cache cleanup이 주기적으로 실행됨
 ```
 
 ## 이미 들어있는 도메인 모델
@@ -228,8 +238,8 @@ SONGSIM_ADMIN_ENABLED=true uv run songsim-api
 
 ## 추천 확장 순서
 
-1. 운영 자동화
-2. 개인화 품질 고도화
+1. 개인화 품질 고도화
+2. 관리자 운영 흐름 보강
 
 ## 주의
 
@@ -243,3 +253,4 @@ SONGSIM_ADMIN_ENABLED=true uv run songsim-api
 - 외부 구간의 후보 식당 조회와 거리 계산은 PostGIS를 사용합니다.
 - `/admin/sync`는 `SONGSIM_ADMIN_ENABLED=true`일 때만 열리고, loopback 클라이언트에서만 접근됩니다.
 - `/readyz`는 DB와 핵심 테이블 접근성을 점검하고, `/admin/observability`와 `/admin/observability.json`은 최근 sync/cache 상태를 로컬에서만 보여줍니다.
+- `SONGSIM_AUTOMATION_ENABLED=true`이면 앱 내부 스케줄러가 advisory lock 기반으로 `snapshot`과 `cache_cleanup` job을 자동 실행합니다.

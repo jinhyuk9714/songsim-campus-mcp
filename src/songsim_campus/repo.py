@@ -598,6 +598,7 @@ def create_sync_run(
     *,
     target: str,
     status: str,
+    trigger: str = "manual",
     params: dict[str, Any],
     summary: dict[str, Any],
     error_text: str | None,
@@ -607,12 +608,13 @@ def create_sync_run(
     row = conn.execute(
         """
         INSERT INTO sync_runs (
-            target, status, params_json, summary_json, error_text, started_at, finished_at
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+            target, trigger, status, params_json, summary_json, error_text, started_at, finished_at
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING id
         """,
         (
             target,
+            trigger,
             status,
             Jsonb(params),
             Jsonb(summary),
@@ -660,6 +662,45 @@ def list_sync_runs(conn: psycopg.Connection, limit: int = 20) -> list[dict[str, 
     return [_row_to_dict("sync_runs", row) for row in rows]
 
 
+def find_sync_runs(
+    conn: psycopg.Connection,
+    *,
+    target: str | None = None,
+    trigger: str | None = None,
+    status: str | None = None,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    sql = "SELECT * FROM sync_runs"
+    params: list[Any] = []
+    clauses: list[str] = []
+    if target is not None:
+        clauses.append("target = %s")
+        params.append(target)
+    if trigger is not None:
+        clauses.append("trigger = %s")
+        params.append(trigger)
+    if status is not None:
+        clauses.append("status = %s")
+        params.append(status)
+    if clauses:
+        sql += " WHERE " + " AND ".join(clauses)
+    sql += " ORDER BY started_at DESC, id DESC LIMIT %s"
+    params.append(limit)
+    rows = conn.execute(sql, params).fetchall()
+    return [_row_to_dict("sync_runs", row) for row in rows]
+
+
+def get_latest_sync_run(
+    conn: psycopg.Connection,
+    *,
+    target: str,
+    trigger: str,
+    status: str | None = None,
+) -> dict[str, Any] | None:
+    rows = find_sync_runs(conn, target=target, trigger=trigger, status=status, limit=1)
+    return rows[0] if rows else None
+
+
 def get_dataset_sync_state(conn: psycopg.Connection, table: str) -> dict[str, Any]:
     allowed = {"places", "courses", "notices", "transport_guides"}
     if table not in allowed:
@@ -673,6 +714,71 @@ def get_dataset_sync_state(conn: psycopg.Connection, table: str) -> dict[str, An
         "row_count": int(data["row_count"] or 0),
         "last_synced_at": data["last_synced_at"],
     }
+
+
+def try_advisory_lock(conn: psycopg.Connection, key: int) -> bool:
+    row = conn.execute("SELECT pg_try_advisory_lock(%s) AS locked", (key,)).fetchone()
+    return bool(row["locked"])
+
+
+def release_advisory_lock(conn: psycopg.Connection, key: int) -> bool:
+    row = conn.execute("SELECT pg_advisory_unlock(%s) AS unlocked", (key,)).fetchone()
+    return bool(row["unlocked"])
+
+
+def delete_stale_restaurant_cache_snapshots(
+    conn: psycopg.Connection,
+    *,
+    older_than: str,
+) -> dict[str, int]:
+    rows = conn.execute(
+        """
+        SELECT id FROM restaurant_cache_snapshots
+        WHERE fetched_at < %s
+        """,
+        (older_than,),
+    ).fetchall()
+    snapshot_ids = [int(row["id"]) for row in rows]
+    if not snapshot_ids:
+        return {
+            "restaurant_cache_snapshots_deleted": 0,
+            "restaurant_cache_items_deleted": 0,
+        }
+    item_row = conn.execute(
+        """
+        SELECT COUNT(*) AS value
+        FROM restaurant_cache_items
+        WHERE snapshot_id = ANY(%s)
+        """,
+        (snapshot_ids,),
+    ).fetchone()
+    conn.execute(
+        "DELETE FROM restaurant_cache_snapshots WHERE id = ANY(%s)",
+        (snapshot_ids,),
+    )
+    return {
+        "restaurant_cache_snapshots_deleted": len(snapshot_ids),
+        "restaurant_cache_items_deleted": int(item_row["value"] or 0),
+    }
+
+
+def delete_stale_restaurant_hours_cache(
+    conn: psycopg.Connection,
+    *,
+    older_than: str,
+) -> int:
+    row = conn.execute(
+        """
+        WITH deleted AS (
+            DELETE FROM restaurant_hours_cache
+            WHERE fetched_at < %s
+            RETURNING 1
+        )
+        SELECT COUNT(*) AS value FROM deleted
+        """,
+        (older_than,),
+    ).fetchone()
+    return int(row["value"] or 0)
 
 
 def create_profile(

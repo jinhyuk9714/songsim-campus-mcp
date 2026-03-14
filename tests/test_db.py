@@ -41,6 +41,13 @@ def test_init_db_creates_postgis_schema(app_env):
             WHERE table_name = 'sync_runs' AND column_name = 'started_at'
             """
         ).fetchone()
+        sync_trigger = conn.execute(
+            """
+            SELECT data_type
+            FROM information_schema.columns
+            WHERE table_name = 'sync_runs' AND column_name = 'trigger'
+            """
+        ).fetchone()
         profile_department = conn.execute(
             """
             SELECT data_type
@@ -81,6 +88,7 @@ def test_init_db_creates_postgis_schema(app_env):
     assert places_geom["data_type"] == "USER-DEFINED"
     assert notices_labels["data_type"] == "jsonb"
     assert sync_started["data_type"] == "timestamp with time zone"
+    assert sync_trigger["data_type"] == "text"
     assert profile_department["data_type"] == "text"
     assert profile_interests["data_type"] == "jsonb"
     assert restaurant_hours["data_type"] == "jsonb"

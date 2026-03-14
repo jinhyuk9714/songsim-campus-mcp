@@ -123,6 +123,7 @@ class SyncRun(BaseModel):
     id: int
     target: str
     status: str
+    trigger: str = "manual"
     params: dict[str, int | str] = Field(default_factory=dict)
     summary: dict[str, int] = Field(default_factory=dict)
     error_text: str | None = None
@@ -149,10 +150,25 @@ class SyncObservability(BaseModel):
     last_failure_message: str | None = None
 
 
+class AutomationJobObservability(BaseModel):
+    name: str
+    interval_minutes: int
+    last_run_at: str | None = None
+    last_status: str | None = None
+    next_due_at: str | None = None
+
+
+class AutomationObservability(BaseModel):
+    enabled: bool = False
+    leader: bool = False
+    jobs: list[AutomationJobObservability] = Field(default_factory=list)
+
+
 class ObservabilitySnapshot(BaseModel):
     process_started_at: str
     cache: CacheObservability = Field(default_factory=CacheObservability)
     sync: SyncObservability = Field(default_factory=SyncObservability)
+    automation: AutomationObservability = Field(default_factory=AutomationObservability)
     datasets: list[dict[str, Any]] = Field(default_factory=list)
     recent_sync_runs: list[SyncRun] = Field(default_factory=list)
 

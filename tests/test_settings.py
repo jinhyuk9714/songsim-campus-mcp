@@ -69,12 +69,31 @@ def test_settings_parse_admin_enabled(monkeypatch):
     assert settings.admin_enabled is True
 
 
+def test_settings_parse_automation_defaults(monkeypatch):
+    monkeypatch.setenv("SONGSIM_AUTOMATION_ENABLED", "true")
+    monkeypatch.setenv("SONGSIM_AUTOMATION_TICK_SECONDS", "30")
+    monkeypatch.setenv("SONGSIM_AUTOMATION_SNAPSHOT_INTERVAL_MINUTES", "180")
+    monkeypatch.setenv("SONGSIM_AUTOMATION_CACHE_CLEANUP_INTERVAL_MINUTES", "600")
+    clear_settings_cache()
+
+    settings = Settings()
+
+    assert settings.automation_enabled is True
+    assert settings.automation_tick_seconds == 30
+    assert settings.automation_snapshot_interval_minutes == 180
+    assert settings.automation_cache_cleanup_interval_minutes == 600
+
+
 def test_env_example_documents_2026_first_semester_defaults():
     env_example = Path(__file__).resolve().parents[1] / ".env.example"
     text = env_example.read_text(encoding="utf-8")
 
     assert "SONGSIM_DATABASE_URL=postgresql://songsim:songsim@127.0.0.1:55432/songsim" in text
     assert "SONGSIM_ADMIN_ENABLED=false" in text
+    assert "SONGSIM_AUTOMATION_ENABLED=false" in text
+    assert "SONGSIM_AUTOMATION_TICK_SECONDS=60" in text
+    assert "SONGSIM_AUTOMATION_SNAPSHOT_INTERVAL_MINUTES=360" in text
+    assert "SONGSIM_AUTOMATION_CACHE_CLEANUP_INTERVAL_MINUTES=720" in text
     assert "SONGSIM_RESTAURANT_CACHE_TTL_MINUTES=360" in text
     assert "SONGSIM_RESTAURANT_CACHE_STALE_TTL_MINUTES=1440" in text
     assert "SONGSIM_OFFICIAL_COURSE_YEAR=2026" in text

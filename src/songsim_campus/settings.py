@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     seed_demo_on_start: bool = True
     sync_official_on_start: bool = False
     admin_enabled: bool = False
+    automation_enabled: bool = False
+    automation_tick_seconds: int = 60
+    automation_snapshot_interval_minutes: int = 360
+    automation_cache_cleanup_interval_minutes: int = 720
     app_host: str = "127.0.0.1"
     app_port: int = 8000
     kakao_rest_api_key: str | None = None

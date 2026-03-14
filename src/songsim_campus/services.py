@@ -8,7 +8,7 @@ import re
 import sqlite3
 import uuid
 from copy import deepcopy
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -16,7 +16,7 @@ from typing import Any
 import httpx
 
 from . import repo
-from .db import get_connection
+from .db import connection, get_connection
 from .ingest.kakao_places import (
     KakaoLocalClient,
     KakaoPlace,
@@ -33,6 +33,8 @@ from .ingest.official_sources import (
     TransportGuideSource,
 )
 from .schemas import (
+    AutomationJobObservability,
+    AutomationObservability,
     CacheObservability,
     Course,
     MatchedCourse,
@@ -76,6 +78,9 @@ ADMIN_SYNC_TARGETS = {
     "notices",
     "transport_guides",
 }
+AUTOMATION_SYNC_TARGETS = {"snapshot", "cache_cleanup"}
+SYNC_RUN_TARGETS = ADMIN_SYNC_TARGETS | AUTOMATION_SYNC_TARGETS
+AUTOMATION_LOCK_KEY = 20_260_314
 ALLOWED_ADMISSION_TYPES = {"general", "freshman", "transfer", "exchange"}
 CLASS_PERIODS = [
     (1, "09:00", "09:50"),
@@ -130,6 +135,9 @@ def _new_observability_state(process_started_at: str | None = None) -> dict[str,
             "last_failure_at": None,
             "last_failure_message": None,
         },
+        "automation": {
+            "leader": False,
+        },
     }
 
 
@@ -139,6 +147,10 @@ _OBSERVABILITY_STATE = _new_observability_state()
 def reset_observability_state() -> None:
     global _OBSERVABILITY_STATE
     _OBSERVABILITY_STATE = _new_observability_state()
+
+
+def set_automation_leader(is_leader: bool) -> None:
+    _OBSERVABILITY_STATE["automation"]["leader"] = is_leader
 
 
 def _prepend_observability_event(items: list[dict[str, Any]], payload: dict[str, Any]) -> None:
@@ -220,6 +232,7 @@ def _record_hours_cache_decision(
 def _record_sync_result(
     *,
     target: str,
+    trigger: str,
     status: str,
     started_at: str,
     finished_at: str,
@@ -231,6 +244,7 @@ def _record_sync_result(
     finished = datetime.fromisoformat(finished_at)
     event = {
         "target": target,
+        "trigger": trigger,
         "status": status,
         "started_at": started_at,
         "finished_at": finished_at,
@@ -239,19 +253,27 @@ def _record_sync_result(
         "error_text": error_text,
     }
     _prepend_observability_event(sync_state["recent_events"], event)
+    failed_event_name = "automation_job_failed" if trigger == "automation" else "admin_sync_failed"
+    completed_event_name = (
+        "automation_job_completed" if trigger == "automation" else "admin_sync_completed"
+    )
     if status == "failed":
         sync_state["last_failure_at"] = finished_at
         sync_state["last_failure_message"] = error_text
         logger.error(
-            "event=admin_sync_failed target=%s duration_ms=%s error_text=%s",
+            "event=%s target=%s trigger=%s duration_ms=%s error_text=%s",
+            failed_event_name,
             target,
+            trigger,
             event["duration_ms"],
             error_text or "",
         )
     else:
         logger.info(
-            "event=admin_sync_completed target=%s duration_ms=%s summary=%s",
+            "event=%s target=%s trigger=%s duration_ms=%s summary=%s",
+            completed_event_name,
             target,
+            trigger,
             event["duration_ms"],
             json.dumps(summary or {}, ensure_ascii=False),
         )
@@ -307,9 +329,99 @@ def get_observability_snapshot(
         process_started_at=state["process_started_at"],
         cache=CacheObservability.model_validate(state["cache"]),
         sync=SyncObservability.model_validate(state["sync"]),
+        automation=get_automation_status(conn),
         datasets=[repo.get_dataset_sync_state(conn, table) for table in SYNC_DATASET_TABLES],
         recent_sync_runs=list_sync_runs(conn, limit=runs_limit),
     )
+
+
+def _automation_interval_minutes(target: str) -> int:
+    settings = get_settings()
+    if target == "snapshot":
+        return settings.automation_snapshot_interval_minutes
+    if target == "cache_cleanup":
+        return settings.automation_cache_cleanup_interval_minutes
+    raise InvalidRequestError(f"Unsupported automation target: {target}")
+
+
+def _sync_run_completed_at(run: dict[str, Any] | SyncRun | None) -> str | None:
+    if run is None:
+        return None
+    if isinstance(run, dict):
+        finished_at = run.get("finished_at")
+        started_at = run.get("started_at")
+    else:
+        finished_at = run.finished_at
+        started_at = run.started_at
+    return finished_at or started_at
+
+
+def _automation_job_snapshot(
+    conn: sqlite3.Connection,
+    *,
+    target: str,
+    now: datetime | None = None,
+) -> AutomationJobObservability:
+    current = _coerce_datetime(now)
+    latest = repo.get_latest_sync_run(conn, target=target, trigger="automation")
+    latest_success = repo.get_latest_sync_run(
+        conn,
+        target=target,
+        trigger="automation",
+        status="success",
+    )
+    interval_minutes = _automation_interval_minutes(target)
+    latest_success_at = _sync_run_completed_at(latest_success)
+    if latest_success_at:
+        next_due = datetime.fromisoformat(latest_success_at) + timedelta(minutes=interval_minutes)
+        next_due_at = next_due.isoformat(timespec="seconds")
+    else:
+        next_due_at = current.isoformat(timespec="seconds")
+    return AutomationJobObservability(
+        name=target,
+        interval_minutes=interval_minutes,
+        last_run_at=_sync_run_completed_at(latest),
+        last_status=(latest or {}).get("status") if latest else None,
+        next_due_at=next_due_at,
+    )
+
+
+def get_automation_status(
+    conn: sqlite3.Connection,
+    *,
+    now: datetime | None = None,
+) -> AutomationObservability:
+    settings = get_settings()
+    return AutomationObservability(
+        enabled=settings.automation_enabled,
+        leader=bool(_OBSERVABILITY_STATE["automation"]["leader"]),
+        jobs=[
+            _automation_job_snapshot(conn, target=target, now=now)
+            for target in ("snapshot", "cache_cleanup")
+        ],
+    )
+
+
+def try_acquire_automation_leader(conn: sqlite3.Connection) -> bool:
+    locked = repo.try_advisory_lock(conn, AUTOMATION_LOCK_KEY)
+    set_automation_leader(locked)
+    return locked
+
+
+def release_automation_leader(conn: sqlite3.Connection) -> bool:
+    unlocked = repo.release_advisory_lock(conn, AUTOMATION_LOCK_KEY)
+    set_automation_leader(False)
+    return unlocked
+
+
+def _is_automation_job_due(
+    conn: sqlite3.Connection,
+    *,
+    target: str,
+    now: datetime | None = None,
+) -> bool:
+    snapshot = _automation_job_snapshot(conn, target=target, now=now)
+    return _coerce_datetime(now) >= datetime.fromisoformat(snapshot.next_due_at or _now_iso())
 
 
 def _current_year_and_semester(now: datetime | None = None) -> tuple[int, int]:
@@ -1205,6 +1317,7 @@ def get_sync_dashboard_state(
     return {
         "datasets": [repo.get_dataset_sync_state(conn, table) for table in SYNC_DATASET_TABLES],
         "recent_runs": list_sync_runs(conn, limit=runs_limit),
+        "automation": get_automation_status(conn),
     }
 
 
@@ -1280,18 +1393,21 @@ def _run_admin_sync_target(
         }
     if target == "transport_guides":
         return {"transport_guides": len(refresh_transport_guides_from_location_page(conn))}
+    if target == "cache_cleanup":
+        return cleanup_stale_restaurant_caches(conn)
     raise InvalidRequestError(f"Unsupported admin sync target: {target}")
 
 
 def run_admin_sync(
     *,
     target: str = "snapshot",
+    trigger: str = "manual",
     campus: str | None = None,
     year: int | None = None,
     semester: int | None = None,
     notice_pages: int | None = None,
 ) -> SyncRun:
-    if target not in ADMIN_SYNC_TARGETS:
+    if target not in SYNC_RUN_TARGETS:
         raise InvalidRequestError(f"Unsupported admin sync target: {target}")
 
     params = _sync_run_params(
@@ -1308,6 +1424,7 @@ def run_admin_sync(
             run_conn,
             target=target,
             status="running",
+            trigger=trigger,
             params=params,
             summary={},
             error_text=None,
@@ -1360,6 +1477,7 @@ def run_admin_sync(
         raise RuntimeError(f"Sync run not found after update: {run_id}")
     _record_sync_result(
         target=target,
+        trigger=trigger,
         status=status,
         started_at=started_at,
         finished_at=finished_at,
@@ -1367,6 +1485,54 @@ def run_admin_sync(
         error_text=error_text,
     )
     return SyncRun.model_validate(row)
+
+
+def cleanup_stale_restaurant_caches(
+    conn: sqlite3.Connection,
+    *,
+    now: datetime | None = None,
+) -> dict[str, int]:
+    settings = get_settings()
+    current = _coerce_datetime(now)
+    restaurant_cache_cutoff = (
+        current - timedelta(minutes=settings.restaurant_cache_stale_ttl_minutes)
+    ).isoformat(timespec="seconds")
+    restaurant_hours_cutoff = (
+        current - timedelta(minutes=settings.restaurant_hours_cache_stale_ttl_minutes)
+    ).isoformat(timespec="seconds")
+    summary = repo.delete_stale_restaurant_cache_snapshots(
+        conn,
+        older_than=restaurant_cache_cutoff,
+    )
+    summary["restaurant_hours_cache_deleted"] = repo.delete_stale_restaurant_hours_cache(
+        conn,
+        older_than=restaurant_hours_cutoff,
+    )
+    return summary
+
+
+def run_automation_tick(
+    *,
+    job_names: set[str] | None = None,
+    now: datetime | None = None,
+) -> list[SyncRun]:
+    selected = job_names or AUTOMATION_SYNC_TARGETS
+    unknown = set(selected) - AUTOMATION_SYNC_TARGETS
+    if unknown:
+        raise InvalidRequestError(f"Unsupported automation job(s): {', '.join(sorted(unknown))}")
+    current = _coerce_datetime(now)
+    due_targets: list[str] = []
+    with connection() as conn:
+        for target in ("snapshot", "cache_cleanup"):
+            if target not in selected:
+                continue
+            if _is_automation_job_due(conn, target=target, now=current):
+                due_targets.append(target)
+
+    runs: list[SyncRun] = []
+    for target in due_targets:
+        runs.append(run_admin_sync(target=target, trigger="automation"))
+    return runs
 
 
 def create_profile(conn: sqlite3.Connection, display_name: str = "") -> Profile:

@@ -91,6 +91,7 @@ def test_admin_sync_dashboard_runs_snapshot_and_shows_recent_history(admin_clien
     page = admin_client.get("/admin/sync")
     assert page.status_code == 200
     assert "Songsim Admin Sync" in page.text
+    assert "Automation Status" in page.text
     assert "snapshot" in page.text
     assert "success" in page.text
     assert "transport_guides" in page.text
@@ -146,6 +147,9 @@ def test_admin_observability_pages_render_runtime_state(admin_client, client, mo
     assert payload["readiness"]["ok"] is True
     assert payload["cache"]["local_fallback"] >= 1
     assert payload["sync"]["last_failure_message"] == "transport sync exploded"
+    assert payload["automation"]["enabled"] is False
+    assert payload["automation"]["leader"] is False
+    assert {job["name"] for job in payload["automation"]["jobs"]} == {"snapshot", "cache_cleanup"}
     assert payload["datasets"][0]["name"] == "places"
     assert payload["recent_sync_runs"][0]["status"] in {"success", "failed"}
 
