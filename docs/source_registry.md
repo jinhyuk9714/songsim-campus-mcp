@@ -13,6 +13,13 @@
 | kakao_local | 외부 API | https://developers.kakao.com/docs/latest/ko/local/common | 높음 | implemented | API 키가 있으면 `/restaurants/nearby`와 개인화 식사 추천에서 lazy cache 기반 실시간 장소 검색 사용 |
 | kakao_place_detail | 외부 웹 | https://place.map.kakao.com/ | 중간 | implemented | Kakao place detail `panel3` 공개 흐름에서 영업시간을 best-effort로 가져와 `restaurant_hours_cache`에 lazy cache 저장 |
 
+## 실시간 강의실 조사 메모
+
+- 조사일: `2026-03-15`
+- 조사 범위: 가톨릭대학교 공식 캠퍼스맵, 개설과목조회, 교내 시설/대관 관련 공개 페이지
+- 결과: 공개 접근 가능한 `현재 강의실 점유/예약/배정 현황` 공식 feed나 API는 확인하지 못했습니다.
+- 현재 정책: `/classrooms/empty`, `/gpt/classrooms/empty`, `tool_list_estimated_empty_classrooms`는 공식 실시간 source adapter를 먼저 시도하고, 기본 배포에서는 시간표 기준 예상 공실로 폴백합니다.
+
 ## 파서 원칙
 
 1. 원본 HTML/JSON을 저장하지 않고도 테스트 가능한 **샘플 fixture**를 남긴다.

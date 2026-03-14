@@ -294,12 +294,95 @@ def test_classrooms_empty_endpoint_returns_estimated_empty_rooms_for_building_al
     assert payload["building"]["name"] == "니콜스관"
     assert payload["year"] == 2026
     assert payload["semester"] == 1
+    assert payload["availability_mode"] == "estimated"
+    assert payload["observed_at"] is None
     assert payload["estimate_note"].startswith("공식 시간표 기준 예상 공실입니다.")
     assert [item["room"] for item in payload["items"]] == ["N301", "N201"]
     assert payload["items"][0]["available_now"] is True
+    assert payload["items"][0]["availability_mode"] == "estimated"
+    assert payload["items"][0]["source_observed_at"] is None
     assert payload["items"][0]["next_occupied_at"] is None
     assert payload["items"][1]["next_occupied_at"] == "2026-03-16T13:00:00+09:00"
     assert "데이터베이스" in (payload["items"][1]["next_course_summary"] or "")
+
+
+def test_classrooms_empty_endpoint_prefers_official_realtime_when_source_is_available(
+    client,
+    monkeypatch,
+):
+    with connection() as conn:
+        replace_courses(
+            conn,
+            [
+                {
+                    "year": 2026,
+                    "semester": 1,
+                    "code": "CSE110",
+                    "title": "컴퓨팅사고",
+                    "professor": "테스트교수",
+                    "department": "컴퓨터정보공학부",
+                    "section": "01",
+                    "day_of_week": "월",
+                    "period_start": 2,
+                    "period_end": 3,
+                    "room": "N101",
+                    "raw_schedule": "월2~3(N101)",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "year": 2026,
+                    "semester": 1,
+                    "code": "CSE332",
+                    "title": "데이터베이스",
+                    "professor": "김가톨",
+                    "department": "컴퓨터정보공학부",
+                    "section": "01",
+                    "day_of_week": "월",
+                    "period_start": 5,
+                    "period_end": 6,
+                    "room": "N201",
+                    "raw_schedule": "월5~6(N201)",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+
+    class RealtimeSource:
+        def fetch_availability(self, *, building, at, year, semester):
+            return [
+                {
+                    "room": "N101",
+                    "available_now": True,
+                    "source_observed_at": "2026-03-16T10:10:00+09:00",
+                },
+                {
+                    "room": "N201",
+                    "available_now": False,
+                    "source_observed_at": "2026-03-16T10:10:00+09:00",
+                },
+            ]
+
+    monkeypatch.setattr(
+        services,
+        "_get_official_classroom_availability_source",
+        lambda: RealtimeSource(),
+    )
+
+    response = client.get(
+        "/classrooms/empty",
+        params={"building": "니콜스관", "at": "2026-03-16T10:15:00+09:00"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["availability_mode"] == "realtime"
+    assert payload["observed_at"] == "2026-03-16T10:10:00+09:00"
+    assert "공식 실시간 공실" in payload["estimate_note"]
+    assert [item["room"] for item in payload["items"]] == ["N101"]
+    assert payload["items"][0]["availability_mode"] == "realtime"
+    assert payload["items"][0]["source_observed_at"] == "2026-03-16T10:10:00+09:00"
 
 
 def test_classrooms_empty_endpoint_rejects_non_classroom_place(client):
@@ -353,8 +436,10 @@ def test_gpt_empty_classrooms_endpoint_returns_estimate_payload(client):
     assert response.status_code == 200
     payload = response.json()
     assert payload["building"]["slug"] == "nichols-hall"
+    assert payload["availability_mode"] == "estimated"
     assert payload["items"][0]["room"] == "N201"
     assert payload["items"][0]["available_now"] is True
+    assert payload["items"][0]["availability_mode"] == "estimated"
     assert payload["items"][0]["next_occupied_at"] == "2026-03-16T13:00:00+09:00"
 
 

@@ -11,7 +11,7 @@ from copy import deepcopy
 from datetime import date, datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 import httpx
 
@@ -112,6 +112,17 @@ class NotFoundError(ValueError):
 
 class InvalidRequestError(ValueError):
     pass
+
+
+class OfficialClassroomAvailabilitySource(Protocol):
+    def fetch_availability(
+        self,
+        *,
+        building: Place,
+        at: datetime,
+        year: int,
+        semester: int,
+    ) -> list[dict[str, Any]]: ...
 
 
 def _now() -> datetime:
@@ -1930,12 +1941,14 @@ def list_estimated_empty_classrooms(
     current = _coerce_datetime(at)
     resolved_year, resolved_semester = _current_year_and_semester(current)
     target_building = _resolve_building_place(conn, building)
+    effective_year = year or resolved_year
+    effective_semester = semester or resolved_semester
     courses = [
         Course.model_validate(row)
         for row in repo.list_courses_with_rooms(
             conn,
-            year=year or resolved_year,
-            semester=semester or resolved_semester,
+            year=effective_year,
+            semester=effective_semester,
         )
     ]
 
@@ -1946,87 +1959,113 @@ def list_estimated_empty_classrooms(
             continue
         by_room.setdefault(course.room, []).append(course)
 
-    if not by_room:
-        return EstimatedEmptyClassroomResponse(
-            building=_serialize_empty_classroom_building(target_building),
-            evaluated_at=current.isoformat(timespec="seconds"),
-            year=year or resolved_year,
-            semester=semester or resolved_semester,
-            estimate_note=(
-                f"{EMPTY_CLASSROOM_ESTIMATE_NOTE} "
-                "해당 건물의 강의실 시간표 데이터를 찾지 못했습니다."
-            ),
-            items=[],
-        )
-
-    current_day = _day_label_from_datetime(current)
-    current_minutes = current.hour * 60 + current.minute
-    items: list[EstimatedEmptyClassroom] = []
-    for room, room_courses in by_room.items():
-        same_day_courses = [course for course in room_courses if course.day_of_week == current_day]
-        is_occupied = False
-        next_course: Course | None = None
-        next_start_minutes: int | None = None
-
-        for course in same_day_courses:
-            start_minutes = _period_start_minutes(course.period_start)
-            end_minutes = _period_end_minutes(course.period_end)
-            if (
-                start_minutes is not None
-                and end_minutes is not None
-                and start_minutes <= current_minutes <= end_minutes
-            ):
-                is_occupied = True
-                break
-            if (
-                start_minutes is not None
-                and start_minutes > current_minutes
-                and (next_start_minutes is None or start_minutes < next_start_minutes)
-            ):
-                next_start_minutes = start_minutes
-                next_course = course
-
-        if is_occupied:
-            continue
-
-        next_occupied_at = _combine_date_and_minutes(current, next_start_minutes)
-        items.append(
-            EstimatedEmptyClassroom(
-                room=room,
-                available_now=True,
-                next_occupied_at=(
-                    next_occupied_at.isoformat(timespec="seconds")
-                    if next_occupied_at is not None
-                    else None
-                ),
-                next_course_summary=(
-                    _course_schedule_summary(next_course) if next_course is not None else None
-                ),
+    room_states = _build_empty_classroom_room_states(by_room, current=current)
+    realtime_source = _get_official_classroom_availability_source()
+    realtime_failed = False
+    realtime_rows: dict[str, dict[str, Any]] = {}
+    if realtime_source is not None:
+        try:
+            realtime_rows = _normalize_official_classroom_availability(
+                realtime_source.fetch_availability(
+                    building=target_building,
+                    at=current,
+                    year=effective_year,
+                    semester=effective_semester,
+                )
             )
-        )
+        except Exception:
+            realtime_failed = True
+            logger.warning(
+                "official classroom availability source failed",
+                exc_info=True,
+                extra={
+                    "building": target_building.slug,
+                    "year": effective_year,
+                    "semester": effective_semester,
+                },
+            )
 
-    items.sort(
-        key=lambda item: (
-            0 if item.next_occupied_at is None else 1,
-            (
-                -datetime.fromisoformat(item.next_occupied_at).timestamp()
-                if item.next_occupied_at is not None
-                else 0
-            ),
-            item.room,
+    items: list[EstimatedEmptyClassroom] = []
+    if realtime_rows:
+        for room_key in sorted(set(room_states) | set(realtime_rows)):
+            realtime_row = realtime_rows.get(room_key)
+            room_state = room_states.get(room_key)
+            if realtime_row is not None:
+                if not realtime_row["available_now"]:
+                    continue
+                items.append(
+                    EstimatedEmptyClassroom(
+                        room=str(realtime_row["room"]),
+                        available_now=True,
+                        availability_mode="realtime",
+                        source_observed_at=realtime_row["source_observed_at"],
+                        next_occupied_at=(
+                            room_state["next_occupied_at"] if room_state is not None else None
+                        ),
+                        next_course_summary=(
+                            room_state["next_course_summary"] if room_state is not None else None
+                        ),
+                    )
+                )
+                continue
+            if room_state is not None and room_state["estimated_available_now"]:
+                items.append(
+                    EstimatedEmptyClassroom(
+                        room=room_state["room"],
+                        available_now=True,
+                        availability_mode="estimated",
+                        source_observed_at=None,
+                        next_occupied_at=room_state["next_occupied_at"],
+                        next_course_summary=room_state["next_course_summary"],
+                    )
+                )
+    else:
+        for room_state in room_states.values():
+            if not room_state["estimated_available_now"]:
+                continue
+            items.append(
+                EstimatedEmptyClassroom(
+                    room=room_state["room"],
+                    available_now=True,
+                    availability_mode="estimated",
+                    source_observed_at=None,
+                    next_occupied_at=room_state["next_occupied_at"],
+                    next_course_summary=room_state["next_course_summary"],
+                )
+            )
+
+    items = _sort_empty_classroom_items(items)
+    used_realtime = bool(realtime_rows)
+    used_estimated = (
+        bool(room_states)
+        and (
+            realtime_failed
+            or not realtime_rows
+            or any(room_key not in realtime_rows for room_key in room_states)
         )
     )
-
-    estimate_note = (
-        EMPTY_CLASSROOM_ESTIMATE_NOTE
-        if items
-        else f"{EMPTY_CLASSROOM_ESTIMATE_NOTE} 현재 기준으로 비어 있는 강의실이 없습니다."
+    observed_at_values = [
+        row["source_observed_at"]
+        for row in realtime_rows.values()
+        if row.get("source_observed_at") is not None
+    ]
+    estimate_note = _build_classroom_availability_note(
+        room_states=room_states,
+        items=items,
+        used_realtime=used_realtime,
+        used_estimated=used_estimated,
+        realtime_failed=realtime_failed,
     )
     return EstimatedEmptyClassroomResponse(
         building=_serialize_empty_classroom_building(target_building),
         evaluated_at=current.isoformat(timespec="seconds"),
-        year=year or resolved_year,
-        semester=semester or resolved_semester,
+        year=effective_year,
+        semester=effective_semester,
+        availability_mode=_response_availability_mode(
+            used_realtime=used_realtime,
+            used_estimated=used_estimated,
+        ),
+        observed_at=max(observed_at_values) if observed_at_values else None,
         estimate_note=estimate_note,
         items=items[:limit],
     )
@@ -2185,6 +2224,131 @@ def _course_schedule_summary(course: Course) -> str:
     if course.raw_schedule:
         summary += f" / {course.raw_schedule}"
     return summary
+
+
+def _get_official_classroom_availability_source() -> OfficialClassroomAvailabilitySource | None:
+    return None
+
+
+def _normalize_official_classroom_availability(
+    rows: list[dict[str, Any]] | None,
+) -> dict[str, dict[str, Any]]:
+    normalized: dict[str, dict[str, Any]] = {}
+    for row in rows or []:
+        room = str(row.get("room") or "").strip()
+        if not room:
+            continue
+        available_now = row.get("available_now")
+        if not isinstance(available_now, bool):
+            continue
+        source_observed_at = row.get("source_observed_at")
+        normalized[room.upper()] = {
+            "room": room,
+            "available_now": available_now,
+            "source_observed_at": (
+                str(source_observed_at).strip() if source_observed_at is not None else None
+            ),
+        }
+    return normalized
+
+
+def _build_empty_classroom_room_states(
+    by_room: dict[str, list[Course]],
+    *,
+    current: datetime,
+) -> dict[str, dict[str, Any]]:
+    current_day = _day_label_from_datetime(current)
+    current_minutes = current.hour * 60 + current.minute
+    room_states: dict[str, dict[str, Any]] = {}
+    for room, room_courses in by_room.items():
+        same_day_courses = [course for course in room_courses if course.day_of_week == current_day]
+        is_occupied = False
+        next_course: Course | None = None
+        next_start_minutes: int | None = None
+
+        for course in same_day_courses:
+            start_minutes = _period_start_minutes(course.period_start)
+            end_minutes = _period_end_minutes(course.period_end)
+            if (
+                start_minutes is not None
+                and end_minutes is not None
+                and start_minutes <= current_minutes <= end_minutes
+            ):
+                is_occupied = True
+            if (
+                start_minutes is not None
+                and start_minutes > current_minutes
+                and (next_start_minutes is None or start_minutes < next_start_minutes)
+            ):
+                next_start_minutes = start_minutes
+                next_course = course
+
+        next_occupied_at = _combine_date_and_minutes(current, next_start_minutes)
+        room_states[room.upper()] = {
+            "room": room,
+            "estimated_available_now": not is_occupied,
+            "next_occupied_at": (
+                next_occupied_at.isoformat(timespec="seconds")
+                if next_occupied_at is not None
+                else None
+            ),
+            "next_course_summary": (
+                _course_schedule_summary(next_course) if next_course is not None else None
+            ),
+        }
+    return room_states
+
+
+def _sort_empty_classroom_items(
+    items: list[EstimatedEmptyClassroom],
+) -> list[EstimatedEmptyClassroom]:
+    items.sort(
+        key=lambda item: (
+            0 if item.next_occupied_at is None else 1,
+            (
+                -datetime.fromisoformat(item.next_occupied_at).timestamp()
+                if item.next_occupied_at is not None
+                else 0
+            ),
+            item.room,
+        )
+    )
+    return items
+
+
+def _response_availability_mode(*, used_realtime: bool, used_estimated: bool) -> str:
+    if used_realtime and used_estimated:
+        return "mixed"
+    if used_realtime:
+        return "realtime"
+    return "estimated"
+
+
+def _build_classroom_availability_note(
+    *,
+    room_states: dict[str, dict[str, Any]],
+    items: list[EstimatedEmptyClassroom],
+    used_realtime: bool,
+    used_estimated: bool,
+    realtime_failed: bool,
+) -> str:
+    if not room_states and not items and not used_realtime and not realtime_failed:
+        return (
+            f"{EMPTY_CLASSROOM_ESTIMATE_NOTE} "
+            "해당 건물의 강의실 시간표 데이터를 찾지 못했습니다."
+        )
+    if realtime_failed:
+        base = "공식 실시간 공실 조회에 실패해 시간표 기준 예상 공실로 안내합니다."
+    elif used_realtime and used_estimated:
+        base = "공식 실시간 공실 데이터와 시간표 기준 예상 공실을 함께 사용합니다."
+    elif used_realtime:
+        base = "공식 실시간 공실 데이터를 우선 사용합니다."
+    else:
+        base = EMPTY_CLASSROOM_ESTIMATE_NOTE
+
+    if not items:
+        return f"{base} 현재 기준으로 비어 있는 강의실이 없습니다."
+    return base
 
 
 def _serialize_empty_classroom_building(place: Place) -> EmptyClassroomBuilding:

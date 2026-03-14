@@ -435,6 +435,7 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
     assert "slug" in tools["tool_get_place"]["description"]
     assert "과목명" in tools["tool_search_courses"]["description"]
     assert "교수" in tools["tool_search_courses"]["description"]
+    assert "실시간" in tools["tool_list_estimated_empty_classrooms"]["description"]
     assert "예상 공실" in tools["tool_list_estimated_empty_classrooms"]["description"]
     assert "니콜스관" in tools["tool_list_estimated_empty_classrooms"]["description"]
     assert "출발지" in tools["tool_find_nearby_restaurants"]["description"]
@@ -485,6 +486,7 @@ def test_mcp_public_empty_classroom_prompt_explains_estimate_flow(app_env, monke
 
     assert "tool_list_estimated_empty_classrooms" in message
     assert "building=니콜스관" in message
+    assert "실시간" in message
     assert "예상 공실" in message
     assert "tool_search_places" in message
 
@@ -527,6 +529,7 @@ def test_mcp_public_usage_and_class_period_resources_are_readable(app_env, monke
     assert "read-only" in usage_content
     assert "tool_search_places" in usage_content
     assert "tool_list_estimated_empty_classrooms" in usage_content
+    assert "실시간" in usage_content
     assert "tool_find_nearby_restaurants" in usage_content
     assert "예상 공실" in usage_content
     assert "profile" in usage_content
@@ -701,9 +704,99 @@ def test_mcp_public_empty_classrooms_tool_supports_building_alias(app_env, monke
     payload = asyncio.run(main())
 
     assert payload["building"]["slug"] == "nichols-hall"
+    assert payload["availability_mode"] == "estimated"
     assert payload["estimate_note"].startswith("공식 시간표 기준 예상 공실입니다.")
     assert payload["items"][0]["room"] == "N201"
+    assert payload["items"][0]["availability_mode"] == "estimated"
     assert payload["items"][0]["next_occupied_at"] == "2026-03-16T13:00:00+09:00"
+
+    clear_settings_cache()
+
+
+def test_mcp_public_empty_classrooms_tool_prefers_official_realtime_when_available(
+    app_env,
+    monkeypatch,
+):
+    pytest.importorskip('mcp.server.fastmcp')
+    init_db()
+    seed_demo(force=True)
+    with connection() as conn:
+        replace_courses(
+            conn,
+            [
+                {
+                    "year": 2026,
+                    "semester": 1,
+                    "code": "CSE110",
+                    "title": "컴퓨팅사고",
+                    "professor": "테스트교수",
+                    "department": "컴퓨터정보공학부",
+                    "section": "01",
+                    "day_of_week": "월",
+                    "period_start": 2,
+                    "period_end": 3,
+                    "room": "N101",
+                    "raw_schedule": "월2~3(N101)",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "year": 2026,
+                    "semester": 1,
+                    "code": "CSE332",
+                    "title": "데이터베이스",
+                    "professor": "김가톨",
+                    "department": "컴퓨터정보공학부",
+                    "section": "01",
+                    "day_of_week": "월",
+                    "period_start": 5,
+                    "period_end": 6,
+                    "room": "N201",
+                    "raw_schedule": "월5~6(N201)",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+
+    class RealtimeSource:
+        def fetch_availability(self, *, building, at, year, semester):
+            return [
+                {
+                    "room": "N101",
+                    "available_now": True,
+                    "source_observed_at": "2026-03-16T10:10:00+09:00",
+                },
+                {
+                    "room": "N201",
+                    "available_now": False,
+                    "source_observed_at": "2026-03-16T10:10:00+09:00",
+                },
+            ]
+
+    monkeypatch.setattr(
+        "songsim_campus.services._get_official_classroom_availability_source",
+        lambda: RealtimeSource(),
+    )
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        result = await mcp.call_tool(
+            'tool_list_estimated_empty_classrooms',
+            {'building': '니콜스관', 'at': '2026-03-16T10:15:00+09:00'},
+        )
+        return _tool_payloads(result)[0]
+
+    payload = asyncio.run(main())
+
+    assert payload["availability_mode"] == "realtime"
+    assert payload["observed_at"] == "2026-03-16T10:10:00+09:00"
+    assert "공식 실시간 공실" in payload["estimate_note"]
+    assert [item["room"] for item in payload["items"]] == ["N101"]
+    assert payload["items"][0]["availability_mode"] == "realtime"
+    assert payload["items"][0]["source_observed_at"] == "2026-03-16T10:10:00+09:00"
 
     clear_settings_cache()
 

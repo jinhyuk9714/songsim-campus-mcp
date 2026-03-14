@@ -248,6 +248,188 @@ def test_list_estimated_empty_classrooms_rejects_non_classroom_place(app_env):
         )
 
 
+def test_list_estimated_empty_classrooms_prefers_official_realtime_data_when_available(
+    app_env,
+    monkeypatch,
+):
+    init_db()
+    seed_demo(force=True)
+    with connection() as conn:
+        repo.replace_courses(
+            conn,
+            [
+                {
+                    "year": 2026,
+                    "semester": 1,
+                    "code": "CSE110",
+                    "title": "컴퓨팅사고",
+                    "professor": "테스트교수",
+                    "department": "컴퓨터정보공학부",
+                    "section": "01",
+                    "day_of_week": "월",
+                    "period_start": 2,
+                    "period_end": 3,
+                    "room": "N101",
+                    "raw_schedule": "월2~3(N101)",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "year": 2026,
+                    "semester": 1,
+                    "code": "CSE332",
+                    "title": "데이터베이스",
+                    "professor": "김가톨",
+                    "department": "컴퓨터정보공학부",
+                    "section": "01",
+                    "day_of_week": "월",
+                    "period_start": 5,
+                    "period_end": 6,
+                    "room": "N201",
+                    "raw_schedule": "월5~6(N201)",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+
+    class RealtimeSource:
+        def fetch_availability(self, *, building, at, year, semester):
+            assert building.slug == "nichols-hall"
+            assert year == 2026
+            assert semester == 1
+            return [
+                {
+                    "room": "N101",
+                    "available_now": True,
+                    "source_observed_at": "2026-03-16T10:10:00+09:00",
+                },
+                {
+                    "room": "N201",
+                    "available_now": False,
+                    "source_observed_at": "2026-03-16T10:10:00+09:00",
+                },
+            ]
+
+    monkeypatch.setattr(
+        "songsim_campus.services._get_official_classroom_availability_source",
+        lambda: RealtimeSource(),
+    )
+
+    with connection() as conn:
+        payload = list_estimated_empty_classrooms(
+            conn,
+            building="니콜스관",
+            at=datetime.fromisoformat("2026-03-16T10:15:00+09:00"),
+        )
+
+    assert [item.room for item in payload.items] == ["N101"]
+    assert payload.items[0].availability_mode == "realtime"
+    assert payload.items[0].source_observed_at == "2026-03-16T10:10:00+09:00"
+    assert "공식 실시간 공실" in payload.estimate_note
+
+
+def test_list_estimated_empty_classrooms_falls_back_per_room_when_realtime_coverage_is_partial(
+    app_env,
+    monkeypatch,
+):
+    init_db()
+    seed_demo(force=True)
+    with connection() as conn:
+        repo.replace_courses(
+            conn,
+            [
+                {
+                    "year": 2026,
+                    "semester": 1,
+                    "code": "CSE332",
+                    "title": "데이터베이스",
+                    "professor": "김가톨",
+                    "department": "컴퓨터정보공학부",
+                    "section": "01",
+                    "day_of_week": "월",
+                    "period_start": 5,
+                    "period_end": 6,
+                    "room": "N201",
+                    "raw_schedule": "월5~6(N201)",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "year": 2026,
+                    "semester": 1,
+                    "code": "CSE210",
+                    "title": "알고리즘",
+                    "professor": "박성심",
+                    "department": "컴퓨터정보공학부",
+                    "section": "01",
+                    "day_of_week": "화",
+                    "period_start": 1,
+                    "period_end": 2,
+                    "room": "N301",
+                    "raw_schedule": "화1~2(N301)",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+
+    class PartialRealtimeSource:
+        def fetch_availability(self, *, building, at, year, semester):
+            return [
+                {
+                    "room": "N201",
+                    "available_now": True,
+                    "source_observed_at": "2026-03-16T10:10:00+09:00",
+                }
+            ]
+
+    monkeypatch.setattr(
+        "songsim_campus.services._get_official_classroom_availability_source",
+        lambda: PartialRealtimeSource(),
+    )
+
+    with connection() as conn:
+        payload = list_estimated_empty_classrooms(
+            conn,
+            building="니콜스관",
+            at=datetime.fromisoformat("2026-03-16T10:15:00+09:00"),
+        )
+
+    assert [item.room for item in payload.items] == ["N301", "N201"]
+    assert payload.items[0].availability_mode == "estimated"
+    assert payload.items[1].availability_mode == "realtime"
+    assert "함께 사용합니다" in payload.estimate_note
+
+
+def test_list_estimated_empty_classrooms_falls_back_to_estimated_when_realtime_source_fails(
+    app_env,
+    monkeypatch,
+):
+    init_db()
+    seed_demo(force=True)
+
+    class BrokenRealtimeSource:
+        def fetch_availability(self, *, building, at, year, semester):
+            raise RuntimeError("official classroom source failed")
+
+    monkeypatch.setattr(
+        "songsim_campus.services._get_official_classroom_availability_source",
+        lambda: BrokenRealtimeSource(),
+    )
+
+    with connection() as conn:
+        payload = list_estimated_empty_classrooms(
+            conn,
+            building="니콜스관",
+            at=datetime.fromisoformat("2026-03-16T10:15:00+09:00"),
+        )
+
+    assert payload.items
+    assert all(item.availability_mode == "estimated" for item in payload.items)
+    assert "조회에 실패해" in payload.estimate_note
+
+
 def test_find_nearby_restaurants_uses_campus_graph_for_external_routes(app_env):
     init_db()
     seed_demo(force=True)

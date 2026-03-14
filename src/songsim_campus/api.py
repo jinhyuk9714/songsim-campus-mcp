@@ -138,11 +138,11 @@ GPT_ACTION_V2_PATHS: dict[str, dict[str, str]] = {
     },
     "/gpt/classrooms/empty": {
         "operationId": "listEstimatedEmptyClassroomsForGpt",
-        "summary": "Find estimated empty classrooms in a building",
+        "summary": "Find current empty classrooms in a building",
         "description": (
-            "Use when the user asks which classrooms are likely empty right now in a "
-            "Songsim lecture building. Returns timetable-based estimated availability, "
-            "not live occupancy."
+            "Use when the user asks which classrooms are empty right now in a Songsim "
+            "lecture building. Returns official realtime classroom availability when an "
+            "official source is available, otherwise falls back to timetable-based estimates."
         ),
     },
 }
@@ -781,7 +781,10 @@ def create_app() -> FastAPI:
           <ul>
             <li><code>/places</code> campus places and landmarks</li>
             <li><code>/courses</code> public course offerings</li>
-            <li><code>/classrooms/empty</code> timetable-based estimated empty classrooms</li>
+            <li>
+              <code>/classrooms/empty</code> official realtime classrooms first,
+              estimated fallback
+            </li>
             <li><code>/restaurants/nearby</code> walkable food recommendations</li>
             <li><code>/notices</code> latest public campus notices</li>
             <li><code>/transport</code> Songsim transit guides</li>

@@ -229,8 +229,9 @@ def _public_usage_guide() -> str:
                 "then tool_get_place when you know the slug."
             ),
             (
-                "4. Use tool_list_estimated_empty_classrooms for timetable-based "
-                "예상 공실 조회 in a lecture building like 니콜스관 or N관."
+                "4. Use tool_list_estimated_empty_classrooms for classroom availability "
+                "in a lecture building like 니콜스관 or N관. 공식 실시간 데이터가 있으면 "
+                "먼저 사용하고, 없으면 시간표 기반 예상 공실로 폴백합니다."
             ),
             (
                 "5. Use tool_find_nearby_restaurants for walkable food "
@@ -429,7 +430,8 @@ def build_mcp():
         @mcp.prompt(
             name="prompt_find_empty_classrooms",
             description=(
-                "Explain how to find timetable-based estimated empty classrooms in a building."
+                "Explain how to find current empty classrooms in a building "
+                "with realtime-first fallback."
             ),
         )
         def prompt_find_empty_classrooms(
@@ -454,7 +456,8 @@ def build_mcp():
                 "Use songsim://usage-guide first if you need the public MCP rules.\n"
                 f"Then call tool_list_estimated_empty_classrooms with building={building}, "
                 f"at={at or '<optional>'}, year={year}, semester={semester}, limit={limit}.\n"
-                "This flow returns timetable-based 예상 공실, not live occupancy.\n"
+                "This flow prefers 공식 실시간 classroom availability when available, "
+                "and otherwise falls back to timetable-based 예상 공실.\n"
                 "If the building name is unclear, use tool_search_places first."
             )
 
@@ -576,12 +579,17 @@ def build_mcp():
         description=(
             (
                 "강의동에서 지금 비어 있을 가능성이 높은 강의실을 "
-                "시간표 기준으로 찾을 때 사용합니다. "
+                "찾을 때 사용합니다. "
                 "building은 slug, 대표 이름, alias(예: 니콜스관, N관)를 받을 수 있습니다. "
-                "결과는 실시간 점유가 아닌 예상 공실이며, 다음 점유 시각을 함께 보여줍니다."
+                "공식 실시간 데이터가 있으면 우선 사용하고, "
+                "없으면 시간표 기준 예상 공실로 폴백합니다. "
+                "결과에는 availability_mode와 다음 점유 시각을 함께 보여줍니다."
             )
             if public_readonly
-            else "시간표 기준으로 특정 건물의 예상 빈 강의실을 찾습니다."
+            else (
+                "특정 건물의 현재 공실을 조회하고, 실시간 소스가 없으면 "
+                "시간표 기준 예상 공실로 폴백합니다."
+            )
         ),
         meta=tool_meta,
     )

@@ -9,7 +9,7 @@
 ## 주 사용 시나리오
 
 - 성심교정 장소와 건물 검색
-- 강의동 기준 예상 빈 강의실 조회
+- 강의동 기준 현재 공실 조회
 - 개설과목 조회
 - 최신 공지 조회
 - 출발 장소 기준 주변 식당 조회
@@ -23,6 +23,8 @@ Codex에서는 이 MCP가 공개 제품의 기준 표면입니다. HTTP API나 S
 2. prompt_find_place / prompt_find_empty_classrooms / prompt_search_courses / prompt_latest_notices / prompt_find_nearby_restaurants / prompt_transport_guide 중 하나를 먼저 사용
 3. prompt가 가리키는 tool로 실제 조회
 
+강의실 공실은 공식 실시간 source가 있으면 그 결과를 우선 쓰고, 없으면 시간표 기준 예상 공실로 자동 폴백합니다.
+
 ## 예시 요청
 
 - `성심교정 중앙도서관 정보 찾아줘`
@@ -35,7 +37,7 @@ Codex에서는 이 MCP가 공개 제품의 기준 표면입니다. HTTP API나 S
 - `성심교정 중앙도서관 위치 알려줘`
 - `중도 어디야?`
 - `학생식당 있는 건물 뭐야?`
-- `니콜스관인데 지금 예상 빈 강의실 있어?`
+- `니콜스관인데 지금 비어 있는 강의실 있어?`
 - `2026년 1학기 객체지향 과목 찾아줘`
 - `김가톨 교수 수업 알려줘`
 - `최신 학사 공지 2개 보여줘`
@@ -48,6 +50,7 @@ Codex에서는 이 MCP가 공개 제품의 기준 표면입니다. HTTP API나 S
 
 - 첫 연결 시 로그인 또는 `mcp login` 흐름이 필요할 수 있습니다.
 - 이 공개 MCP는 read-only입니다.
+- 강의실 공실 응답에는 realtime/estimated fallback 여부가 함께 표시됩니다.
 - profile, timetable, notice preferences, meal personalization, admin 기능은 제외됩니다.
 
 전체 100개 질문과 대표 리허설은 아래 문서를 보면 됩니다.

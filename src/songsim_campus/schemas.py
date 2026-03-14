@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -161,6 +161,8 @@ class EmptyClassroomBuilding(BaseModel):
 class EstimatedEmptyClassroom(BaseModel):
     room: str
     available_now: bool = True
+    availability_mode: Literal["realtime", "estimated"] = "estimated"
+    source_observed_at: str | None = None
     next_occupied_at: str | None = None
     next_course_summary: str | None = None
 
@@ -170,6 +172,8 @@ class EstimatedEmptyClassroomResponse(BaseModel):
     evaluated_at: str
     year: int
     semester: int
+    availability_mode: Literal["realtime", "estimated", "mixed"] = "estimated"
+    observed_at: str | None = None
     estimate_note: str
     items: list[EstimatedEmptyClassroom] = Field(default_factory=list)
 
