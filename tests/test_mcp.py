@@ -668,6 +668,57 @@ def test_mcp_public_search_restaurants_returns_compact_brand_match(app_env, monk
     clear_settings_cache()
 
 
+def test_mcp_public_search_restaurants_uses_live_fallback(app_env, monkeypatch):
+    pytest.importorskip("mcp.server.fastmcp")
+    init_db()
+    seed_demo(force=True)
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    monkeypatch.setenv("SONGSIM_KAKAO_REST_API_KEY", "test-key")
+    clear_settings_cache()
+
+    class McpBrandKakaoClient:
+        def __init__(self, api_key: str):
+            assert api_key == "test-key"
+
+        def search_sync(self, query: str, *, x=None, y=None, radius: int = 1000):
+            assert query == "매머드익스프레스"
+            from songsim_campus.services import KakaoPlace
+
+            return [
+                KakaoPlace(
+                    name="매머드익스프레스 부천가톨릭대학교점",
+                    category="음식점 > 카페 > 커피전문점",
+                    address="경기 부천시 원미구 지봉로 43",
+                    latitude=37.48556,
+                    longitude=126.80379,
+                    place_id="101",
+                    place_url="https://place.map.kakao.com/101",
+                )
+            ]
+
+    monkeypatch.setattr("songsim_campus.services.KakaoLocalClient", McpBrandKakaoClient)
+
+    async def main():
+        mcp = build_mcp()
+        result = await mcp.call_tool("tool_search_restaurants", {"query": "매머드커피", "limit": 5})
+        return _tool_payloads(result)
+
+    payload = asyncio.run(main())
+
+    assert payload == [
+        {
+            "name": "매머드익스프레스 부천가톨릭대학교점",
+            "category_display": "카페",
+            "distance_meters": None,
+            "estimated_walk_minutes": None,
+            "price_hint": None,
+            "location_hint": "경기 부천시 원미구 지봉로 43",
+        }
+    ]
+
+    clear_settings_cache()
+
+
 def test_mcp_public_notices_return_category_display_and_summary_preview(app_env, monkeypatch):
     pytest.importorskip('mcp.server.fastmcp')
     init_db()

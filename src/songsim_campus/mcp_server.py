@@ -264,7 +264,8 @@ def _public_usage_guide() -> str:
             ),
             (
                 "6. Use tool_search_restaurants for direct brand-name searches such as "
-                "매머드커피, 메가커피, or 이디야."
+                "매머드커피, 메가커피, or 이디야. origin이 없어도 캠퍼스 주변에서 "
+                "브랜드를 직접 찾을 수 있습니다."
             ),
             "7. Use tool_list_latest_notices for latest notices; category is optional.",
             "",
@@ -492,6 +493,7 @@ def build_mcp():
                 f"origin={origin or '<optional>'}, category={category or '<optional>'}, "
                 f"limit={limit}.\n"
                 "Use this for direct brand searches like 매머드커피, 메가커피, or 이디야.\n"
+                "If origin is omitted, search around the campus center first.\n"
                 "For recommendation-style questions from a campus origin, use the nearby "
                 "restaurant flow instead."
             )

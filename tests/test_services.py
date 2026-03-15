@@ -263,6 +263,188 @@ def test_search_restaurants_matches_brand_alias_against_snapshot_name_variants(a
     assert [item.slug for item in ediya_items] == ["ediya"]
 
 
+def test_search_restaurants_snapshot_hit_skips_live_fetch(app_env):
+    init_db()
+    with connection() as conn:
+        replace_restaurants(
+            conn,
+            [
+                _restaurant_row(
+                    slug="mammoth",
+                    name="매머드익스프레스 부천가톨릭대학교점",
+                    category="cafe",
+                    latitude=37.48556,
+                    longitude=126.80379,
+                )
+            ],
+        )
+        items = search_restaurants(
+            conn,
+            query="매머드커피",
+            limit=5,
+            kakao_client=ExplodingKakaoClient(),
+        )
+
+    assert [item.slug for item in items] == ["mammoth"]
+    assert items[0].distance_meters is None
+    assert items[0].estimated_walk_minutes is None
+
+
+def test_search_restaurants_can_use_kakao_live_results_without_origin(app_env):
+    init_db()
+    seed_demo(force=True)
+
+    class BrandKakaoClient:
+        def __init__(self):
+            self.calls: list[tuple[str, float | None, float | None, int]] = []
+
+        def search_sync(self, query: str, *, x=None, y=None, radius: int = 1000):
+            self.calls.append((query, x, y, radius))
+            return [
+                KakaoPlace(
+                    name="매머드익스프레스 부천가톨릭대학교점",
+                    category="음식점 > 카페 > 커피전문점",
+                    address="경기 부천시 원미구 지봉로 43",
+                    latitude=37.48556,
+                    longitude=126.80379,
+                    place_id="101",
+                    place_url="https://place.map.kakao.com/101",
+                )
+            ]
+
+    client = BrandKakaoClient()
+    with connection() as conn:
+        library = get_place(conn, "central-library")
+        items = search_restaurants(
+            conn,
+            query="매머드커피",
+            category="cafe",
+            limit=5,
+            kakao_client=client,
+        )
+
+    assert client.calls == [("매머드익스프레스", library.longitude, library.latitude, 15 * 75)]
+    assert [item.name for item in items] == ["매머드익스프레스 부천가톨릭대학교점"]
+    assert items[0].source_tag == "kakao_local"
+    assert items[0].distance_meters is None
+    assert items[0].estimated_walk_minutes is None
+
+
+def test_search_restaurants_with_origin_returns_distance_fields_on_live_fallback(app_env):
+    init_db()
+    seed_demo(force=True)
+
+    class OriginAwareBrandClient:
+        def search_sync(self, query: str, *, x=None, y=None, radius: int = 1000):
+            assert query == "매머드익스프레스"
+            assert x is not None and y is not None
+            assert radius == 15 * 75
+            return [
+                KakaoPlace(
+                    name="매머드익스프레스 부천가톨릭대학교점",
+                    category="음식점 > 카페 > 커피전문점",
+                    address="경기 부천시 원미구 지봉로 43",
+                    latitude=37.48556,
+                    longitude=126.80379,
+                    place_id="101",
+                    place_url="https://place.map.kakao.com/101",
+                )
+            ]
+
+    with connection() as conn:
+        items = search_restaurants(
+            conn,
+            query="매머드커피",
+            origin="중도",
+            limit=5,
+            kakao_client=OriginAwareBrandClient(),
+        )
+
+    assert [item.name for item in items] == ["매머드익스프레스 부천가톨릭대학교점"]
+    assert items[0].distance_meters is not None
+    assert items[0].estimated_walk_minutes is not None
+
+
+def test_search_restaurants_uses_stale_cache_when_live_fetch_fails(app_env, monkeypatch):
+    init_db()
+    seed_demo(force=True)
+    old_now = datetime.fromisoformat("2026-03-14T12:00:00+09:00")
+    stale_now = datetime.fromisoformat("2026-03-14T20:30:00+09:00")
+
+    class BrandKakaoClient:
+        calls = 0
+
+        def search_sync(self, query: str, *, x=None, y=None, radius: int = 1000):
+            type(self).calls += 1
+            assert query == "매머드익스프레스"
+            return [
+                KakaoPlace(
+                    name="매머드익스프레스 부천가톨릭대학교점",
+                    category="음식점 > 카페 > 커피전문점",
+                    address="경기 부천시 원미구 지봉로 43",
+                    latitude=37.48556,
+                    longitude=126.80379,
+                    place_id="101",
+                    place_url="https://place.map.kakao.com/101",
+                )
+            ]
+
+    monkeypatch.setattr("songsim_campus.services._now", lambda: old_now)
+    with connection() as conn:
+        first = search_restaurants(
+            conn,
+            query="매머드커피",
+            limit=5,
+            kakao_client=BrandKakaoClient(),
+        )
+
+    monkeypatch.setattr("songsim_campus.services._now", lambda: stale_now)
+    with connection() as conn:
+        second = search_restaurants(
+            conn,
+            query="매머드커피",
+            limit=5,
+            kakao_client=ExplodingKakaoClient(),
+        )
+
+    assert BrandKakaoClient.calls == 1
+    assert [item.name for item in first] == [item.name for item in second]
+    assert first[0].source_tag == "kakao_local"
+    assert second[0].source_tag == "kakao_local_cache"
+    assert second[0].distance_meters is None
+    assert second[0].estimated_walk_minutes is None
+
+
+def test_search_restaurants_live_fallback_applies_category_filter(app_env):
+    init_db()
+    seed_demo(force=True)
+
+    class BrandKakaoClient:
+        def search_sync(self, query: str, *, x=None, y=None, radius: int = 1000):
+            return [
+                KakaoPlace(
+                    name="매머드익스프레스 부천가톨릭대학교점",
+                    category="음식점 > 카페 > 커피전문점",
+                    address="경기 부천시 원미구 지봉로 43",
+                    latitude=37.48556,
+                    longitude=126.80379,
+                    place_id="101",
+                    place_url="https://place.map.kakao.com/101",
+                )
+            ]
+
+    with connection() as conn:
+        items = search_restaurants(
+            conn,
+            query="매머드커피",
+            category="korean",
+            limit=5,
+            kakao_client=BrandKakaoClient(),
+        )
+
+    assert items == []
+
+
 def test_find_nearby_restaurants_sorted(app_env):
     init_db()
     seed_demo(force=True)

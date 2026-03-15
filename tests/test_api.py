@@ -253,6 +253,89 @@ def test_gpt_restaurants_search_endpoint_returns_compact_brand_match(client):
     ]
 
 
+def test_restaurants_search_endpoint_uses_kakao_live_fallback(client, monkeypatch):
+    monkeypatch.setenv("SONGSIM_KAKAO_REST_API_KEY", "test-key")
+    clear_settings_cache()
+
+    class ApiBrandKakaoClient:
+        def __init__(self, api_key: str):
+            assert api_key == "test-key"
+
+        def search_sync(self, query: str, *, x=None, y=None, radius: int = 1000):
+            assert query == "매머드익스프레스"
+            return [
+                services.KakaoPlace(
+                    name="매머드익스프레스 부천가톨릭대학교점",
+                    category="음식점 > 카페 > 커피전문점",
+                    address="경기 부천시 원미구 지봉로 43",
+                    latitude=37.48556,
+                    longitude=126.80379,
+                    place_id="101",
+                    place_url="https://place.map.kakao.com/101",
+                )
+            ]
+
+    monkeypatch.setattr("songsim_campus.services.KakaoLocalClient", ApiBrandKakaoClient)
+
+    response = client.get("/restaurants/search", params={"query": "매머드커피", "limit": 5})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [item["name"] for item in payload] == ["매머드익스프레스 부천가톨릭대학교점"]
+    assert payload[0]["source_tag"] == "kakao_local"
+    assert payload[0]["distance_meters"] is None
+    assert payload[0]["estimated_walk_minutes"] is None
+
+
+def test_gpt_restaurants_search_endpoint_uses_kakao_live_fallback(client, monkeypatch):
+    monkeypatch.setenv("SONGSIM_KAKAO_REST_API_KEY", "test-key")
+    clear_settings_cache()
+
+    class ApiBrandKakaoClient:
+        def __init__(self, api_key: str):
+            assert api_key == "test-key"
+
+        def search_sync(self, query: str, *, x=None, y=None, radius: int = 1000):
+            assert query == "이디야커피"
+            return [
+                services.KakaoPlace(
+                    name="이디야커피 가톨릭대점",
+                    category="음식점 > 카페 > 커피전문점",
+                    address="경기 부천시 원미구 지봉로 48",
+                    latitude=37.48611,
+                    longitude=126.80503,
+                    place_id="102",
+                    place_url="https://place.map.kakao.com/102",
+                )
+            ]
+
+    monkeypatch.setattr("songsim_campus.services.KakaoLocalClient", ApiBrandKakaoClient)
+
+    response = client.get("/gpt/restaurants/search", params={"query": "이디야", "limit": 5})
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "name": "이디야커피 가톨릭대점",
+            "category_display": "카페",
+            "distance_meters": None,
+            "estimated_walk_minutes": None,
+            "price_hint": None,
+            "location_hint": "경기 부천시 원미구 지봉로 48",
+        }
+    ]
+
+
+def test_restaurants_search_endpoint_returns_404_for_unknown_origin(client):
+    response = client.get(
+        "/restaurants/search",
+        params={"query": "매머드커피", "origin": "없는건물", "limit": 5},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Origin place not found: 없는건물"
+
+
 def test_gpt_notices_endpoint_returns_normalized_category_and_summary_preview(client):
     long_summary = (
         "중앙도서관 이용 학생을 위한 장학 연계 프로그램 안내입니다. "
