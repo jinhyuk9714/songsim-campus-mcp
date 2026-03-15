@@ -74,6 +74,7 @@ DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 CAMPUS_WALK_GRAPH_PATH = DATA_DIR / "campus_walk_graph.json"
 PERSONALIZATION_RULES_PATH = DATA_DIR / "personalization_rules.json"
 PLACE_ALIAS_OVERRIDES_PATH = DATA_DIR / "place_alias_overrides.json"
+PLACE_FACILITY_KEYWORDS_PATH = DATA_DIR / "place_facility_keywords.json"
 RESTAURANT_SEARCH_ALIASES_PATH = DATA_DIR / "restaurant_search_aliases.json"
 SYNC_DATASET_TABLES = ("places", "courses", "notices", "transport_guides")
 ADMIN_SYNC_TARGETS = {
@@ -628,6 +629,28 @@ def _load_restaurant_search_aliases() -> dict[str, list[str]]:
     return _parse_restaurant_search_aliases(payload)
 
 
+def _parse_place_facility_keywords(payload: Any) -> dict[str, list[str]]:
+    if not isinstance(payload, dict):
+        raise ValueError("place facility keywords must be a JSON object keyed by noun")
+
+    keywords: dict[str, list[str]] = {}
+    for raw_keyword, raw_tokens in payload.items():
+        if not isinstance(raw_keyword, str) or not raw_keyword.strip():
+            raise ValueError("place facility keyword key must be a non-empty string")
+        if not isinstance(raw_tokens, list) or any(
+            not isinstance(item, str) for item in raw_tokens
+        ):
+            raise ValueError("place facility keyword entries must be a list of strings")
+        keywords[raw_keyword.strip()] = _unique_stripped(list(raw_tokens))
+    return keywords
+
+
+@lru_cache(maxsize=1)
+def _load_place_facility_keywords() -> dict[str, list[str]]:
+    payload = json.loads(PLACE_FACILITY_KEYWORDS_PATH.read_text(encoding="utf-8"))
+    return _parse_place_facility_keywords(payload)
+
+
 def apply_place_alias_overrides(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     overrides = _load_place_alias_overrides()
     merged_rows: list[dict[str, Any]] = []
@@ -872,11 +895,16 @@ def _rank_place_search_candidate(
     *,
     collapsed_query: str,
     compact_query: str | None,
+    facility_tokens: list[str] | None = None,
+    generic_keywords: list[str] | None = None,
 ) -> int | None:
     slug = str(item.get("slug") or "").strip()
     name = str(item.get("name") or "")
     aliases = [str(alias) for alias in item.get("aliases", [])]
     description = str(item.get("description") or "")
+    category = str(item.get("category") or "")
+    facility_tokens = facility_tokens or []
+    generic_keywords = generic_keywords or []
     lowered_query = collapsed_query.lower()
     if slug.lower() == lowered_query:
         return 0
@@ -895,12 +923,30 @@ def _rank_place_search_candidate(
         for alias in aliases
     ):
         return 2
+    if any(
+        _matches_exact_text_candidate(
+            token,
+            collapsed_query=collapsed_query,
+            compact_query=compact_query,
+        )
+        for token in facility_tokens
+    ):
+        return 3
+    if any(
+        _matches_exact_text_candidate(
+            keyword,
+            collapsed_query=collapsed_query,
+            compact_query=compact_query,
+        )
+        for keyword in generic_keywords
+    ):
+        return 4
     if _matches_partial_text_candidate(
         name,
         collapsed_query=collapsed_query,
         compact_query=compact_query,
     ):
-        return 3
+        return 5
     if any(
         _matches_partial_text_candidate(
             alias,
@@ -909,13 +955,28 @@ def _rank_place_search_candidate(
         )
         for alias in aliases
     ):
-        return 4
+        return 6
+    if any(
+        _matches_partial_text_candidate(
+            token,
+            collapsed_query=collapsed_query,
+            compact_query=compact_query,
+        )
+        for token in facility_tokens
+    ):
+        return 7
     if _matches_partial_text_candidate(
         description,
         collapsed_query=collapsed_query,
         compact_query=compact_query,
     ):
-        return 5
+        return 8
+    if _matches_partial_text_candidate(
+        category,
+        collapsed_query=collapsed_query,
+        compact_query=compact_query,
+    ):
+        return 8
     return None
 
 
@@ -1107,6 +1168,71 @@ def _facility_hours_index(conn: sqlite3.Connection) -> dict[str, str]:
             key = _normalize_facility_name(name)
             if key and key not in index:
                 index[key] = hours_text
+    return index
+
+
+def _place_facility_tokens(item: dict[str, Any]) -> list[str]:
+    return _unique_stripped(
+        [
+            str(name)
+            for name in item.get("opening_hours", {})
+            if not _is_generic_opening_hours_key(str(name))
+        ]
+    )
+
+
+def _place_search_targets(item: dict[str, Any], *, facility_tokens: list[str]) -> list[str]:
+    return _unique_stripped(
+        [
+            str(item.get("name") or ""),
+            *[str(alias) for alias in item.get("aliases", [])],
+            *facility_tokens,
+        ]
+    )
+
+
+def _place_generic_facility_keywords(
+    item: dict[str, Any],
+    *,
+    facility_tokens: list[str],
+) -> list[str]:
+    normalized_targets = {
+        _normalize_facility_name(target)
+        for target in _place_search_targets(item, facility_tokens=facility_tokens)
+        if _normalize_facility_name(target)
+    }
+    keywords: list[str] = []
+    for generic_keyword, tokens in _load_place_facility_keywords().items():
+        normalized_tokens = [
+            _normalize_facility_name(token)
+            for token in tokens
+            if _normalize_facility_name(token)
+        ]
+        if any(
+            token == target or token in target
+            for token in normalized_tokens
+            for target in normalized_targets
+        ):
+            keywords.append(generic_keyword)
+    return _unique_stripped(keywords)
+
+
+def _build_place_search_facility_index(
+    places: list[dict[str, Any]],
+) -> list[dict[str, list[str]]]:
+    index: list[dict[str, list[str]]] = []
+    for item in places:
+        facility_tokens = _place_facility_tokens(item)
+        generic_keywords = _place_generic_facility_keywords(
+            item,
+            facility_tokens=facility_tokens,
+        )
+        index.append(
+            {
+                "facility_tokens": facility_tokens,
+                "generic_keywords": generic_keywords,
+            }
+        )
     return index
 
 
@@ -1788,12 +1914,15 @@ def search_places(
     if collapsed_query is None:
         return [Place.model_validate(item) for item in places[:limit]]
 
+    facility_index = _build_place_search_facility_index(places)
     ranked: list[tuple[int, int, dict[str, Any]]] = []
     for index, item in enumerate(places):
         rank = _rank_place_search_candidate(
             item,
             collapsed_query=collapsed_query,
             compact_query=compact_query,
+            facility_tokens=facility_index[index]["facility_tokens"],
+            generic_keywords=facility_index[index]["generic_keywords"],
         )
         if rank is None:
             continue

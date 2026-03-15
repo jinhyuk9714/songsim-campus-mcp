@@ -16,6 +16,7 @@ from songsim_campus.services import (
     InvalidRequestError,
     NotFoundError,
     _load_place_alias_overrides,
+    _load_place_facility_keywords,
     _load_restaurant_search_aliases,
     _parse_campus_walk_graph,
     find_nearby_restaurants,
@@ -63,6 +64,32 @@ def _restaurant_row(
         "longitude": longitude,
         "tags": ["한식"],
         "description": "테스트 식당",
+        "source_tag": source_tag,
+        "last_synced_at": "2026-03-13T09:00:00+09:00",
+    }
+
+
+def _place_row(
+    *,
+    slug: str,
+    name: str,
+    category: str = "building",
+    aliases: list[str] | None = None,
+    description: str = "",
+    latitude: float = 37.48590,
+    longitude: float = 126.80282,
+    opening_hours: dict[str, str] | None = None,
+    source_tag: str = "test",
+) -> dict:
+    return {
+        "slug": slug,
+        "name": name,
+        "category": category,
+        "aliases": aliases or [],
+        "description": description,
+        "latitude": latitude,
+        "longitude": longitude,
+        "opening_hours": opening_hours or {},
         "source_tag": source_tag,
         "last_synced_at": "2026-03-13T09:00:00+09:00",
     }
@@ -170,6 +197,15 @@ def test_load_restaurant_search_aliases_contract():
     assert "이디야" in aliases["이디야커피"]
 
 
+def test_load_place_facility_keywords_contract():
+    keywords = _load_place_facility_keywords()
+
+    assert keywords["헬스장"] == ["트러스트짐"]
+    assert "이마트24" in keywords["편의점"]
+    assert "우리은행" in keywords["ATM"]
+    assert "운동장" in keywords["체육관"]
+
+
 def test_search_places_matches_facility_tenant_alias_from_override_taxonomy(app_env):
     init_db()
     seed_demo(force=True)
@@ -190,6 +226,57 @@ def test_search_places_matches_building_synonym_from_override_taxonomy(app_env):
     assert places
     assert places[0].slug == "student-center"
     assert places[0].name == "학생회관"
+
+
+def test_search_places_matches_generic_facility_nouns_to_related_buildings(app_env):
+    init_db()
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                _place_row(
+                    slug="student-center",
+                    name="학생회관",
+                    category="facility",
+                    description="학생 편의시설이 많은 건물",
+                    opening_hours={
+                        "트러스트짐": "평일 07:00~22:30",
+                        "편의점": "상시 07:00~24:00",
+                        "교내복사실": "평일 08:50~19:00",
+                        "우리은행": "평일 09:00~16:00",
+                    },
+                ),
+                _place_row(
+                    slug="dormitory-stephen",
+                    name="스테파노기숙사",
+                    category="dormitory",
+                    description="기숙사 생활시설 건물",
+                    opening_hours={
+                        "이마트24 K관점": "상시 07:00~24:00",
+                    },
+                ),
+                _place_row(
+                    slug="great-field",
+                    name="대운동장",
+                    category="outdoor",
+                    description="야외 운동 공간",
+                    opening_hours={
+                        "운동장": "상시 개방",
+                    },
+                ),
+            ],
+        )
+        gym_places = search_places(conn, query="헬스장", limit=5)
+        store_places = search_places(conn, query="편의점", limit=5)
+        copy_places = search_places(conn, query="복사실", limit=5)
+        atm_places = search_places(conn, query="ATM", limit=5)
+        gymnasium_places = search_places(conn, query="체육관", limit=5)
+
+    assert [place.slug for place in gym_places] == ["student-center"]
+    assert [place.slug for place in store_places[:2]] == ["student-center", "dormitory-stephen"]
+    assert [place.slug for place in copy_places] == ["student-center"]
+    assert [place.slug for place in atm_places] == ["student-center"]
+    assert [place.slug for place in gymnasium_places] == ["great-field"]
 
 
 def test_search_restaurants_matches_brand_alias_with_spacing_normalization(app_env):

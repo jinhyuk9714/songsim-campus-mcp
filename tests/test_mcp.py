@@ -10,6 +10,7 @@ from songsim_campus.mcp_server import build_mcp
 from songsim_campus.repo import (
     replace_courses,
     replace_notices,
+    replace_places,
     replace_restaurants,
     replace_transport_guides,
     update_place_opening_hours,
@@ -513,6 +514,8 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
     )
     assert "건물명" in place_query_description
     assert "트러스트짐" in place_query_description
+    assert "헬스장" in place_query_description
+    assert "편의점" in place_query_description
     assert "브랜드 상호" in (
         tools["tool_search_restaurants"]["inputSchema"]["properties"]["query"]["description"]
     )
@@ -645,6 +648,8 @@ def test_mcp_public_usage_and_class_period_resources_are_readable(app_env, monke
     assert "중도" in usage_content
     assert "가까운 후보를 먼저" in usage_content
     assert "매머드커피" in usage_content
+    assert "헬스장" in usage_content
+    assert "편의점" in usage_content
     assert periods_payload[0]["period"] == 1
     assert {"period", "start", "end"} <= set(periods_payload[0].keys())
 
@@ -694,6 +699,66 @@ def test_mcp_public_search_places_supports_facility_tenant_alias(app_env, monkey
 
     assert payload["slug"] == "student-center"
     assert payload["name"] == "학생회관"
+
+    clear_settings_cache()
+
+
+def test_mcp_public_search_places_supports_generic_facility_nouns(app_env, monkeypatch):
+    pytest.importorskip('mcp.server.fastmcp')
+    init_db()
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                {
+                    "slug": "student-center",
+                    "name": "학생회관",
+                    "category": "facility",
+                    "aliases": ["학회관"],
+                    "description": "학생 편의시설이 많은 건물",
+                    "latitude": 37.48652,
+                    "longitude": 126.80216,
+                    "opening_hours": {
+                        "트러스트짐": "평일 07:00~22:30",
+                        "편의점": "상시 07:00~24:00",
+                        "교내복사실": "평일 08:50~19:00",
+                        "우리은행": "평일 09:00~16:00",
+                    },
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "slug": "dormitory-stephen",
+                    "name": "스테파노기숙사",
+                    "category": "dormitory",
+                    "aliases": ["K관"],
+                    "description": "기숙사 생활시설 건물",
+                    "latitude": 37.48516,
+                    "longitude": 126.80323,
+                    "opening_hours": {
+                        "이마트24 K관점": "상시 07:00~24:00",
+                    },
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        gym = await mcp.call_tool('tool_search_places', {'query': '헬스장', 'limit': 5})
+        store = await mcp.call_tool('tool_search_places', {'query': '편의점', 'limit': 5})
+        return _tool_payloads(gym), _tool_payloads(store)
+
+    gym_payloads, store_payloads = asyncio.run(main())
+
+    assert [item["slug"] for item in gym_payloads] == ["student-center"]
+    assert [item["slug"] for item in store_payloads[:2]] == [
+        "student-center",
+        "dormitory-stephen",
+    ]
 
     clear_settings_cache()
 

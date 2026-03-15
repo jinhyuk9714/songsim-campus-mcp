@@ -247,8 +247,9 @@ def _public_usage_guide() -> str:
                 "prompt_find_nearby_restaurants to choose the first tool."
             ),
             (
-                "3. Use tool_search_places for fuzzy building/facility queries, "
-                "then tool_get_place when you know the slug."
+                "3. Use tool_search_places for fuzzy building/facility queries such as "
+                "트러스트짐, 헬스장, 편의점, ATM, or 복사실, then tool_get_place when "
+                "you know the slug."
             ),
             (
                 "4. Use tool_list_estimated_empty_classrooms for classroom availability "
@@ -277,6 +278,8 @@ def _public_usage_guide() -> str:
             "Example questions:",
             "- 성심교정 중앙도서관 위치 알려줘",
             "- 트러스트짐 어디야?",
+            "- 헬스장 어디야?",
+            "- 편의점 어디 있어?",
             "- 최신 장학 공지 3개 보여줘",
             "- 니콜스관인데 지금 예상 빈 강의실 있어?",
             "- 매머드커피 어디 있어?",
@@ -384,7 +387,7 @@ def build_mcp():
                 Field(
                     description=(
                         "건물명, 별칭, 시설명, 교내 입점명. "
-                        "예: 중앙도서관, 중도, 학생회관, 트러스트짐"
+                        "예: 중앙도서관, 중도, 학생회관, 트러스트짐, 헬스장, 편의점"
                     )
                 ),
             ]
@@ -571,7 +574,7 @@ def build_mcp():
         description=(
             (
                 "사용자가 성심교정 건물명, 별칭, 시설명, "
-                "교내 입점명으로 장소를 찾을 때 사용합니다. "
+                "교내 입점명, 생활 시설명으로 장소를 찾을 때 사용합니다. "
                 "질문이 모호하면 먼저 이 tool을 쓰고, 단일 slug가 정해지면 "
                 "tool_get_place로 넘어갑니다."
             )
@@ -585,8 +588,8 @@ def build_mcp():
             str,
             Field(
                 description=(
-                    "찾고 싶은 건물명, 별칭, 시설명, 교내 입점명. "
-                    "예: 중앙도서관, 중도, 정문, 트러스트짐"
+                    "찾고 싶은 건물명, 별칭, 시설명, 교내 입점명, 생활 시설명. "
+                    "예: 중앙도서관, 중도, 정문, 트러스트짐, 헬스장, 편의점, ATM"
                 )
             ),
         ] = "",
