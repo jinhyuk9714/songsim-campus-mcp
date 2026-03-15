@@ -278,12 +278,13 @@ def test_mcp_nearby_restaurant_tool_supports_open_now_filter(app_env):
                 'at': '2026-03-15T11:00:00+09:00',
             },
         )
+        if not result:
+            return []
         return json.loads(result[0].text)
 
     payload = asyncio.run(main())
 
-    assert payload['name'] == '알수없음식당'
-    assert payload['open_now'] is None
+    assert payload == []
 
 
 def test_mcp_nearby_restaurant_tool_reuses_kakao_cache(app_env, monkeypatch):

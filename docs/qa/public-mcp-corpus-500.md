@@ -1,0 +1,567 @@
+# Public MCP Corpus (500)
+
+공개 `public_readonly` MCP를 학생 질문 기준으로 넓게 검증하기 위한 500문장 코퍼스입니다. 이 문서는 문장 생성 자산이고, 실제 배포 게이트는 별도의 50문장 릴리즈팩과 라이브 판정표로 관리합니다.
+
+## 기준
+
+- 대상 표면: public MCP/API
+- 보조 표면: Shared GPT 샘플 확인 10~15문장
+- 목적: 학생 질문 다양성 확보, 운영 가능한 릴리즈팩 선별, 라이브 검증 기준 통일
+
+## 분포 요약
+
+| Domain | Count |
+| --- | ---: |
+| place | 120 |
+| course | 100 |
+| notices | 90 |
+| restaurants | 100 |
+| transport | 40 |
+| classrooms | 35 |
+| out_of_scope | 15 |
+
+| Style | Meaning |
+| --- | --- |
+| normal | 정식 명칭, 기본 질의 |
+| alias | 별칭, 약칭, 생활 표현 |
+| composite | 필터와 제약이 섞인 질의 |
+| typo | 띄어쓰기, 약한 오타, 구어체 |
+| ambiguous | 기준점이나 필터가 덜 분명한 질의 |
+| out_of_scope | 공개 read-only 범위를 벗어난 요청 |
+
+## 표기 규칙
+
+- 한 줄이 하나의 테스트 문장입니다.
+- 형식:
+  - `ID | domain | style | user_utterance | expected_first_step | expected_tool_chain | pass_criteria | common_failure_modes`
+- `expected_first_step` 값:
+  - `resource:...`
+  - `prompt:...`
+  - `tool:...`
+
+## Place 120
+
+- `PL001 | place | normal | 성심교정 중앙도서관 위치 알려줘 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | central-library가 첫 후보로 잡히고 상세 조회까지 이어진다 | noisy ranking, missing alias`
+- `PL002 | place | normal | 중앙도서관 정보 찾아줘 | tool:tool_search_places | tool_search_places -> tool_get_place | 중앙도서관 상세와 좌표 확인이 가능하다 | payload gap, empty result`
+- `PL003 | place | normal | 베리타스관 어디야 | tool:tool_search_places | tool_search_places -> tool_get_place | 베리타스관과 중앙도서관 alias가 함께 보인다 | alias omission`
+- `PL004 | place | normal | L관 위치 알려줘 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | L관 alias가 중앙도서관으로 수렴한다 | missing alias`
+- `PL005 | place | normal | 학생미래인재관 위치 알려줘 | tool:tool_search_places | tool_search_places -> tool_get_place | sophie-barat-hall 상세로 이어진다 | empty result`
+- `PL006 | place | normal | 학생식당 있는 건물 뭐야 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 학생미래인재관이 반환된다 | missing alias`
+- `PL007 | place | normal | 니콜스관 위치 알려줘 | tool:tool_search_places | tool_search_places -> tool_get_place | nicholls-hall이 반환된다 | empty result`
+- `PL008 | place | normal | N관 설명해줘 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | N관 alias가 니콜스관으로 연결된다 | missing alias`
+- `PL009 | place | normal | 김수환관 어디 있어 | tool:tool_search_places | tool_search_places -> tool_get_place | kim-sou-hwan-hall 상세가 열린다 | empty result`
+- `PL010 | place | normal | K관 위치 알려줘 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | K관 alias가 김수환관으로 잡힌다 | missing alias`
+- `PL011 | place | normal | 정문 위치 알려줘 | tool:tool_search_places | tool_search_places -> tool_get_place | main-gate가 최상위로 잡힌다 | noisy ranking`
+- `PL012 | place | normal | 학교 정문 slug도 같이 알려줘 | tool:tool_search_places | tool_search_places -> tool_get_place | main-gate slug까지 확인 가능하다 | payload gap`
+- `PL013 | place | normal | 중앙도서관 좌표 알려줘 | tool:tool_search_places | tool_search_places -> tool_get_place | coordinates 필드를 확인할 수 있다 | payload gap`
+- `PL014 | place | normal | 니콜스관 좌표 알려줘 | tool:tool_search_places | tool_search_places -> tool_get_place | 니콜스관 coordinates가 내려온다 | payload gap`
+- `PL015 | place | normal | 김수환관이 강의동 맞아 | tool:tool_search_places | tool_search_places -> tool_get_place | category가 building으로 보인다 | category mismatch`
+- `PL016 | place | normal | library 카테고리 장소 보여줘 | resource:songsim://place-categories | songsim://place-categories -> tool_search_places | library category 안내 후 관련 장소를 찾는다 | resource ignored`
+- `PL017 | place | normal | building 카테고리에서 중앙도서관 찾아줘 | resource:songsim://place-categories | songsim://place-categories -> tool_search_places -> tool_get_place | building 범주로 중앙도서관을 찾는다 | category mismatch`
+- `PL018 | place | normal | gate 카테고리 장소 뭐 있어 | resource:songsim://place-categories | songsim://place-categories -> tool_search_places | gate category 안내가 가능하다 | resource ignored`
+- `PL019 | place | normal | 학생회관 위치 알려줘 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | student-center 관련 결과가 나온다 | missing alias`
+- `PL020 | place | normal | 도서관이 어느 관이야 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 중앙도서관과 베리타스관 alias 관계를 설명할 수 있다 | payload gap`
+- `PL021 | place | normal | 니콜스관 alias 뭐 있어 | tool:tool_search_places | tool_search_places -> tool_get_place | N관, 니콜스 같은 alias를 확인할 수 있다 | payload gap`
+- `PL022 | place | normal | 학생식당 alias로 장소 찾을 수 있어 | prompt:prompt_find_place | prompt_find_place -> tool_search_places | 학생식당으로 학생미래인재관을 찾는다 | missing alias`
+- `PL023 | place | normal | 캠퍼스 정문은 영어로 뭐야 | tool:tool_search_places | tool_search_places -> tool_get_place | main-gate slug 또는 영문 식별자가 확인된다 | payload gap`
+- `PL024 | place | normal | 중앙도서관 상세 설명해줘 | tool:tool_search_places | tool_search_places -> tool_get_place | short_location 또는 highlights를 바탕으로 설명 가능하다 | payload gap`
+- `PL025 | place | normal | 베리타스관이 중앙도서관 맞아 | tool:tool_search_places | tool_search_places -> tool_get_place | 동일 장소 alias임이 확인된다 | alias omission`
+- `PL026 | place | normal | 김수환관 상세 알려줘 | tool:tool_search_places | tool_search_places -> tool_get_place | 김수환관 building 분류와 상세 설명이 보인다 | category mismatch`
+- `PL027 | place | normal | K관 상세 알려줘 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | K관 alias가 김수환관 상세로 이어진다 | missing alias`
+- `PL028 | place | normal | N관 상세 알려줘 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | N관 alias가 니콜스관으로 이어진다 | missing alias`
+- `PL029 | place | normal | 학생미래인재관에 학생식당 있나 | tool:tool_search_places | tool_search_places -> tool_get_place | 설명에 학생식당 존재가 드러난다 | payload gap`
+- `PL030 | place | normal | 도서관 building category로 분류돼? | tool:tool_search_places | tool_search_places -> tool_get_place | building category 확인이 가능하다 | category mismatch`
+- `PL031 | place | alias | 중도 어디야 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 중도 alias가 중앙도서관으로 이어진다 | missing alias`
+- `PL032 | place | alias | 중도 위치 알려줘 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 중도 alias 해석이 된다 | missing alias`
+- `PL033 | place | alias | 니콜스 어디야 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 니콜스 alias가 니콜스관으로 해석된다 | missing alias`
+- `PL034 | place | alias | 김수환 어디야 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 김수환 alias가 김수환관으로 해석된다 | missing alias`
+- `PL035 | place | alias | 학생식당 어디야 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 학생식당 alias가 학생미래인재관으로 이어진다 | missing alias`
+- `PL036 | place | alias | L관 어디 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | L관 alias가 중앙도서관으로 이어진다 | missing alias`
+- `PL037 | place | alias | K관 어디 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | K관 alias가 김수환관으로 이어진다 | missing alias`
+- `PL038 | place | alias | N관 어디 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | N관 alias가 니콜스관으로 이어진다 | missing alias`
+- `PL039 | place | alias | 학생회관 어디 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | student-center 후보가 잡힌다 | missing alias`
+- `PL040 | place | alias | 학회관 어디 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 학생회관 alias 후보를 찾는다 | missing alias`
+- `PL041 | place | alias | 정문 말고 메인게이트 어디 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | main-gate로 수렴한다 | noisy ranking`
+- `PL042 | place | alias | 도서관 말고 중도 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 중앙도서관 alias 우선 해석이 된다 | missing alias`
+- `PL043 | place | alias | 중앙도서관 별명 중도 맞지 | tool:tool_search_places | tool_search_places -> tool_get_place | aliases에 중도가 포함된다 | payload gap`
+- `PL044 | place | alias | 니콜스 alias 뭐뭐 있어 | tool:tool_search_places | tool_search_places -> tool_get_place | 니콜스, N관 alias가 보인다 | payload gap`
+- `PL045 | place | alias | 학생식당 있는 건물 별명 뭐야 | tool:tool_search_places | tool_search_places -> tool_get_place | 학생식당 alias를 가진 건물이 확인된다 | payload gap`
+- `PL046 | place | alias | 도서관을 중도라고 해도 알아들어 | prompt:prompt_find_place | prompt_find_place -> tool_search_places | 중도 alias 질문이 성공한다 | missing alias`
+- `PL047 | place | alias | K관이 김수환관 맞아 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 동일 장소로 연결된다 | alias omission`
+- `PL048 | place | alias | N관이 니콜스관 맞아 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 동일 장소로 연결된다 | alias omission`
+- `PL049 | place | alias | 학생식당 있는 데가 B관이야 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | B관 또는 학생미래인재관 관계를 설명할 수 있다 | missing alias`
+- `PL050 | place | alias | 도서관은 L관이지 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 도서관과 L관 관계를 확인할 수 있다 | payload gap`
+- `PL051 | place | alias | 정문을 영어로 메인게이트라고 부르지 | tool:tool_search_places | tool_search_places -> tool_get_place | main-gate와 정문 관계가 드러난다 | payload gap`
+- `PL052 | place | alias | 김수환관은 K관이야 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | K관 alias가 연결된다 | alias omission`
+- `PL053 | place | alias | 니콜스관은 N관이야 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | N관 alias가 연결된다 | alias omission`
+- `PL054 | place | alias | 학생식당=학생미래인재관 맞아 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 같은 장소로 연결된다 | alias omission`
+- `PL055 | place | alias | 중도=베리타스관 맞아 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 같은 장소로 연결된다 | alias omission`
+- `PL056 | place | alias | 김수환은 K관 맞아 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 같은 장소로 연결된다 | alias omission`
+- `PL057 | place | alias | 니콜스는 N관이지 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 같은 장소로 연결된다 | alias omission`
+- `PL058 | place | alias | 학생식당 건물 alias 보여줘 | tool:tool_search_places | tool_search_places -> tool_get_place | 학생식당 alias를 가진 장소가 확인된다 | payload gap`
+- `PL059 | place | alias | 중도 alias 목록 보여줘 | tool:tool_search_places | tool_search_places -> tool_get_place | 중앙도서관 alias 목록이 보인다 | payload gap`
+- `PL060 | place | alias | 니콜스 alias 목록 보여줘 | tool:tool_search_places | tool_search_places -> tool_get_place | 니콜스관 alias 목록이 보인다 | payload gap`
+- `PL061 | place | composite | 중앙도서관하고 니콜스관 중에 좌표 먼저 알려줘 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 두 장소를 찾고 첫 대상 좌표를 답할 수 있다 | tool selection ambiguity`
+- `PL062 | place | composite | library category에서 중앙도서관만 자세히 보여줘 | resource:songsim://place-categories | songsim://place-categories -> tool_search_places -> tool_get_place | library 범주와 중앙도서관 상세가 연결된다 | category mismatch`
+- `PL063 | place | composite | building category에서 K관 찾아줘 | resource:songsim://place-categories | songsim://place-categories -> tool_search_places -> tool_get_place | building 범주로 김수환관을 찾는다 | category mismatch`
+- `PL064 | place | composite | gate category에서 정문 설명해줘 | resource:songsim://place-categories | songsim://place-categories -> tool_search_places -> tool_get_place | gate category와 main-gate 상세가 연결된다 | category mismatch`
+- `PL065 | place | composite | 학생식당 있는 건물 좌표까지 알려줘 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 학생미래인재관과 coordinates를 함께 얻는다 | payload gap`
+- `PL066 | place | composite | N관 말고 K관 찾아줘 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | K관이 우선 반환된다 | noisy ranking`
+- `PL067 | place | composite | 니콜스관과 김수환관 중 강의동인 곳 보여줘 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 두 건물의 building 분류를 비교할 수 있다 | category mismatch`
+- `PL068 | place | composite | 중앙도서관이랑 정문 중에 먼저 찾기 쉬운 곳은 어디 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 두 장소 모두 찾을 수 있다 | unsupported ranking`
+- `PL069 | place | composite | 학생식당 있는 건물하고 학생회관을 구분해줘 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 서로 다른 장소 후보가 분리된다 | alias collision`
+- `PL070 | place | composite | 중앙도서관 alias랑 정식 이름 같이 보여줘 | tool:tool_search_places | tool_search_places -> tool_get_place | name, canonical_name, aliases를 함께 볼 수 있다 | payload gap`
+- `PL071 | place | composite | 김수환관은 building으로, 정문은 gate로 맞는지 확인해줘 | tool:tool_search_places | tool_search_places -> tool_get_place | 두 장소의 category 비교가 가능하다 | category mismatch`
+- `PL072 | place | composite | 중도랑 L관이 같은지 확인해줘 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | alias와 정식 명칭의 동일성을 확인한다 | alias omission`
+- `PL073 | place | composite | 학생식당이 있는 B관 설명하고 좌표도 줘 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 학생미래인재관 설명과 좌표를 함께 확인한다 | payload gap`
+- `PL074 | place | composite | 니콜스 alias와 좌표 같이 보여줘 | tool:tool_search_places | tool_search_places -> tool_get_place | alias와 coordinates가 함께 노출된다 | payload gap`
+- `PL075 | place | composite | K관 alias와 slug 같이 보여줘 | tool:tool_search_places | tool_search_places -> tool_get_place | 김수환관 alias와 slug를 함께 확인한다 | payload gap`
+- `PL076 | place | composite | 정문 slug랑 category 알려줘 | tool:tool_search_places | tool_search_places -> tool_get_place | main-gate와 gate category를 확인한다 | payload gap`
+- `PL077 | place | composite | 중앙도서관은 library인지 building인지 둘 다인지 알려줘 | tool:tool_search_places | tool_search_places -> tool_get_place | 현재 공개 payload 기준 category를 설명할 수 있다 | category ambiguity`
+- `PL078 | place | composite | 학생회관과 학생식당 건물은 다른 곳이야 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 두 장소를 분리해서 찾는다 | alias collision`
+- `PL079 | place | composite | 도서관 말고 gate 계열 하나만 추천해줘 | resource:songsim://place-categories | songsim://place-categories -> tool_search_places | gate category 장소 1건이 잡힌다 | category mismatch`
+- `PL080 | place | composite | 중앙도서관과 학생미래인재관 중 먼저 찾을 곳 정리해줘 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 두 장소를 모두 찾아 비교용 데이터가 나온다 | unsupported ranking`
+- `PL081 | place | composite | 중도랑 정문을 같이 찾고 slug까지 적어줘 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 두 장소에 대한 식별자가 확보된다 | missing alias`
+- `PL082 | place | composite | 니콜스랑 K관 둘 다 alias로 찾을 수 있나 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 둘 다 alias search가 성공한다 | missing alias`
+- `PL083 | place | composite | 학생식당 있는 건물은 building으로 나오나 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 학생미래인재관 category 확인이 가능하다 | category mismatch`
+- `PL084 | place | composite | 도서관과 학생식당 건물 좌표 둘 다 필요해 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 두 장소의 coordinates를 확인할 수 있다 | payload gap`
+- `PL085 | place | composite | 정문과 메인게이트가 같은지 확인해줘 | tool:tool_search_places | tool_search_places -> tool_get_place | same place 관계를 설명할 수 있다 | payload gap`
+- `PL086 | place | composite | K관이랑 김수환관이 같은지 확인해줘 | tool:tool_search_places | tool_search_places -> tool_get_place | same place 관계를 설명할 수 있다 | alias omission`
+- `PL087 | place | composite | N관이랑 니콜스관이 같은지 확인해줘 | tool:tool_search_places | tool_search_places -> tool_get_place | same place 관계를 설명할 수 있다 | alias omission`
+- `PL088 | place | composite | 베리타스관이랑 중도 같은 건물이지 | tool:tool_search_places | tool_search_places -> tool_get_place | same place 관계를 설명할 수 있다 | alias omission`
+- `PL089 | place | composite | 학생식당이 있는 건물과 학생회관 구분해서 알려줘 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 학생미래인재관과 학생회관이 अलग개로 조회된다 | alias collision`
+- `PL090 | place | composite | 정문은 gate고 중앙도서관은 building인지 확인해줘 | tool:tool_search_places | tool_search_places -> tool_get_place | category 차이를 설명할 수 있다 | category mismatch`
+- `PL091 | place | typo | 중앙 도서관 위치 알려줘 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 공백 정규화 후 중앙도서관을 찾는다 | spacing recovery miss`
+- `PL092 | place | typo | 중 앙 도 서 관 어디야 | prompt:prompt_find_place | prompt_find_place -> tool_search_places | 공백 정규화 후 중앙도서관 후보가 나온다 | spacing recovery miss`
+- `PL093 | place | typo | 니콜스 관 위치 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 공백 정규화 후 니콜스관을 찾는다 | spacing recovery miss`
+- `PL094 | place | typo | 김수환 관 어디 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 공백 정규화 후 김수환관을 찾는다 | spacing recovery miss`
+- `PL095 | place | typo | 학 생 식 당 있는 건물 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 공백 정규화 후 학생미래인재관을 찾는다 | spacing recovery miss`
+- `PL096 | place | typo | 중도 위치좀 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 구어체여도 중도 alias를 찾는다 | missing alias`
+- `PL097 | place | typo | 니콜스 어디야용 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 구어체여도 니콜스 alias를 찾는다 | missing alias`
+- `PL098 | place | typo | K 관 어디에요 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 공백 정규화 후 K관을 찾는다 | spacing recovery miss`
+- `PL099 | place | typo | N 관 정보 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 공백 정규화 후 N관을 찾는다 | spacing recovery miss`
+- `PL100 | place | typo | 베리 타스 관 위치 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 공백 정규화 후 베리타스관을 찾는다 | spacing recovery miss`
+- `PL101 | place | typo | 정 문 위치 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 공백 정규화 후 main-gate를 찾는다 | spacing recovery miss`
+- `PL102 | place | typo | 중도가 어디임 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 학생 표현이어도 중도 alias가 잡힌다 | missing alias`
+- `PL103 | place | typo | 학생식당건물 어디 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 띄어쓰기 없는 표현도 잡힌다 | spacing recovery miss`
+- `PL104 | place | typo | 중앙도서괸 위치 | prompt:prompt_find_place | prompt_find_place -> tool_search_places | 약한 오타를 tolerance 없이 놓칠 수 있음을 기록한다 | typo miss`
+- `PL105 | place | typo | 니콜쓰관 위치 | prompt:prompt_find_place | prompt_find_place -> tool_search_places | 약한 오타 처리 한계를 드러낸다 | typo miss`
+- `PL106 | place | typo | 김수환괸 위치 | prompt:prompt_find_place | prompt_find_place -> tool_search_places | 약한 오타 처리 한계를 드러낸다 | typo miss`
+- `PL107 | place | typo | 중도어디야 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 붙여쓴 표현에서도 alias를 찾는다 | spacing recovery miss`
+- `PL108 | place | typo | 정문어디야 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 붙여쓴 표현에서도 main-gate를 찾는다 | spacing recovery miss`
+- `PL109 | place | typo | 학생식당어디야 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 붙여쓴 표현에서도 학생미래인재관을 찾는다 | spacing recovery miss`
+- `PL110 | place | typo | 니콜스관어디야 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 붙여쓴 표현에서도 니콜스관을 찾는다 | spacing recovery miss`
+- `PL111 | place | typo | 중앙 도서 관 좌표 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 중앙도서관 coordinates 확인이 가능하다 | spacing recovery miss`
+- `PL112 | place | typo | K관좌표 알려줘 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 김수환관 coordinates로 이어진다 | spacing recovery miss`
+- `PL113 | place | typo | N관좌표 알려줘 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 니콜스관 coordinates로 이어진다 | spacing recovery miss`
+- `PL114 | place | typo | 학회관 어디임 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 학생회관 alias를 찾는다 | missing alias`
+- `PL115 | place | typo | 메인게이트 위치 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | main-gate를 찾는다 | noisy ranking`
+- `PL116 | place | typo | 베리타쓰관 위치 | prompt:prompt_find_place | prompt_find_place -> tool_search_places | 약한 오타 처리 한계를 점검한다 | typo miss`
+- `PL117 | place | typo | 중도랑도서관 같은거지 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | alias 동일성 확인이 가능하다 | missing alias`
+- `PL118 | place | typo | 니콜스관 alias 머야 | tool:tool_search_places | tool_search_places -> tool_get_place | alias 목록을 읽을 수 있다 | payload gap`
+- `PL119 | place | typo | 학생식당 건물 머야 | prompt:prompt_find_place | prompt_find_place -> tool_search_places -> tool_get_place | 학생미래인재관을 찾는다 | missing alias`
+- `PL120 | place | typo | 정문 slug 머야 | tool:tool_search_places | tool_search_places -> tool_get_place | main-gate slug를 확인할 수 있다 | payload gap`
+
+## Course 100
+
+- `CO001 | course | normal | 2026년 1학기 데이터베이스 과목 찾아줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | year, semester, query가 함께 반영된다 | filter mismatch`
+- `CO002 | course | normal | 2026년 1학기 운영체제 수업 보여줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 운영체제 결과가 학기 조건과 함께 나온다 | filter mismatch`
+- `CO003 | course | normal | 2026년 1학기 자료구조 과목 찾아줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 자료구조 결과가 학기 조건과 함께 나온다 | filter mismatch`
+- `CO004 | course | normal | 2026년 1학기 알고리즘 과목 찾아줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 알고리즘 결과가 나온다 | empty result`
+- `CO005 | course | normal | 2026년 1학기 객체지향 과목 찾아줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 객체지향 관련 결과가 나온다 | empty result`
+- `CO006 | course | normal | 인공지능 수업 보여줘 | tool:tool_search_courses | tool_search_courses | 인공지능 관련 과목이 나온다 | empty result`
+- `CO007 | course | normal | 소프트웨어공학 과목 보여줘 | tool:tool_search_courses | tool_search_courses | 소프트웨어공학 결과가 나온다 | empty result`
+- `CO008 | course | normal | 웹프로그래밍 수업 있어 | tool:tool_search_courses | tool_search_courses | 웹프로그래밍 결과가 나온다 | empty result`
+- `CO009 | course | normal | 캡스톤디자인 수업 찾아줘 | tool:tool_search_courses | tool_search_courses | 캡스톤디자인 결과가 나온다 | empty result`
+- `CO010 | course | normal | 머신러닝 과목 보여줘 | tool:tool_search_courses | tool_search_courses | 머신러닝 결과가 나온다 | empty result`
+- `CO011 | course | normal | CSE301 과목 뭐야 | tool:tool_search_courses | tool_search_courses | code query로 결과가 나온다 | empty result`
+- `CO012 | course | normal | CSE302 수업 뭐야 | tool:tool_search_courses | tool_search_courses | code query로 결과가 나온다 | empty result`
+- `CO013 | course | normal | CSE401 시간표 보여줘 | tool:tool_search_courses | tool_search_courses | code query로 시간표가 나온다 | payload gap`
+- `CO014 | course | normal | CSE420 과목 뭐야 | tool:tool_search_courses | tool_search_courses | code query로 결과가 나온다 | empty result`
+- `CO015 | course | normal | 김가톨 교수 수업 보여줘 | tool:tool_search_courses | tool_search_courses | professor filter가 적용된다 | filter mismatch`
+- `CO016 | course | normal | 홍길동 교수 강의 찾아줘 | tool:tool_search_courses | tool_search_courses | professor filter가 적용된다 | filter mismatch`
+- `CO017 | course | normal | 박요셉 교수 수업 알려줘 | tool:tool_search_courses | tool_search_courses | professor filter가 적용된다 | filter mismatch`
+- `CO018 | course | normal | 객체지향 수업 시간 알려줘 | tool:tool_search_courses | tool_search_courses | raw schedule 또는 요약 필드가 보인다 | payload gap`
+- `CO019 | course | normal | 운영체제 분반도 보여줘 | tool:tool_search_courses | tool_search_courses | section 정보까지 확인 가능하다 | payload gap`
+- `CO020 | course | normal | 자료구조 교수가 누구야 | tool:tool_search_courses | tool_search_courses | professor 필드를 읽을 수 있다 | payload gap`
+- `CO021 | course | alias | 데베 수업 찾아줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 데이터베이스 관련 후보를 찾을 수 있다 | wording issue`
+- `CO022 | course | alias | 옵체 수업 있나 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 운영체제 관련 후보를 찾을 수 있다 | wording issue`
+- `CO023 | course | alias | 자구 과목 찾아줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 자료구조 관련 후보를 찾을 수 있다 | wording issue`
+- `CO024 | course | alias | 객체지향프설 과목 보여줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 객체지향 관련 후보를 찾을 수 있다 | wording issue`
+- `CO025 | course | alias | 캡디 수업 있어 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 캡스톤디자인 관련 후보를 찾을 수 있다 | wording issue`
+- `CO026 | course | alias | 웹프 실습 과목 있나 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 웹프로그래밍 관련 후보를 찾는다 | wording issue`
+- `CO027 | course | alias | AI 수업 찾아줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 인공지능 관련 후보를 찾는다 | wording issue`
+- `CO028 | course | alias | DB 수업 찾아줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 데이터베이스 관련 후보를 찾는다 | wording issue`
+- `CO029 | course | alias | OS 수업 찾아줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 운영체제 관련 후보를 찾는다 | wording issue`
+- `CO030 | course | alias | 네트웍 수업 있어 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 네트워크 관련 후보를 찾는다 | wording issue`
+- `CO031 | course | alias | 김교수 객체지향 수업 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | professor+query 조합 후보를 찾는다 | tool selection ambiguity`
+- `CO032 | course | alias | 홍교수 데이터베이스 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | professor+query 조합 후보를 찾는다 | tool selection ambiguity`
+- `CO033 | course | alias | 박교수 운영체제 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | professor+query 조합 후보를 찾는다 | tool selection ambiguity`
+- `CO034 | course | alias | 객체지향 이번 학기 열려 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 현재 학기 기준 query가 반영된다 | missing year/semester`
+- `CO035 | course | alias | 자료구조 이번 학기 열림 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 현재 학기 기준 query가 반영된다 | missing year/semester`
+- `CO036 | course | alias | 데베 이번 학기 열려 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 현재 학기 기준 query가 반영된다 | wording issue`
+- `CO037 | course | alias | 객체지향 코드로도 찾을 수 있어 | resource:songsim://usage-guide | songsim://usage-guide -> tool_search_courses | code search 가능 안내 후 조회로 이어진다 | resource ignored`
+- `CO038 | course | alias | 교수 이름으로도 찾아줘 김가톨 | resource:songsim://usage-guide | songsim://usage-guide -> tool_search_courses | professor search 가능 안내 후 조회로 이어진다 | resource ignored`
+- `CO039 | course | alias | 과목코드로 찾기 CSE420 | tool:tool_search_courses | tool_search_courses | code filter로 결과가 나온다 | empty result`
+- `CO040 | course | alias | 분반 확인용으로 데이터베이스 찾아줘 | tool:tool_search_courses | tool_search_courses | section 정보가 포함된 결과가 나온다 | payload gap`
+- `CO041 | course | composite | 2026년 1학기 데이터베이스인데 김가톨 교수 수업만 보여줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | year, semester, query, professor가 함께 반영된다 | filter mismatch`
+- `CO042 | course | composite | 2026년 1학기 운영체제 1분반만 찾아줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | year, semester, query, section이 함께 반영된다 | filter mismatch`
+- `CO043 | course | composite | CSE420인데 홍길동 교수 맞는지 확인해줘 | tool:tool_search_courses | tool_search_courses | code와 professor를 함께 검증할 수 있다 | payload gap`
+- `CO044 | course | composite | 데이터베이스 중 화목 수업만 찾아줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | schedule 확인이 가능한 결과가 나온다 | unsupported schedule filter`
+- `CO045 | course | composite | 객체지향 과목 중 오전 수업만 보여줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 오전 여부는 후처리 가능할 만큼 schedule이 있다 | unsupported ranking`
+- `CO046 | course | composite | 자료구조랑 알고리즘 둘 중 이번 학기 열린 것만 보여줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 두 query 중 해당 학기 결과를 찾는다 | tool selection ambiguity`
+- `CO047 | course | composite | 교수명은 모르는데 데이터베이스 계열 과목만 3개 보여줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | query+limit 기준으로 3개 이내 결과가 나온다 | limit ignored`
+- `CO048 | course | composite | CSE301이 2026년 1학기 개설됐는지 확인해줘 | tool:tool_search_courses | tool_search_courses | code+학기 조합으로 개설 여부 확인이 가능하다 | filter mismatch`
+- `CO049 | course | composite | 운영체제랑 네트워크 중 교수명이 홍길동인 것만 보여줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | query+professor 조합 결과가 나온다 | filter mismatch`
+- `CO050 | course | composite | 2026년 1학기 객체지향 수업 중 금요일 수업 있나 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | schedule로 후처리 가능한 결과가 나온다 | unsupported schedule filter`
+- `CO051 | course | composite | 2026년 1학기 AI 수업 중 코드도 같이 보여줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | query 결과와 code 필드가 함께 보인다 | payload gap`
+- `CO052 | course | composite | 김가톨 교수 수업 중 2026년 1학기 것만 | tool:tool_search_courses | tool_search_courses | professor+학기 조합으로 결과가 좁혀진다 | filter mismatch`
+- `CO053 | course | composite | 박요셉 교수 강의 중 데이터 관련만 | tool:tool_search_courses | tool_search_courses | professor+query 조합 결과가 나온다 | filter mismatch`
+- `CO054 | course | composite | 운영체제 수업 중 분반 많은 순으로 보여줘 | tool:tool_search_courses | tool_search_courses | raw 결과가 있어 후처리 비교가 가능하다 | unsupported ranking`
+- `CO055 | course | composite | 객체지향 수업실 room도 보여줘 | tool:tool_search_courses | tool_search_courses | room 필드 확인이 가능하다 | payload gap`
+- `CO056 | course | composite | 캡스톤디자인 수업실과 시간 같이 보여줘 | tool:tool_search_courses | tool_search_courses | room과 schedule을 함께 확인할 수 있다 | payload gap`
+- `CO057 | course | composite | 데이터베이스 교수랑 강의실 같이 보여줘 | tool:tool_search_courses | tool_search_courses | professor와 room을 함께 확인할 수 있다 | payload gap`
+- `CO058 | course | composite | 운영체제 코드와 분반 같이 보여줘 | tool:tool_search_courses | tool_search_courses | code와 section을 함께 확인할 수 있다 | payload gap`
+- `CO059 | course | composite | 이번 학기 웹프로그래밍 중 니콜스관 수업만 찾아줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | room 기반 후처리 가능한 결과가 나온다 | unsupported room filter`
+- `CO060 | course | composite | CSE420이 N관에서 열리는지 확인해줘 | tool:tool_search_courses | tool_search_courses | room 필드로 후처리 검증이 가능하다 | payload gap`
+- `CO061 | course | composite | 객체지향 과목 2개만 보여줘 | tool:tool_search_courses | tool_search_courses | limit 2가 적용된다 | limit ignored`
+- `CO062 | course | composite | 알고리즘 과목 1개만 보여줘 | tool:tool_search_courses | tool_search_courses | limit 1이 적용된다 | limit ignored`
+- `CO063 | course | composite | 김가톨 교수 과목 1개만 보여줘 | tool:tool_search_courses | tool_search_courses | professor filter+limit가 적용된다 | limit ignored`
+- `CO064 | course | composite | 자료구조랑 운영체제 비교하려고 둘 다 찾아줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 두 query를 순차적으로 처리할 수 있다 | tool selection ambiguity`
+- `CO065 | course | composite | 이번 학기 과목 전체에서 데이터라는 단어 들어간 것만 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | broad keyword search가 된다 | filter mismatch`
+- `CO066 | course | composite | 7교시는 몇 시인지 보고 그 시간 과목도 찾아줘 | resource:songsim://class-periods | songsim://class-periods -> tool_search_courses | class-periods와 course search를 함께 쓴다 | resource ignored`
+- `CO067 | course | composite | 9교시가 몇 시인지 먼저 알려주고 그 시간 수업 있나 봐줘 | resource:songsim://class-periods | songsim://class-periods -> tool_search_courses | 교시 정보와 수업 검색을 이어갈 수 있다 | resource ignored`
+- `CO068 | course | composite | 코드로 찾고 싶어 CSE301, CSE302 둘 다 보여줘 | resource:songsim://usage-guide | songsim://usage-guide -> tool_search_courses | code search로 둘 다 조회 가능하다 | resource ignored`
+- `CO069 | course | composite | 데이터베이스랑 머신러닝 중 이번 학기만 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 여러 query를 current term으로 좁힐 수 있다 | tool selection ambiguity`
+- `CO070 | course | composite | AI 과목 중 room 있는 것만 보여줘 | tool:tool_search_courses | tool_search_courses | room 필드가 있는 결과 확인이 가능하다 | payload gap`
+- `CO071 | course | typo | 객체 지향 과목 찾아줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 공백 정규화 후 객체지향 query를 처리한다 | spacing recovery miss`
+- `CO072 | course | typo | 데 이 터 베 이 스 과목 있어 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 공백 정규화 후 데이터베이스 query를 처리한다 | spacing recovery miss`
+- `CO073 | course | typo | 운 영 체 제 수업 보여줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 공백 정규화 후 운영체제 query를 처리한다 | spacing recovery miss`
+- `CO074 | course | typo | 소프트 웨어 공학 수업 있어 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 공백 정규화 후 소프트웨어공학 query를 처리한다 | spacing recovery miss`
+- `CO075 | course | typo | 웹 프로그래밍 과목 있어 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 공백 정규화 후 웹프로그래밍 query를 처리한다 | spacing recovery miss`
+- `CO076 | course | typo | 객채지향 수업 찾아줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 약한 오타 tolerance 여부를 점검한다 | typo miss`
+- `CO077 | course | typo | 데이타베이스 과목 있어 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 제품 alias 수준의 오타 복구를 기대한다 | wording issue`
+- `CO078 | course | typo | 운체 과목 찾아줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 축약 표현 처리 한계를 점검한다 | wording issue`
+- `CO079 | course | typo | 자료 구조 수업 있어 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 공백 정규화 후 자료구조 query를 처리한다 | spacing recovery miss`
+- `CO080 | course | typo | 알 고 리 즘 수업 보여줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 공백 정규화 후 알고리즘 query를 처리한다 | spacing recovery miss`
+- `CO081 | course | typo | 인공 지능 과목 있어 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 공백 정규화 후 인공지능 query를 처리한다 | spacing recovery miss`
+- `CO082 | course | typo | 머신 러닝 과목 있나 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 공백 정규화 후 머신러닝 query를 처리한다 | spacing recovery miss`
+- `CO083 | course | typo | 컴퓨터 네트워크 과목 있어 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 공백 정규화 후 컴퓨터네트워크 query를 처리한다 | spacing recovery miss`
+- `CO084 | course | typo | 캡 스 톤 디 자 인 수업 있어 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 공백 정규화 후 캡스톤디자인 query를 처리한다 | spacing recovery miss`
+- `CO085 | course | typo | CSE 420 과목 뭐야 | tool:tool_search_courses | tool_search_courses | 코드 공백 제거 후 처리 가능하다 | spacing recovery miss`
+- `CO086 | course | typo | CSE-420 과목 뭐야 | tool:tool_search_courses | tool_search_courses | 코드 기호 차이 처리 여부를 점검한다 | wording issue`
+- `CO087 | course | typo | 김 가 톨 교수 수업 있어 | tool:tool_search_courses | tool_search_courses | 교수명 공백 정규화 후 처리 가능하다 | spacing recovery miss`
+- `CO088 | course | typo | 박 요 셉 교수 강의 보여줘 | tool:tool_search_courses | tool_search_courses | 교수명 공백 정규화 후 처리 가능하다 | spacing recovery miss`
+- `CO089 | course | typo | 홍 길 동 교수 데이터베이스 | tool:tool_search_courses | tool_search_courses | 교수명 공백 정규화 후 처리 가능하다 | spacing recovery miss`
+- `CO090 | course | typo | 객체 지향 수업실도 보여줘 | tool:tool_search_courses | tool_search_courses | 공백 정규화 후 room 필드 확인이 가능하다 | spacing recovery miss`
+- `CO091 | course | ambiguous | 이번 학기 데이터 쪽 수업 뭐 있어 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | broad query를 current term으로 조회한다 | tool selection ambiguity`
+- `CO092 | course | ambiguous | 교수는 모르겠고 객체지향 비슷한 수업 찾아줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | broad query 후보가 반환된다 | unsupported semantic search`
+- `CO093 | course | ambiguous | 오전에 하는 AI 수업 있어 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | schedule을 후처리할 수 있는 결과가 반환된다 | unsupported ranking`
+- `CO094 | course | ambiguous | 코드는 모르고 DB 관련 수업 찾고 싶어 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 키워드 검색으로 결과가 반환된다 | tool selection ambiguity`
+- `CO095 | course | ambiguous | 이번 학기 열리는 실습 많은 과목 찾고 싶어 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | broad result를 준 뒤 후처리 가능하다 | unsupported ranking`
+- `CO096 | course | ambiguous | 분반이 여러 개인 수업 뭐 있어 | tool:tool_search_courses | tool_search_courses | raw 결과로 section 비교가 가능하다 | unsupported ranking`
+- `CO097 | course | ambiguous | 화요일 저녁 수업 뭐 있어 | tool:tool_search_courses | tool_search_courses | schedule 필드 기반 후처리가 가능하다 | unsupported direct filter`
+- `CO098 | course | ambiguous | N관에서 하는 컴공 수업 있어 | tool:tool_search_courses | tool_search_courses | room 기반 후처리가 가능하다 | unsupported room filter`
+- `CO099 | course | ambiguous | 7교시에 시작하는 과목 찾고 싶어 | resource:songsim://class-periods | songsim://class-periods -> tool_search_courses | 교시 시간 확인 후 course search로 이어진다 | resource ignored`
+- `CO100 | course | ambiguous | 방학 말고 학기 중 수업 기준으로 보여줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 학기 기준 조회 흐름으로 정렬된다 | tool selection ambiguity`
+
+## Notices 90
+
+- `NO001 | notices | normal | 최신 공지 3개 보여줘 | prompt:prompt_latest_notices | prompt_latest_notices -> tool_list_latest_notices | 최신순 3건이 반환된다 | limit ignored, noisy taxonomy`
+- `NO002 | notices | normal | 최신 학사 공지 3개 보여줘 | prompt:prompt_latest_notices | prompt_latest_notices -> tool_list_latest_notices | academic category 3건이 반환된다 | category mismatch`
+- `NO003 | notices | normal | 최신 장학 공지 3개 보여줘 | prompt:prompt_latest_notices | prompt_latest_notices -> tool_list_latest_notices | scholarship category 3건이 반환된다 | category mismatch`
+- `NO004 | notices | normal | 최신 취업 공지 3개 보여줘 | prompt:prompt_latest_notices | prompt_latest_notices -> tool_list_latest_notices | employment category 3건이 반환된다 | taxonomy mismatch`
+- `NO005 | notices | normal | 최신 일반 공지 3개 보여줘 | prompt:prompt_latest_notices | prompt_latest_notices -> tool_list_latest_notices | general category 3건이 반환된다 | category mismatch`
+- `NO006 | notices | normal | library 공지 2개 보여줘 | prompt:prompt_latest_notices | prompt_latest_notices -> tool_list_latest_notices | library 관련 공지 2건이 반환된다 | category mismatch`
+- `NO007 | notices | normal | academic 공지 2개만 보여줘 | tool:tool_list_latest_notices | tool_list_latest_notices | academic filter와 limit가 적용된다 | limit ignored`
+- `NO008 | notices | normal | scholarship 공지 2개만 보여줘 | tool:tool_list_latest_notices | tool_list_latest_notices | scholarship filter와 limit가 적용된다 | limit ignored`
+- `NO009 | notices | normal | employment 공지 2개만 보여줘 | tool:tool_list_latest_notices | tool_list_latest_notices | employment filter와 limit가 적용된다 | taxonomy mismatch`
+- `NO010 | notices | normal | general 공지 2개만 보여줘 | tool:tool_list_latest_notices | tool_list_latest_notices | general filter와 limit가 적용된다 | category mismatch`
+- `NO011 | notices | normal | 공지 제목이랑 링크 같이 보여줘 | tool:tool_list_latest_notices | tool_list_latest_notices | title과 source_url이 함께 내려온다 | payload gap`
+- `NO012 | notices | normal | 최신 공지의 category_display도 같이 보여줘 | tool:tool_list_latest_notices | tool_list_latest_notices | category_display를 읽을 수 있다 | payload gap`
+- `NO013 | notices | normal | 장학 공지 source_url까지 같이 보여줘 | tool:tool_list_latest_notices | tool_list_latest_notices | scholarship 결과와 source_url을 함께 확인한다 | payload gap`
+- `NO014 | notices | normal | 취업 공지 source_url도 같이 보여줘 | tool:tool_list_latest_notices | tool_list_latest_notices | employment 결과와 source_url을 함께 확인한다 | taxonomy mismatch`
+- `NO015 | notices | normal | 공지 카테고리 종류부터 알려줘 | resource:songsim://notice-categories | songsim://notice-categories | 공개 notice category 설명을 확인할 수 있다 | resource ignored`
+- `NO016 | notices | normal | notice category에서 employment 뜻이 뭐야 | resource:songsim://notice-categories | songsim://notice-categories | employment category 설명이 가능하다 | resource ignored`
+- `NO017 | notices | normal | notice category에서 general 뜻이 뭐야 | resource:songsim://notice-categories | songsim://notice-categories | general category 설명이 가능하다 | resource ignored`
+- `NO018 | notices | normal | 장학 공지 최신순으로 5개 보여줘 | prompt:prompt_latest_notices | prompt_latest_notices -> tool_list_latest_notices | scholarship filter + limit 5가 적용된다 | limit ignored`
+- `NO019 | notices | normal | 최신 공지 1개만 보여줘 | tool:tool_list_latest_notices | tool_list_latest_notices | latest 1건만 반환된다 | limit ignored`
+- `NO020 | notices | normal | 취업 관련 최신 글 있어 | prompt:prompt_latest_notices | prompt_latest_notices -> tool_list_latest_notices | employment 흐름으로 최신 공지를 반환한다 | taxonomy mismatch`
+- `NO021 | notices | alias | 장학만 최신순으로 보여줘 | prompt:prompt_latest_notices | prompt_latest_notices -> tool_list_latest_notices | scholarship 흐름으로 좁혀진다 | tool selection ambiguity`
+- `NO022 | notices | alias | 취업 쪽 공지 있어 | prompt:prompt_latest_notices | prompt_latest_notices -> tool_list_latest_notices | employment 흐름으로 좁혀진다 | taxonomy mismatch`
+- `NO023 | notices | alias | 커리어 센터 쪽 공지 있어 | prompt:prompt_latest_notices | prompt_latest_notices -> tool_list_latest_notices | career legacy도 employment로 묶인다 | taxonomy mismatch`
+- `NO024 | notices | alias | 진로취업 공지 보여줘 | prompt:prompt_latest_notices | prompt_latest_notices -> tool_list_latest_notices | employment 계열 결과가 나온다 | taxonomy mismatch`
+- `NO025 | notices | alias | 도서관 쪽 새 글 있어 | prompt:prompt_latest_notices | prompt_latest_notices -> tool_list_latest_notices | library 계열 결과가 나온다 | category mismatch`
+- `NO026 | notices | alias | 일반 공지 말고 장학만 | prompt:prompt_latest_notices | prompt_latest_notices -> tool_list_latest_notices | scholarship only로 좁혀진다 | category mismatch`
+- `NO027 | notices | alias | 학사팀 공지 최신으로 | prompt:prompt_latest_notices | prompt_latest_notices -> tool_list_latest_notices | academic 쪽 최신 공지가 나온다 | category mismatch`
+- `NO028 | notices | alias | 취창업 공지 최신순 | prompt:prompt_latest_notices | prompt_latest_notices -> tool_list_latest_notices | employment 계열 결과가 나온다 | taxonomy mismatch`
+- `NO029 | notices | alias | library만 2개 보여줘 | prompt:prompt_latest_notices | prompt_latest_notices -> tool_list_latest_notices | library filter와 limit 2가 적용된다 | limit ignored`
+- `NO030 | notices | alias | 커리어 공지 2개만 | prompt:prompt_latest_notices | prompt_latest_notices -> tool_list_latest_notices | career alias가 employment로 처리된다 | taxonomy mismatch`
+- `NO031 | notices | alias | 취업공고 비슷한 거 보여줘 | prompt:prompt_latest_notices | prompt_latest_notices -> tool_list_latest_notices | employment 계열 결과가 나온다 | tool selection ambiguity`
+- `NO032 | notices | alias | scholarship 글만 보여줘 | tool:tool_list_latest_notices | tool_list_latest_notices | scholarship filter가 적용된다 | category mismatch`
+- `NO033 | notices | alias | academic 글만 보여줘 | tool:tool_list_latest_notices | tool_list_latest_notices | academic filter가 적용된다 | category mismatch`
+- `NO034 | notices | alias | general 글만 보여줘 | tool:tool_list_latest_notices | tool_list_latest_notices | general filter가 적용된다 | category mismatch`
+- `NO035 | notices | alias | career 글만 보여줘 | tool:tool_list_latest_notices | tool_list_latest_notices | legacy career가 employment와 호환된다 | taxonomy mismatch`
+- `NO036 | notices | alias | 공지 카테고리에서 place는 뭐야 | resource:songsim://notice-categories | songsim://notice-categories | 공개 표면에서 general로 보정된 설명을 보여준다 | taxonomy mismatch`
+- `NO037 | notices | alias | 취업이랑 커리어 같은 카테고리야 | resource:songsim://notice-categories | songsim://notice-categories | employment/career 호환 규칙을 설명할 수 있다 | resource ignored`
+- `NO038 | notices | alias | 공지 분류표 먼저 보여줘 | resource:songsim://notice-categories | songsim://notice-categories | 공개 notice category 안내를 먼저 읽는다 | resource ignored`
+- `NO039 | notices | alias | 새 글 중 장학 쪽만 추려줘 | prompt:prompt_latest_notices | prompt_latest_notices -> tool_list_latest_notices | scholarship latest 흐름으로 수렴한다 | tool selection ambiguity`
+- `NO040 | notices | alias | 새 글 중 취업 쪽만 추려줘 | prompt:prompt_latest_notices | prompt_latest_notices -> tool_list_latest_notices | employment latest 흐름으로 수렴한다 | taxonomy mismatch`
+- `NO041 | notices | composite | 장학 공지 3개에 날짜까지 같이 보여줘 | tool:tool_list_latest_notices | tool_list_latest_notices | scholarship 3건과 published_at을 함께 본다 | payload gap`
+- `NO042 | notices | composite | 취업 공지 3개에 source_url도 같이 보여줘 | tool:tool_list_latest_notices | tool_list_latest_notices | employment 3건과 source_url을 함께 본다 | taxonomy mismatch`
+- `NO043 | notices | composite | 학사 공지 5개 최신순으로 요약해줘 | prompt:prompt_latest_notices | prompt_latest_notices -> tool_list_latest_notices | academic 5건과 summary preview가 있다 | limit ignored`
+- `NO044 | notices | composite | 장학 공지 2개만 제목이랑 링크로 보여줘 | tool:tool_list_latest_notices | tool_list_latest_notices | scholarship 2건과 title, source_url을 보여준다 | payload gap`
+- `NO045 | notices | composite | 커리어 공지 2개만 title과 category_display 같이 | tool:tool_list_latest_notices | tool_list_latest_notices | employment 호환과 category_display 확인이 가능하다 | taxonomy mismatch`
+- `NO046 | notices | composite | library 공지 2개만 summary까지 같이 | tool:tool_list_latest_notices | tool_list_latest_notices | library 2건과 summary preview를 보여준다 | category mismatch`
+- `NO047 | notices | composite | 최신 공지 5개 중 employment만 골라줘 | tool:tool_list_latest_notices | tool_list_latest_notices | 전체 latest와 category filtering을 조합할 수 있다 | unsupported post-filter`
+- `NO048 | notices | composite | 장학 공지 보여주고 category_display는 한글로 말해줘 | tool:tool_list_latest_notices | tool_list_latest_notices | 공개 display label을 활용할 수 있다 | payload gap`
+- `NO049 | notices | composite | 최신 공지 4개에서 general만 남겨줘 | tool:tool_list_latest_notices | tool_list_latest_notices | general 분류 결과를 골라낼 수 있다 | category mismatch`
+- `NO050 | notices | composite | employment 말고 academic 2개만 | tool:tool_list_latest_notices | tool_list_latest_notices | academic 2건으로 제한된다 | filter mismatch`
+- `NO051 | notices | composite | 취업 공지 1개만 가장 최근 거 | tool:tool_list_latest_notices | tool_list_latest_notices | employment latest 1건이 나온다 | taxonomy mismatch`
+- `NO052 | notices | composite | 장학 공지 1개만 source_url까지 | tool:tool_list_latest_notices | tool_list_latest_notices | scholarship 1건과 source_url을 함께 보여준다 | payload gap`
+- `NO053 | notices | composite | 일반 공지 3개에 게시일도 같이 | tool:tool_list_latest_notices | tool_list_latest_notices | general 3건과 날짜를 함께 확인한다 | payload gap`
+- `NO054 | notices | composite | 도서관 공지 2개와 링크 같이 | tool:tool_list_latest_notices | tool_list_latest_notices | library 2건과 source_url을 함께 확인한다 | category mismatch`
+- `NO055 | notices | composite | 취업 공지랑 장학 공지 각각 1개씩 보여줘 | prompt:prompt_latest_notices | prompt_latest_notices -> tool_list_latest_notices | 두 카테고리를 순차 조회할 수 있다 | tool selection ambiguity`
+- `NO056 | notices | composite | 공지 최신 3개에 category_display와 summary 같이 | tool:tool_list_latest_notices | tool_list_latest_notices | display와 summary preview를 함께 본다 | payload gap`
+- `NO057 | notices | composite | 학사 공지 중 source_url 없는 건 빼고 보여줘 | tool:tool_list_latest_notices | tool_list_latest_notices | source_url이 있는 결과로 충분히 답할 수 있다 | payload gap`
+- `NO058 | notices | composite | 취업 공지에서 legacy career도 같이 잡아줘 | tool:tool_list_latest_notices | tool_list_latest_notices | career legacy가 employment와 합쳐진다 | taxonomy mismatch`
+- `NO059 | notices | composite | 공지 카테고리표 읽고 employment 2개만 보여줘 | resource:songsim://notice-categories | songsim://notice-categories -> tool_list_latest_notices | category 설명 후 employment 2건을 조회한다 | resource ignored`
+- `NO060 | notices | composite | 공지 카테고리표 읽고 place는 general로 취급해줘 | resource:songsim://notice-categories | songsim://notice-categories -> tool_list_latest_notices | 공개 표면의 place->general 보정 규칙을 따른다 | taxonomy mismatch`
+- `NO061 | notices | typo | 장학 공지 최 신순 3개 | prompt:prompt_latest_notices | prompt_latest_notices -> tool_list_latest_notices | 공백이 끼어도 scholarship latest 3건을 조회한다 | spacing recovery miss`
+- `NO062 | notices | typo | 최 신 공지 3개 보여줘 | prompt:prompt_latest_notices | prompt_latest_notices -> tool_list_latest_notices | 공백이 끼어도 latest 3건을 조회한다 | spacing recovery miss`
+- `NO063 | notices | typo | 취 업 공지 보여줘 | prompt:prompt_latest_notices | prompt_latest_notices -> tool_list_latest_notices | 공백이 끼어도 employment 흐름을 탄다 | spacing recovery miss`
+- `NO064 | notices | typo | 커 리 어 공지 보여줘 | prompt:prompt_latest_notices | prompt_latest_notices -> tool_list_latest_notices | 공백이 끼어도 career legacy를 처리한다 | spacing recovery miss`
+- `NO065 | notices | typo | 도서 관 공지 보여줘 | prompt:prompt_latest_notices | prompt_latest_notices -> tool_list_latest_notices | 공백이 끼어도 library 흐름을 탄다 | spacing recovery miss`
+- `NO066 | notices | typo | 장확 공지 보여줘 | prompt:prompt_latest_notices | prompt_latest_notices -> tool_list_latest_notices | 제품성 typo 복구 범위 밖임을 기록한다 | typo miss`
+- `NO067 | notices | typo | 취헙 공지 보여줘 | prompt:prompt_latest_notices | prompt_latest_notices -> tool_list_latest_notices | 제품성 typo 복구 범위 밖임을 기록한다 | typo miss`
+- `NO068 | notices | typo | 학사공지 3개 보여줘 | prompt:prompt_latest_notices | prompt_latest_notices -> tool_list_latest_notices | 붙여쓴 표현도 academic 흐름으로 수렴한다 | spacing recovery miss`
+- `NO069 | notices | typo | 장학공지 3개 보여줘 | prompt:prompt_latest_notices | prompt_latest_notices -> tool_list_latest_notices | 붙여쓴 표현도 scholarship 흐름으로 수렴한다 | spacing recovery miss`
+- `NO070 | notices | typo | 취업공지 3개 보여줘 | prompt:prompt_latest_notices | prompt_latest_notices -> tool_list_latest_notices | 붙여쓴 표현도 employment 흐름으로 수렴한다 | spacing recovery miss`
+- `NO071 | notices | typo | 커리어공지 3개 보여줘 | prompt:prompt_latest_notices | prompt_latest_notices -> tool_list_latest_notices | 붙여쓴 표현도 career legacy를 처리한다 | spacing recovery miss`
+- `NO072 | notices | typo | 최신공지 2개만 보여줘 | tool:tool_list_latest_notices | tool_list_latest_notices | 붙여쓴 표현도 latest limit 2로 처리한다 | spacing recovery miss`
+- `NO073 | notices | typo | 일반공지 2개 보여줘 | tool:tool_list_latest_notices | tool_list_latest_notices | 붙여쓴 표현도 general filter를 처리한다 | spacing recovery miss`
+- `NO074 | notices | typo | library공지 2개 보여줘 | tool:tool_list_latest_notices | tool_list_latest_notices | 붙여쓴 표현도 library filter를 처리한다 | spacing recovery miss`
+- `NO075 | notices | typo | 공지 분류표보여줘 | resource:songsim://notice-categories | songsim://notice-categories | 붙여쓴 표현도 category resource로 이어진다 | spacing recovery miss`
+- `NO076 | notices | ambiguous | 최근에 중요한 공지 뭐 있어 | prompt:prompt_latest_notices | prompt_latest_notices -> tool_list_latest_notices | 최신 공지 조회로 유도한다 | unsupported importance ranking`
+- `NO077 | notices | ambiguous | 장학 말고 취업 쪽 새 글 있어 | prompt:prompt_latest_notices | prompt_latest_notices -> tool_list_latest_notices | employment 흐름으로 유도한다 | taxonomy mismatch`
+- `NO078 | notices | ambiguous | 이번 주에 올라온 공지만 보고 싶어 | tool:tool_list_latest_notices | tool_list_latest_notices | 최신순 raw 결과로 후처리가 가능하다 | unsupported date filter`
+- `NO079 | notices | ambiguous | 공지 제목으로 바로 찾을 수 있어 | resource:songsim://usage-guide | songsim://usage-guide -> prompt_latest_notices | 최신/category surface 한계를 설명한다 | unsupported scope`
+- `NO080 | notices | ambiguous | 직무 인턴 장학생 공지만 바로 찾고 싶어 | resource:songsim://usage-guide | songsim://usage-guide -> prompt_latest_notices | 최신/category 조합만 지원한다고 설명한다 | unsupported scope`
+- `NO081 | notices | ambiguous | 취업이나 커리어 같은 분류 공지 줘 | prompt:prompt_latest_notices | prompt_latest_notices -> tool_list_latest_notices | employment/career 호환 흐름으로 수렴한다 | taxonomy mismatch`
+- `NO082 | notices | ambiguous | 공지 중에서 장소 관련 분류는 general로 보면 돼 | resource:songsim://notice-categories | songsim://notice-categories | 공개 보정 규칙을 설명한다 | resource ignored`
+- `NO083 | notices | ambiguous | library랑 general 차이가 뭐야 | resource:songsim://notice-categories | songsim://notice-categories | 두 분류 차이를 설명할 수 있다 | resource ignored`
+- `NO084 | notices | ambiguous | 장학과 취업 공지 둘 다 최신으로 보고 싶어 | prompt:prompt_latest_notices | prompt_latest_notices -> tool_list_latest_notices | 두 카테고리 순차 조회가 가능하다 | tool selection ambiguity`
+- `NO085 | notices | ambiguous | 최근 공지 중 링크 있는 것만 보고 싶어 | tool:tool_list_latest_notices | tool_list_latest_notices | source_url 있는 결과로 충분히 답할 수 있다 | payload gap`
+- `NO086 | notices | ambiguous | 요약 짧은 공지만 보고 싶어 | tool:tool_list_latest_notices | tool_list_latest_notices | summary preview를 활용한 답이 가능하다 | unsupported ranking`
+- `NO087 | notices | ambiguous | 취업 센터 새 글 있어 | prompt:prompt_latest_notices | prompt_latest_notices -> tool_list_latest_notices | employment 흐름으로 유도된다 | taxonomy mismatch`
+- `NO088 | notices | ambiguous | 공지 분류 먼저 읽고 싶어 | resource:songsim://notice-categories | songsim://notice-categories | category resource를 먼저 읽는다 | resource ignored`
+- `NO089 | notices | ambiguous | latest notice가 뭐냐고 물으면 뭐 보여줘 | resource:songsim://usage-guide | songsim://usage-guide -> prompt_latest_notices | usage guide가 latest notice flow를 설명한다 | resource ignored`
+- `NO090 | notices | ambiguous | category_display 기준으로만 공지 보여줘 | tool:tool_list_latest_notices | tool_list_latest_notices | 공개 display label을 기준으로 정리할 수 있다 | payload gap`
+
+## Restaurants 100
+
+- `RE001 | restaurants | normal | 중앙도서관 근처 밥집 추천해줘 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | central-library origin으로 nearby 결과가 나온다 | missing origin`
+- `RE002 | restaurants | normal | 중앙도서관 근처 한식집 찾아줘 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | category=korean 결과가 나온다 | category mismatch`
+- `RE003 | restaurants | normal | 중앙도서관 근처 카페 찾아줘 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | category=cafe 결과가 나온다 | category mismatch`
+- `RE004 | restaurants | normal | 중앙도서관 근처 분식집 있어 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | category=snack 성격 결과가 나온다 | category mismatch`
+- `RE005 | restaurants | normal | 중앙도서관 근처 양식집 있어 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | category=western 결과가 나온다 | category mismatch`
+- `RE006 | restaurants | normal | 니콜스관 근처 밥집 추천해줘 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | nicholls-hall origin으로 nearby 결과가 나온다 | missing origin`
+- `RE007 | restaurants | normal | 학생미래인재관 근처 카페 찾아줘 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | sophie-barat-hall origin으로 nearby 결과가 나온다 | missing origin`
+- `RE008 | restaurants | normal | 정문 근처 식당 추천해줘 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | main-gate origin으로 nearby 결과가 나온다 | missing origin`
+- `RE009 | restaurants | normal | 김수환관 근처 밥집 보여줘 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | kim-sou-hwan-hall origin으로 nearby 결과가 나온다 | missing origin`
+- `RE010 | restaurants | normal | 학생회관 근처 식당 추천해줘 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | student-center origin으로 nearby 결과가 나온다 | missing origin`
+- `RE011 | restaurants | normal | 중앙도서관에서 10분 안쪽 식당 보여줘 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | walk_minutes=10 조건이 반영된다 | walk filter ignored`
+- `RE012 | restaurants | normal | 중앙도서관에서 15분 안쪽 식당 보여줘 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | walk_minutes=15 조건이 반영된다 | walk filter ignored`
+- `RE013 | restaurants | normal | 중앙도서관에서 지금 여는 곳만 보여줘 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | open_now=true가 반영된다 | hours gap`
+- `RE014 | restaurants | normal | 중앙도서관 근처 1만원 이하 식당 보여줘 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | budget_max=10000이 엄격 적용된다 | budget ignored`
+- `RE015 | restaurants | normal | 중앙도서관 근처 8000원 이하 식당 보여줘 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | budget_max=8000이 엄격 적용된다 | budget ignored`
+- `RE016 | restaurants | normal | 중앙도서관 기준 일본식 보여줘 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | japanese category 결과가 나온다 | category mismatch`
+- `RE017 | restaurants | normal | 중앙도서관 기준 라멘집 있어 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | japanese category 또는 0건 설명이 가능하다 | category mismatch`
+- `RE018 | restaurants | normal | 중앙도서관 근처 도보 5분 안 카페 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | walk_minutes=5, category=cafe가 반영된다 | filter mismatch`
+- `RE019 | restaurants | normal | 중앙도서관 근처 오픈한 한식집 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | open_now=true와 category=korean이 함께 반영된다 | filter mismatch`
+- `RE020 | restaurants | normal | 중앙도서관 기준 가격 싼 곳만 보여줘 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | budget_max가 필요한 질의로 정리된다 | unsupported subjective ranking`
+- `RE021 | restaurants | alias | 중도 근처 밥집 추천해줘 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | 중도 alias가 central-library로 해석된다 | missing alias`
+- `RE022 | restaurants | alias | 중도 근처 카페 보여줘 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | 중도 alias와 category=cafe가 함께 반영된다 | missing alias`
+- `RE023 | restaurants | alias | 중도 근처 한식집 찾아줘 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | 중도 alias와 category=korean이 함께 반영된다 | missing alias`
+- `RE024 | restaurants | alias | 학생식당 근처 밥집 있어 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | 학생식당 alias가 sophie-barat-hall로 해석된다 | missing alias`
+- `RE025 | restaurants | alias | 학생식당 근처 카페 찾아줘 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | 학생식당 alias와 category=cafe가 함께 반영된다 | missing alias`
+- `RE026 | restaurants | alias | 학생식당 기준 오픈한 곳만 보여줘 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | 학생식당 alias와 open_now=true가 함께 반영된다 | missing alias`
+- `RE027 | restaurants | alias | 니콜스 근처 밥집 추천해줘 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | 니콜스 alias가 nicholls-hall로 해석된다 | missing alias`
+- `RE028 | restaurants | alias | 니콜스 근처 라멘집 있어 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | 니콜스 alias와 japanese 성격 결과가 나온다 | missing alias`
+- `RE029 | restaurants | alias | K관 근처 카페 보여줘 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | K관 alias가 김수환관으로 해석된다 | missing alias`
+- `RE030 | restaurants | alias | N관 근처 한식집 보여줘 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | N관 alias가 니콜스관으로 해석된다 | missing alias`
+- `RE031 | restaurants | alias | 정문 말고 메인게이트 근처 밥집 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | 메인게이트 표현이 main-gate로 해석된다 | noisy ranking`
+- `RE032 | restaurants | alias | 도서관 말고 중도 기준 카페 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | 중도 alias가 우선 해석된다 | missing alias`
+- `RE033 | restaurants | alias | 학생회관 근처 말고 학생식당 기준 밥집 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | 학생식당 alias가 정확히 origin으로 잡힌다 | alias collision`
+- `RE034 | restaurants | alias | 니콜쓰 근처 밥집 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | 약한 생활 오타 처리를 점검한다 | typo miss`
+- `RE035 | restaurants | alias | 중도 기준 1만원 이하 식당 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | alias origin과 budget_max가 함께 반영된다 | missing alias, budget ignored`
+- `RE036 | restaurants | alias | 학생식당 기준 15분 안 식당 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | alias origin과 walk_minutes가 함께 반영된다 | missing alias`
+- `RE037 | restaurants | alias | 니콜스 기준 지금 여는 카페 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | alias origin과 open_now, category가 함께 반영된다 | missing alias`
+- `RE038 | restaurants | alias | 중도 기준 지금 여는 곳 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | alias origin과 open_now가 함께 반영된다 | missing alias`
+- `RE039 | restaurants | alias | 학생식당 기준 8000원 이하 밥집 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | alias origin과 budget_max가 함께 반영된다 | missing alias, budget ignored`
+- `RE040 | restaurants | alias | 니콜스 기준 분식집 있어 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | alias origin과 snack category가 함께 반영된다 | missing alias`
+- `RE041 | restaurants | composite | 중앙도서관에서 10분 안쪽 1만원 이하 한식집 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | origin, walk_minutes, budget_max, category가 함께 반영된다 | filter mismatch`
+- `RE042 | restaurants | composite | 중앙도서관에서 15분 안쪽 지금 여는 카페 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | origin, walk_minutes, open_now, category가 함께 반영된다 | filter mismatch`
+- `RE043 | restaurants | composite | 중도 기준 15분 안쪽 1만원 이하 한식집 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | alias origin 포함 네 가지 제약이 유지된다 | missing alias, filter mismatch`
+- `RE044 | restaurants | composite | 학생식당 기준 지금 여는 카페만 3개 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | alias origin, open_now, category, limit가 함께 반영된다 | missing alias, limit ignored`
+- `RE045 | restaurants | composite | 니콜스 기준 10분 안쪽 라멘집 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | alias origin, walk_minutes, japanese 성격 결과가 나온다 | missing alias`
+- `RE046 | restaurants | composite | 정문 말고 중앙도서관 기준 1만원 이하 식당 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | origin 교체와 budget_max가 반영된다 | tool selection ambiguity`
+- `RE047 | restaurants | composite | 중앙도서관 기준 open_now true budget_max 10000 한식집 | tool:tool_find_nearby_restaurants | tool_find_nearby_restaurants | open_now, budget_max, category를 함께 만족하는 결과만 남는다 | filter mismatch`
+- `RE048 | restaurants | composite | 학생미래인재관 기준 walk_minutes 5 카페 | tool:tool_find_nearby_restaurants | tool_find_nearby_restaurants | origin, walk_minutes, category가 함께 반영된다 | filter mismatch`
+- `RE049 | restaurants | composite | 니콜스관 기준 분식 말고 카페 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | category를 cafe로 고정해 조회한다 | category mismatch`
+- `RE050 | restaurants | composite | 김수환관 기준 15분 안쪽 양식집 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | origin, walk_minutes, category가 함께 반영된다 | filter mismatch`
+- `RE051 | restaurants | composite | 중앙도서관 기준 2만원 이하 식당 5개 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | budget_max=20000과 limit=5가 반영된다 | limit ignored, budget ignored`
+- `RE052 | restaurants | composite | 중앙도서관 기준 가격 정보 있는 곳만 | tool:tool_find_nearby_restaurants | tool_find_nearby_restaurants | budget을 요구하지 않아도 price_hint가 있는 결과를 선호 설명할 수 있다 | unsupported direct filter`
+- `RE053 | restaurants | composite | 중도 기준 카페 말고 밥집만 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | alias origin과 non-cafe category가 처리된다 | missing alias`
+- `RE054 | restaurants | composite | 학생식당 기준 가까운 순으로 카페 3개 | tool:tool_find_nearby_restaurants | tool_find_nearby_restaurants | alias origin, category, limit가 반영되고 거리 정보가 있다 | missing alias, ranking mismatch`
+- `RE055 | restaurants | composite | 니콜스 기준 8000원 이하 지금 여는 분식집 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | alias origin, budget_max, open_now, category가 유지된다 | missing alias, filter mismatch`
+- `RE056 | restaurants | composite | 학생회관 기준 budget_max 9000 카페 | tool:tool_find_nearby_restaurants | tool_find_nearby_restaurants | budget과 category가 함께 반영된다 | budget ignored`
+- `RE057 | restaurants | composite | 정문 근처 5분 안쪽 식당만 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | origin, walk_minutes가 함께 반영된다 | walk filter ignored`
+- `RE058 | restaurants | composite | 정문 근처 지금 여는 카페만 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | origin, open_now, category가 함께 반영된다 | filter mismatch`
+- `RE059 | restaurants | composite | 중앙도서관 기준 location_hint도 같이 보여줘 | tool:tool_find_nearby_restaurants | tool_find_nearby_restaurants | location_hint 필드를 활용할 수 있다 | payload gap`
+- `RE060 | restaurants | composite | 니콜스 기준 price_hint 있는 곳만 보여줘 | tool:tool_find_nearby_restaurants | tool_find_nearby_restaurants | price_hint 필드를 활용한 답이 가능하다 | payload gap`
+- `RE061 | restaurants | composite | 중앙도서관 기준 한식 3개, 카페 2개 따로 보여줘 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | 두 category를 순차 조회할 수 있다 | tool selection ambiguity`
+- `RE062 | restaurants | composite | 학생식당 기준 10분 안쪽 라멘집 없으면 카페로 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | primary query 실패 시 category fallback을 설명할 수 있다 | unsupported fallback logic`
+- `RE063 | restaurants | composite | 중도 기준 walk 10 budget 10000 한식 | tool:tool_find_nearby_restaurants | tool_find_nearby_restaurants | alias origin과 세 제약이 유지된다 | missing alias`
+- `RE064 | restaurants | composite | 정문 기준 budget 7000이면 뭐 남아 | tool:tool_find_nearby_restaurants | tool_find_nearby_restaurants | strict budget filtering이 적용된다 | budget ignored`
+- `RE065 | restaurants | composite | 중앙도서관 근처 open_now false도 포함해서 보여줘 | tool:tool_find_nearby_restaurants | tool_find_nearby_restaurants | open_now 미적용 전체 결과가 나온다 | filter confusion`
+- `RE066 | restaurants | composite | 학생식당 근처 도보 7분 안 카페 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | alias origin, walk_minutes, category가 반영된다 | missing alias`
+- `RE067 | restaurants | composite | 니콜스 기준 도보 7분 안 카페 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | alias origin, walk_minutes, category가 반영된다 | missing alias`
+- `RE068 | restaurants | composite | K관 기준 도보 7분 안 카페 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | alias origin, walk_minutes, category가 반영된다 | missing alias`
+- `RE069 | restaurants | composite | 중앙도서관 기준 영업 중이고 12000원 이하인 양식집 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | open_now, budget_max, western category가 유지된다 | filter mismatch`
+- `RE070 | restaurants | composite | 중앙도서관 기준 분식 2개만 거리 순으로 | tool:tool_find_nearby_restaurants | tool_find_nearby_restaurants | category=snack, limit=2, 거리 정보가 포함된다 | limit ignored`
+- `RE071 | restaurants | typo | 중앙 도서관 근처 밥집 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | 공백 정규화 후 central-library 기준 조회가 된다 | spacing recovery miss`
+- `RE072 | restaurants | typo | 니콜스 관 근처 밥집 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | 공백 정규화 후 니콜스관 기준 조회가 된다 | spacing recovery miss`
+- `RE073 | restaurants | typo | 학생 식당 근처 밥집 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | 공백 정규화 후 학생식당 alias 기준 조회가 된다 | spacing recovery miss`
+- `RE074 | restaurants | typo | 중도 근처 밥집좀 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | 구어체여도 alias origin을 해석한다 | missing alias`
+- `RE075 | restaurants | typo | 니콜스 근처 라면집 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | 라면집을 japanese/ramen 성격으로 다룬다 | wording issue`
+- `RE076 | restaurants | typo | 중도근처 카페 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | 붙여쓴 표현도 alias origin으로 처리한다 | spacing recovery miss`
+- `RE077 | restaurants | typo | 학생식당근처 카페 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | 붙여쓴 표현도 alias origin으로 처리한다 | spacing recovery miss`
+- `RE078 | restaurants | typo | 니콜스근처 밥집 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | 붙여쓴 표현도 alias origin으로 처리한다 | spacing recovery miss`
+- `RE079 | restaurants | typo | 정문근처 밥집 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | 붙여쓴 표현도 main-gate origin으로 처리한다 | spacing recovery miss`
+- `RE080 | restaurants | typo | 중앙도서관근처 한식 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | 붙여쓴 표현도 central-library origin으로 처리한다 | spacing recovery miss`
+- `RE081 | restaurants | typo | 중앙도서괸 근처 밥집 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | 약한 오타 처리 한계를 점검한다 | typo miss`
+- `RE082 | restaurants | typo | 니콜쓰 근처 카페 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | 약한 오타 처리 한계를 점검한다 | typo miss`
+- `RE083 | restaurants | typo | 중도 기준 만원이하 밥집 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | budget_max와 alias origin을 함께 처리한다 | missing alias, spacing recovery miss`
+- `RE084 | restaurants | typo | 학생식당 기준 오픈한 카페 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | alias origin과 open_now를 함께 처리한다 | missing alias`
+- `RE085 | restaurants | typo | 니콜스 기준 오픈한 분식집 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | alias origin과 open_now, category를 함께 처리한다 | missing alias`
+- `RE086 | restaurants | typo | 중앙 도서관 에서 10분 안 식당 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | 공백 정규화 후 walk_minutes 필터를 적용한다 | spacing recovery miss`
+- `RE087 | restaurants | typo | 중앙도서관 에서 10분안 카페 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | 띄어쓰기 변형을 복구해 조회한다 | spacing recovery miss`
+- `RE088 | restaurants | typo | 니콜스 관 에서 1만원 이하 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | 공백 정규화 후 budget filtering을 적용한다 | spacing recovery miss`
+- `RE089 | restaurants | typo | 학생 식당 기준 5분안 카페 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | 공백 정규화 후 walk_minutes와 category를 적용한다 | spacing recovery miss`
+- `RE090 | restaurants | typo | 메인 게이트 근처 밥집 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | main-gate 표현을 처리한다 | spacing recovery miss`
+- `RE091 | restaurants | ambiguous | 가성비 좋은 데 추천해줘 | resource:songsim://usage-guide | songsim://usage-guide -> prompt_find_nearby_restaurants | origin과 budget을 추가로 물어야 한다 | missing origin, unsupported subjective ranking`
+- `RE092 | restaurants | ambiguous | 아침에 간단히 먹을 데 있어 | resource:songsim://usage-guide | songsim://usage-guide -> prompt_find_nearby_restaurants | origin과 open_now 같은 제약을 다시 묻는다 | missing origin`
+- `RE093 | restaurants | ambiguous | 학교 입구 근처 먹을 곳 추천 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_search_places -> tool_find_nearby_restaurants | 입구를 정문으로 풀어 nearby로 이어진다 | tool selection ambiguity`
+- `RE094 | restaurants | ambiguous | 캠퍼스 안에서 제일 가까운 식당 어디야 | resource:songsim://usage-guide | songsim://usage-guide -> prompt_find_nearby_restaurants | 기준점이 필요함을 설명한다 | missing origin`
+- `RE095 | restaurants | ambiguous | 지금 열었을 가능성 높은 데 추천해줘 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | open_now 중심으로 조회한다 | hours gap`
+- `RE096 | restaurants | ambiguous | 점심으로 무난한 데 추천해줘 | resource:songsim://usage-guide | songsim://usage-guide -> prompt_find_nearby_restaurants | origin, budget, category를 물어야 한다 | missing origin`
+- `RE097 | restaurants | ambiguous | 도서관에서 가까운 편의점 같은 거는 못 찾아 | resource:songsim://usage-guide | songsim://usage-guide -> prompt_find_nearby_restaurants | 식당 surface 범위를 설명한다 | unsupported scope`
+- `RE098 | restaurants | ambiguous | 김수환관에서 배달 말고 걸어갈 곳만 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | walk_minutes 제약으로 nearby를 처리한다 | filter mismatch`
+- `RE099 | restaurants | ambiguous | 중도에서 맛집 알려줘 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | alias origin을 풀고 nearby 결과를 준다 | missing alias`
+- `RE100 | restaurants | ambiguous | 학생식당 근처 쉴만한 카페 추천 | prompt:prompt_find_nearby_restaurants | prompt_find_nearby_restaurants -> tool_find_nearby_restaurants | alias origin과 category=cafe로 조회한 뒤 후처리 설명이 가능하다 | missing alias`
+
+## Transport 40
+
+- `TR001 | transport | normal | 성심교정 지하철 오는 길 알려줘 | prompt:prompt_transport_guide | prompt_transport_guide -> tool_list_transport_guides | subway guide가 나온다 | mode mismatch`
+- `TR002 | transport | normal | 성심교정 버스로 가는 법 알려줘 | prompt:prompt_transport_guide | prompt_transport_guide -> tool_list_transport_guides | bus guide가 나온다 | mode mismatch`
+- `TR003 | transport | normal | 지하철 안내만 보여줘 | tool:tool_list_transport_guides | tool_list_transport_guides | subway mode 결과가 나온다 | mode mismatch`
+- `TR004 | transport | normal | 버스 안내만 보여줘 | tool:tool_list_transport_guides | tool_list_transport_guides | bus mode 결과가 나온다 | mode mismatch`
+- `TR005 | transport | normal | 성심교정 오는 길 subway만 | prompt:prompt_transport_guide | prompt_transport_guide -> tool_list_transport_guides | subway mode 결과가 나온다 | mode mismatch`
+- `TR006 | transport | normal | 성심교정 오는 길 bus만 | prompt:prompt_transport_guide | prompt_transport_guide -> tool_list_transport_guides | bus mode 결과가 나온다 | mode mismatch`
+- `TR007 | transport | normal | 지하철 1개만 보여줘 | tool:tool_list_transport_guides | tool_list_transport_guides | subway limit 1이 반영된다 | limit ignored`
+- `TR008 | transport | normal | 버스 1개만 보여줘 | tool:tool_list_transport_guides | tool_list_transport_guides | bus limit 1이 반영된다 | limit ignored`
+- `TR009 | transport | normal | 성심교정 오려면 지하철이 나아 | prompt:prompt_transport_guide | prompt_transport_guide -> tool_list_transport_guides | subway guide를 우선 보여준다 | unsupported ranking`
+- `TR010 | transport | normal | 성심교정 오려면 버스가 나아 | prompt:prompt_transport_guide | prompt_transport_guide -> tool_list_transport_guides | bus guide를 우선 보여준다 | unsupported ranking`
+- `TR011 | transport | normal | 교통 안내 resource 먼저 보여줘 | resource:songsim://transport-guide | songsim://transport-guide | transport resource를 읽을 수 있다 | resource ignored`
+- `TR012 | transport | normal | 교통 안내 링크 알려줘 | resource:songsim://transport-guide | songsim://transport-guide | transport guide resource가 열린다 | resource ignored`
+- `TR013 | transport | normal | 지하철 guide source가 뭐야 | resource:songsim://transport-guide | songsim://transport-guide | 공식 교통 안내 기반임을 알 수 있다 | resource ignored`
+- `TR014 | transport | normal | 버스 guide 2개만 보여줘 | tool:tool_list_transport_guides | tool_list_transport_guides | bus mode limit 2가 반영된다 | limit ignored`
+- `TR015 | transport | normal | subway guide 2개만 보여줘 | tool:tool_list_transport_guides | tool_list_transport_guides | subway mode limit 2가 반영된다 | limit ignored`
+- `TR016 | transport | alias | 역곡역에서 성심교정 가는 법 | prompt:prompt_transport_guide | prompt_transport_guide -> tool_list_transport_guides | subway/bus 정적 guide로 이어진다 | tool selection ambiguity`
+- `TR017 | transport | alias | 대중교통으로 어떻게 가 | prompt:prompt_transport_guide | prompt_transport_guide -> tool_list_transport_guides | bus/subway guide로 수렴한다 | tool selection ambiguity`
+- `TR018 | transport | alias | 1호선 타고 가는 법 알려줘 | prompt:prompt_transport_guide | prompt_transport_guide -> tool_list_transport_guides | subway guide로 수렴한다 | mode mismatch`
+- `TR019 | transport | alias | 버스만 타고 가는 법 있어 | prompt:prompt_transport_guide | prompt_transport_guide -> tool_list_transport_guides | bus guide로 수렴한다 | mode mismatch`
+- `TR020 | transport | alias | 지하철만 타고 가는 법 있어 | prompt:prompt_transport_guide | prompt_transport_guide -> tool_list_transport_guides | subway guide로 수렴한다 | mode mismatch`
+- `TR021 | transport | alias | 성심교정 통학 버스 정보 있어 | prompt:prompt_transport_guide | prompt_transport_guide -> tool_list_transport_guides | bus guide로 수렴한다 | wording issue`
+- `TR022 | transport | alias | 셔틀 말고 일반 버스 안내 줘 | prompt:prompt_transport_guide | prompt_transport_guide -> tool_list_transport_guides | bus guide를 보여준다 | unsupported scope`
+- `TR023 | transport | alias | subway로만 가는 경로 줘 | prompt:prompt_transport_guide | prompt_transport_guide -> tool_list_transport_guides | subway mode로 조회한다 | mode mismatch`
+- `TR024 | transport | alias | bus로만 가는 경로 줘 | prompt:prompt_transport_guide | prompt_transport_guide -> tool_list_transport_guides | bus mode로 조회한다 | mode mismatch`
+- `TR025 | transport | alias | 환승 적은 지하철 안내 있어 | prompt:prompt_transport_guide | prompt_transport_guide -> tool_list_transport_guides | 정적 guide까지만 가능함을 설명한다 | unsupported live routing`
+- `TR026 | transport | composite | 지하철 guide 1개만 source까지 같이 | tool:tool_list_transport_guides | tool_list_transport_guides | subway limit 1과 source 정보를 함께 확인한다 | payload gap`
+- `TR027 | transport | composite | 버스 guide 1개만 source까지 같이 | tool:tool_list_transport_guides | tool_list_transport_guides | bus limit 1과 source 정보를 함께 확인한다 | payload gap`
+- `TR028 | transport | composite | 버스 말고 지하철만 2개 보여줘 | prompt:prompt_transport_guide | prompt_transport_guide -> tool_list_transport_guides | subway mode와 limit 2가 함께 반영된다 | filter mismatch`
+- `TR029 | transport | composite | 지하철 말고 버스만 2개 보여줘 | prompt:prompt_transport_guide | prompt_transport_guide -> tool_list_transport_guides | bus mode와 limit 2가 함께 반영된다 | filter mismatch`
+- `TR030 | transport | composite | transport guide resource 읽고 bus만 1개 보여줘 | resource:songsim://transport-guide | songsim://transport-guide -> tool_list_transport_guides | resource 이후 bus mode limit 1로 이어진다 | resource ignored`
+- `TR031 | transport | composite | transport guide resource 읽고 subway만 1개 보여줘 | resource:songsim://transport-guide | songsim://transport-guide -> tool_list_transport_guides | resource 이후 subway mode limit 1로 이어진다 | resource ignored`
+- `TR032 | transport | composite | 지하철 안내 보여주고 요약도 같이 해줘 | tool:tool_list_transport_guides | tool_list_transport_guides | subway guide payload로 요약이 가능하다 | payload gap`
+- `TR033 | transport | composite | 버스 안내 보여주고 요약도 같이 해줘 | tool:tool_list_transport_guides | tool_list_transport_guides | bus guide payload로 요약이 가능하다 | payload gap`
+- `TR034 | transport | composite | subway 1개, bus 1개 같이 비교해줘 | prompt:prompt_transport_guide | prompt_transport_guide -> tool_list_transport_guides | 두 mode를 순차 조회할 수 있다 | tool selection ambiguity`
+- `TR035 | transport | composite | 역곡역에서 버스냐 지하철이냐 둘 다 보여줘 | prompt:prompt_transport_guide | prompt_transport_guide -> tool_list_transport_guides | 두 mode를 순차 조회할 수 있다 | tool selection ambiguity`
+- `TR036 | transport | typo | 지하철 오느 길 알려줘 | prompt:prompt_transport_guide | prompt_transport_guide -> tool_list_transport_guides | subway guide로 수렴한다 | wording issue`
+- `TR037 | transport | typo | 버스로 가는길 알려줘 | prompt:prompt_transport_guide | prompt_transport_guide -> tool_list_transport_guides | bus guide로 수렴한다 | spacing recovery miss`
+- `TR038 | transport | typo | 지하 철 안내 줘 | prompt:prompt_transport_guide | prompt_transport_guide -> tool_list_transport_guides | subway guide로 수렴한다 | spacing recovery miss`
+- `TR039 | transport | typo | 버 스 안내 줘 | prompt:prompt_transport_guide | prompt_transport_guide -> tool_list_transport_guides | bus guide로 수렴한다 | spacing recovery miss`
+- `TR040 | transport | typo | 대중 교통 으로 어떻게 와 | prompt:prompt_transport_guide | prompt_transport_guide -> tool_list_transport_guides | bus/subway guide로 수렴한다 | spacing recovery miss`
+
+## Classrooms 35
+
+- `CL001 | classrooms | normal | 니콜스관인데 지금 비어 있는 강의실 있어 | prompt:prompt_find_empty_classrooms | prompt_find_empty_classrooms -> tool_list_estimated_empty_classrooms | nicholls-hall 기준 공실 목록이 나온다 | building resolver miss`
+- `CL002 | classrooms | normal | N관에서 지금 빈 강의실 보여줘 | prompt:prompt_find_empty_classrooms | prompt_find_empty_classrooms -> tool_list_estimated_empty_classrooms | N관 alias가 nicholls-hall로 해석된다 | missing alias`
+- `CL003 | classrooms | normal | 김수환관 지금 빈 강의실 있어 | prompt:prompt_find_empty_classrooms | prompt_find_empty_classrooms -> tool_list_estimated_empty_classrooms | kim-sou-hwan-hall이 building으로 처리된다 | building classification bug`
+- `CL004 | classrooms | normal | 니콜스관 2026-03-16 10:15 기준 빈 강의실 있어 | prompt:prompt_find_empty_classrooms | prompt_find_empty_classrooms -> tool_list_estimated_empty_classrooms | time-specific estimated availability가 나온다 | timestamp parse error`
+- `CL005 | classrooms | normal | N관 2026-03-16 13:30 기준 빈 강의실 보여줘 | prompt:prompt_find_empty_classrooms | prompt_find_empty_classrooms -> tool_list_estimated_empty_classrooms | time-specific estimated availability가 나온다 | timestamp parse error`
+- `CL006 | classrooms | normal | 학생미래인재관 빈 강의실 있어 | prompt:prompt_find_empty_classrooms | prompt_find_empty_classrooms -> tool_list_estimated_empty_classrooms | building이지만 room timetable 없으면 빈 결과+note가 나온다 | wrong hard failure`
+- `CL007 | classrooms | normal | 니콜스관에서 오늘 남은 수업 없는 강의실부터 | prompt:prompt_find_empty_classrooms | prompt_find_empty_classrooms -> tool_list_estimated_empty_classrooms | 오늘 남은 수업 없는 room이 앞쪽 정렬된다 | sort regression`
+- `CL008 | classrooms | normal | N관 공실에 다음 점유 시각도 같이 줘 | tool:tool_list_estimated_empty_classrooms | tool_list_estimated_empty_classrooms | next_occupied_at과 next_course_summary가 있다 | payload gap`
+- `CL009 | classrooms | normal | 김수환관 공실에 availability_mode도 같이 줘 | tool:tool_list_estimated_empty_classrooms | tool_list_estimated_empty_classrooms | availability_mode와 note가 함께 있다 | payload gap`
+- `CL010 | classrooms | normal | 정문 기준 빈 강의실 보여줘 | prompt:prompt_find_empty_classrooms | prompt_find_empty_classrooms -> tool_list_estimated_empty_classrooms | 비강의동 거절이 정확히 나온다 | wrong success`
+- `CL011 | classrooms | alias | 니콜스에서 지금 빈 강의실 있어 | prompt:prompt_find_empty_classrooms | prompt_find_empty_classrooms -> tool_list_estimated_empty_classrooms | 니콜스 alias가 nicholls-hall로 해석된다 | missing alias`
+- `CL012 | classrooms | alias | K관 지금 빈 강의실 있어 | prompt:prompt_find_empty_classrooms | prompt_find_empty_classrooms -> tool_list_estimated_empty_classrooms | K관 alias가 김수환관으로 해석된다 | missing alias`
+- `CL013 | classrooms | alias | 김수환에서 지금 빈 강의실 있어 | prompt:prompt_find_empty_classrooms | prompt_find_empty_classrooms -> tool_list_estimated_empty_classrooms | 김수환 alias가 김수환관으로 해석된다 | missing alias`
+- `CL014 | classrooms | alias | N관에서 자습 가능한 빈 강의실 있어 | prompt:prompt_find_empty_classrooms | prompt_find_empty_classrooms -> tool_list_estimated_empty_classrooms | N관 alias와 공실 list가 연결된다 | missing alias`
+- `CL015 | classrooms | alias | 니콜스에서 자습할 방 있어 | prompt:prompt_find_empty_classrooms | prompt_find_empty_classrooms -> tool_list_estimated_empty_classrooms | 니콜스 alias와 공실 list가 연결된다 | missing alias`
+- `CL016 | classrooms | alias | 김수환관도 K관으로 검색돼 | prompt:prompt_find_empty_classrooms | prompt_find_empty_classrooms -> tool_list_estimated_empty_classrooms | K관 alias 검색이 성공한다 | missing alias`
+- `CL017 | classrooms | alias | N관 말고 니콜스관 기준으로 빈 강의실 | prompt:prompt_find_empty_classrooms | prompt_find_empty_classrooms -> tool_list_estimated_empty_classrooms | alias 교체 후 같은 결과가 나온다 | tool selection ambiguity`
+- `CL018 | classrooms | alias | 김수환관 말고 K관 기준으로 봐줘 | prompt:prompt_find_empty_classrooms | prompt_find_empty_classrooms -> tool_list_estimated_empty_classrooms | alias 교체 후 같은 결과가 나온다 | tool selection ambiguity`
+- `CL019 | classrooms | alias | 김수환은 강의실 건물 맞아 | prompt:prompt_find_empty_classrooms | prompt_find_empty_classrooms -> tool_list_estimated_empty_classrooms | 비강의동으로 막히지 않고 note 기반 결과가 나온다 | building classification bug`
+- `CL020 | classrooms | alias | 니콜스 alias로도 공실 조회돼 | prompt:prompt_find_empty_classrooms | prompt_find_empty_classrooms -> tool_list_estimated_empty_classrooms | 니콜스 alias 조회가 성공한다 | missing alias`
+- `CL021 | classrooms | composite | 니콜스관 2026-03-16 10:15 기준 3개만 보여줘 | tool:tool_list_estimated_empty_classrooms | tool_list_estimated_empty_classrooms | time, building, limit가 반영된다 | limit ignored`
+- `CL022 | classrooms | composite | N관 2026-03-16 13:30 기준 다음 점유 시각 늦은 순으로 보여줘 | tool:tool_list_estimated_empty_classrooms | tool_list_estimated_empty_classrooms | 정렬 규칙이 유지된다 | sort regression`
+- `CL023 | classrooms | composite | 김수환관 2026-03-16 10:15 기준 빈 강의실 있으면 2개만 | tool:tool_list_estimated_empty_classrooms | tool_list_estimated_empty_classrooms | building classification과 limit가 함께 처리된다 | building classification bug`
+- `CL024 | classrooms | composite | 니콜스관 오늘 수업 없는 강의실 먼저 보여줘 | prompt:prompt_find_empty_classrooms | prompt_find_empty_classrooms -> tool_list_estimated_empty_classrooms | no remaining class rooms가 먼저 정렬된다 | sort regression`
+- `CL025 | classrooms | composite | N관 공실과 다음 수업 요약 같이 보여줘 | tool:tool_list_estimated_empty_classrooms | tool_list_estimated_empty_classrooms | next_course_summary가 함께 있다 | payload gap`
+- `CL026 | classrooms | composite | 김수환관 공실과 availability_note 같이 보여줘 | tool:tool_list_estimated_empty_classrooms | tool_list_estimated_empty_classrooms | availability note가 함께 있다 | payload gap`
+- `CL027 | classrooms | composite | 정문에서 빈 강의실 찾고 싶어 | prompt:prompt_find_empty_classrooms | prompt_find_empty_classrooms -> tool_list_estimated_empty_classrooms | 비강의동 거절이 유지된다 | wrong success`
+- `CL028 | classrooms | composite | 학생미래인재관 빈 강의실 있으면 오늘 남은 수업도 같이 | tool:tool_list_estimated_empty_classrooms | tool_list_estimated_empty_classrooms | building이지만 room data 없으면 empty+note가 나온다 | wrong hard failure`
+- `CL029 | classrooms | composite | 니콜스관 2026-03-16 10:15 기준 realtime인지 estimated인지 같이 알려줘 | tool:tool_list_estimated_empty_classrooms | tool_list_estimated_empty_classrooms | availability_mode와 note가 함께 있다 | payload gap`
+- `CL030 | classrooms | composite | K관 2026-03-16 10:15 기준 realtime인지 estimated인지 같이 알려줘 | tool:tool_list_estimated_empty_classrooms | tool_list_estimated_empty_classrooms | availability_mode와 note가 함께 있다 | payload gap`
+- `CL031 | classrooms | typo | 니콜스 관 지금 빈 강의실 | prompt:prompt_find_empty_classrooms | prompt_find_empty_classrooms -> tool_list_estimated_empty_classrooms | 공백 정규화 후 니콜스관 조회가 된다 | spacing recovery miss`
+- `CL032 | classrooms | typo | 김수환 관 지금 빈 강의실 | prompt:prompt_find_empty_classrooms | prompt_find_empty_classrooms -> tool_list_estimated_empty_classrooms | 공백 정규화 후 김수환관 조회가 된다 | spacing recovery miss`
+- `CL033 | classrooms | typo | N 관 빈 강의실 | prompt:prompt_find_empty_classrooms | prompt_find_empty_classrooms -> tool_list_estimated_empty_classrooms | 공백 정규화 후 N관 조회가 된다 | spacing recovery miss`
+- `CL034 | classrooms | typo | 니콜쓰관 빈 강의실 | prompt:prompt_find_empty_classrooms | prompt_find_empty_classrooms -> tool_list_estimated_empty_classrooms | 약한 오타 처리 한계를 점검한다 | typo miss`
+- `CL035 | classrooms | typo | 정 문 기준 빈 강의실 | prompt:prompt_find_empty_classrooms | prompt_find_empty_classrooms -> tool_list_estimated_empty_classrooms | 공백 정규화 후 비강의동 거절이 유지된다 | spacing recovery miss`
+
+## Out of Scope 15
+
+- `OS001 | out_of_scope | out_of_scope | 내 프로필 만들고 저장해줘 | resource:songsim://usage-guide | songsim://usage-guide | 공개 read-only MCP에서 profile 생성이 불가함을 설명한다 | unsupported scope not explained`
+- `OS002 | out_of_scope | out_of_scope | 시간표 저장해줘 | resource:songsim://usage-guide | songsim://usage-guide | 공개 read-only MCP에서 timetable 저장이 불가함을 설명한다 | unsupported scope not explained`
+- `OS003 | out_of_scope | out_of_scope | 관리자 sync 돌려줘 | resource:songsim://usage-guide | songsim://usage-guide | admin 기능 제외 범위를 설명한다 | unsupported scope not explained`
+- `OS004 | out_of_scope | out_of_scope | 개인화 공지 추천해줘 | resource:songsim://usage-guide | songsim://usage-guide | personalization 제외 범위를 설명한다 | unsupported scope not explained`
+- `OS005 | out_of_scope | out_of_scope | 개인화 식당 추천해줘 | resource:songsim://usage-guide | songsim://usage-guide | personalization 제외 범위를 설명한다 | unsupported scope not explained`
+- `OS006 | out_of_scope | out_of_scope | 내 즐겨찾는 건물 저장해줘 | resource:songsim://usage-guide | songsim://usage-guide | mutation 미지원 범위를 설명한다 | unsupported scope not explained`
+- `OS007 | out_of_scope | out_of_scope | 수강신청 정정 공지 제목으로 정확히 찾아줘 | resource:songsim://usage-guide | songsim://usage-guide -> prompt_latest_notices | 최신/category 기반만 지원한다고 설명한다 | unsupported scope`
+- `OS008 | out_of_scope | out_of_scope | 특정 식당 리뷰를 저장해줘 | resource:songsim://usage-guide | songsim://usage-guide | 식당 리뷰 저장 미지원 범위를 설명한다 | unsupported scope not explained`
+- `OS009 | out_of_scope | out_of_scope | 강의실 예약해줘 | resource:songsim://usage-guide | songsim://usage-guide | 예약/행정 기능 미지원 범위를 설명한다 | unsupported scope not explained`
+- `OS010 | out_of_scope | out_of_scope | 학교 전체 실시간 혼잡도 알려줘 | resource:songsim://usage-guide | songsim://usage-guide | 지원하지 않는 실시간 범위를 설명한다 | unsupported scope not explained`
+- `OS011 | out_of_scope | out_of_scope | 교수님 이메일 주소 찾아줘 | resource:songsim://usage-guide | songsim://usage-guide | 현재 공개 surface 범위 밖임을 설명한다 | unsupported scope not explained`
+- `OS012 | out_of_scope | out_of_scope | 도서관 좌석 실시간 현황 보여줘 | resource:songsim://usage-guide | songsim://usage-guide | 현재 공개 surface 범위 밖임을 설명한다 | unsupported scope not explained`
+- `OS013 | out_of_scope | out_of_scope | 내 위치 기준 자동으로 가까운 식당 찾아줘 | resource:songsim://usage-guide | songsim://usage-guide -> prompt_find_nearby_restaurants | 현재는 사용자가 origin을 직접 줘야 함을 설명한다 | unsupported scope not explained`
+- `OS014 | out_of_scope | out_of_scope | 공지 알림 설정 저장해줘 | resource:songsim://usage-guide | songsim://usage-guide | 공개 read-only에서 preference 저장이 불가함을 설명한다 | unsupported scope not explained`
+- `OS015 | out_of_scope | out_of_scope | Shared GPT가 아니라 내 계정에 기본 도구로 고정해줘 | resource:songsim://usage-guide | songsim://usage-guide | 공개 서버가 계정 설정을 대신 바꾸지 못함을 설명한다 | unsupported scope not explained`
+
+## 운영 메모
+
+- 500문장 코퍼스는 문장 생성과 분류 초안의 기준본입니다.
+- 실제 배포 게이트는 [공개 MCP 릴리즈팩 50](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-release-pack-50.md)과 [공개 MCP 라이브 판정표 50](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-live-validation-50.md)로 관리합니다.
+- Shared GPT는 이 코퍼스 전체를 게이트로 삼지 않고, 릴리즈팩에서 핵심 10~15문장만 샘플 확인합니다.

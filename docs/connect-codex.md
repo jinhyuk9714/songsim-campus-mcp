@@ -35,15 +35,14 @@ Codex에서는 이 MCP가 공개 제품의 기준 표면입니다. HTTP API나 S
 ## 대표 MCP 테스트 질문
 
 - `성심교정 중앙도서관 위치 알려줘`
-- `학생식당 있는 건물 뭐야?`
+- `중도 어디야`
 - `니콜스인데 2026-03-16 오전 10시 15분 기준 비어 있는 강의실 있어?`
 - `김수환관 지금 비어 있는 강의실 있어?`
 - `정문 기준 빈 강의실 보여줘`
-- `최신 공지 3개 보여줘`
 - `장학 공지 최신순으로 3개 보여줘`
+- `최신 취업 공지 3개 보여줘`
 - `중앙도서관 근처 한식집 찾아줘`
 - `중앙도서관에서 10분 안쪽에 1만원 이하 식당 보여줘`
-- `성심교정 버스로 가는 법 알려줘`
 - `성심교정 지하철 오는 길 알려줘`
 
 식당 조회에서 `budget_max`를 주면 가격 정보가 확인된 후보만 남고, 가격 정보가 없는 후보는 제외됩니다.
@@ -55,9 +54,9 @@ Codex에서는 이 MCP가 공개 제품의 기준 표면입니다. HTTP API나 S
 - 강의실 공실 응답에는 realtime/estimated fallback 여부가 함께 표시됩니다.
 - profile, timetable, notice preferences, meal personalization, admin 기능은 제외됩니다.
 
-전체 100개 질문과 대표 리허설은 아래 문서를 보면 됩니다.
+전체 검증 자산은 `docs/qa/` 아래에서 운영합니다. Codex는 public MCP를 기준 표면으로 쓰고, Shared GPT는 릴리즈팩 중 핵심 10~15문장만 샘플 확인합니다.
 
-- [공개 MCP 100문장 테스트팩](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-test-pack-100.md)
-- [공개 MCP 실행 리허설](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-rehearsal.md)
-- [공개 MCP 20문장 실측 검증](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-live-validation-20.md)
-- [공개 MCP 실측 검증 요약](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-live-validation-summary.md)
+- [공개 MCP 500문장 코퍼스](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-corpus-500.md)
+- [공개 MCP 릴리즈팩 50](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-release-pack-50.md)
+- [공개 MCP 라이브 판정표 50](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-live-validation-50.md)
+- [공개 MCP 라이브 판정 요약](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-live-validation-summary.md)

@@ -24,18 +24,19 @@
 ## 대표 MCP 테스트 질문
 
 - `성심교정 중앙도서관 위치 알려줘`
-- `학생식당 있는 건물 뭐야?`
+- `중도 어디야`
 - `니콜스인데 2026-03-16 오전 10시 15분 기준 비어 있는 강의실 있어?`
 - `김수환관 지금 비어 있는 강의실 있어?`
 - `정문 기준 빈 강의실 보여줘`
-- `최신 공지 3개 보여줘`
 - `장학 공지 최신순으로 3개 보여줘`
+- `최신 취업 공지 3개 보여줘`
 - `중앙도서관 근처 한식집 찾아줘`
 - `중앙도서관에서 10분 안쪽에 1만원 이하 식당 보여줘`
-- `성심교정 버스로 가는 법 알려줘`
 - `성심교정 지하철 오는 길 알려줘`
 
 식당 조회에서 `budget_max`를 주면 가격 정보가 확인된 후보만 남깁니다. 가격 정보가 없는 후보는 신뢰도 때문에 제외합니다.
+
+전체 검증 자산은 `docs/qa/` 아래에서 운영합니다. 공개 문서에는 대표 10문장만 남기고, 전체 코퍼스와 릴리즈팩, 라이브 판정표는 별도 QA 문서로 분리합니다.
 
 ## 공개 테스트 배포 기준
 
@@ -50,10 +51,10 @@
 - [ChatGPT 연결 가이드](/Users/sungjh/Projects/songsim-campus-mcp/docs/connect-chatgpt.md)
 - [Claude 연결 가이드](/Users/sungjh/Projects/songsim-campus-mcp/docs/connect-claude.md)
 - [Codex 연결 가이드](/Users/sungjh/Projects/songsim-campus-mcp/docs/connect-codex.md)
-- [공개 MCP 100문장 테스트팩](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-test-pack-100.md)
-- [공개 MCP 실행 리허설](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-rehearsal.md)
-- [공개 MCP 20문장 실측 검증](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-live-validation-20.md)
-- [공개 MCP 실측 검증 요약](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-live-validation-summary.md)
+- [공개 MCP 500문장 코퍼스](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-corpus-500.md)
+- [공개 MCP 릴리즈팩 50](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-release-pack-50.md)
+- [공개 MCP 라이브 판정표 50](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-live-validation-50.md)
+- [공개 MCP 라이브 판정 요약](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-live-validation-summary.md)
 
 이 스타터킷은 처음부터 복잡한 인프라를 얹지 않고, 아래 흐름을 가장 빠르게 검증하는 데 초점을 둡니다.
 

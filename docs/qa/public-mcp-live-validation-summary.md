@@ -1,72 +1,100 @@
 # Public MCP Live Validation Summary
 
-2026-03-15 KST 기준으로 배포된 공개 surface를 `균형형 20문장`으로 점검한 요약입니다.
+`Public MCP Release Pack (50)`를 2026-03-15 KST 기준 공개 배포에 대해 실제 실행한 요약본입니다. 이번 게이트는 **public API 우선**으로 돌렸고, `expected_mcp_flow`는 제품 관점의 MCP 기대 흐름으로 해석했습니다.
 
-## 총평
+## 집계
 
-- pass: 10
-- soft_pass: 3
-- soft_fail: 2
-- fail: 5
+- release pack size: 50
+- executed: 50 / 50
+- current status: completed
+- `pass`: 31
+- `soft_pass`: 8
+- `soft_fail`: 9
+- `fail`: 2
 
-공식 캠퍼스맵, 공식 공지 페이지, 공식 교통 안내와 맞닿는 `장소/교통/장학 공지`는 전반적으로 안정적입니다. 반면 `alias 해석`, `공지 taxonomy`, `식당 가격/출발지 제약`, `강의실 building 분류`는 live 배포에서 여전히 눈에 띄는 차이가 있습니다.
+## 도메인별 관찰
 
-## 도메인별 요약
+### place
 
-### 장소
+- `중도`, `학생식당`, `니콜스`, `K관` alias는 live 배포에서 정상 작동했습니다.
+- `정문`은 `main-gate`가 1순위로 오지만 `창업보육센터` 노이즈가 여전히 따라옵니다.
+- `김수환관` 검색은 첫 결과가 올바르지만 `K관` alias 중복 때문에 기숙사 결과가 함께 붙습니다.
 
-- `중앙도서관`, `학생식당 있는 건물`, `니콜스관`은 공식 캠퍼스맵과 잘 맞았습니다.
-- `정문`은 첫 결과는 정확했지만 `창업보육센터`가 같이 섞여 soft pass로 남았습니다.
-- `중도`는 공식값과 직접 모순되지는 않지만, 실제 학생 alias를 못 받아 usability gap이 보였습니다.
+### course
 
-### 빈 강의실
+- 가장 약한 도메인입니다. 릴리즈팩의 대표 CS 질의 9건이 모두 빈 결과였습니다.
+- 큰 오류라기보다 current public snapshot coverage 부족 문제가 더 커 보입니다.
+- `songsim://class-periods`와 `/periods` 자체는 정상입니다.
+- 2026-03-15 source truth 재점검 기준으로, 공식 course source 전체 sweep에는
+  - `데이터베이스`의 직접 hit는 없고 `데이터베이스활용` 1건만 존재했습니다.
+  - `CSE301`, `김가톨`, `데이타베이스`, `CSE 420`는 공식 source raw parse 결과에도 없었습니다.
+- 따라서 남은 대표 실패 질의 상당수는 현재 검색 버그보다 **source/snapshot coverage gap** 또는 **테스트 기대치 조정 문제**로 보는 편이 맞습니다.
 
-- `니콜스관`, `N관` 기준 공실 조회는 `availability_mode=estimated`와 fallback note를 정확히 노출했습니다.
-- `정문`은 강의실 건물이 아니므로 거절이 정상입니다.
-- `니콜스` alias는 아직 classroom resolver에 붙지 않았고, `김수환관`은 공식 설명에 강의실이 있는데도 비강의동으로 막혔습니다.
+### notices
 
-### 공지
+- `employment/career` 정규화와 `취 업` spacing recovery는 정상입니다.
+- `latest`, `scholarship`, `employment` 흐름도 안정적입니다.
+- 다만 `academic` slice는 공식 사이트에 공지가 보이는 시점인데도 현재 공개 snapshot에서 비어 있어 이번 게이트의 유일한 notice 실패가 됐습니다.
 
-- 최신 공지 최신순과 장학 공지 필터는 잘 동작했습니다.
-- 다만 latest payload에 `category=place` 같은 비자연스러운 분류가 남아 있고, `employment` filter는 실제 `career/취창업` 성격 공지를 못 잡았습니다.
+### restaurants
 
-### 주변 식당
+- `중도`, `학생식당`, `니콜스`, `정문`, `중앙 도서관` origin alias와 spacing recovery는 정상입니다.
+- `budget_max` strict filtering은 기대대로 동작해 가격 근거가 없는 후보를 제거합니다.
+- `open_now=true`는 이제 영업중이 확인된 후보만 남기도록 strict filtering으로 고정했습니다. 앞으로 `open_now=true` 응답에 `open_now=null` item이 섞이면 회귀입니다.
 
-- `중앙도서관`처럼 정식 origin을 넣으면 nearby 추천은 동작합니다.
-- `중도`, `학생식당` 같은 origin alias는 live 배포에서 아직 풀리지 않습니다.
-- `budget_max` 제약은 결과 payload의 가격 정보가 대부분 `null`이라 신뢰도가 낮습니다.
+### transport
 
-### 교통
+- subway/bus mode baseline은 안정적입니다.
+- `역곡역`, `지하철 오느 길` 같은 자연어/typo 케이스는 API-first 실행으로는 간접 검증만 했기 때문에 `soft_pass`로 남겼습니다.
 
-- 지하철과 버스는 공식 안내 페이지와 비교했을 때 큰 차이가 보이지 않았습니다.
-- 현재 공개 surface에서 가장 안정적인 도메인 중 하나입니다.
+### classrooms
 
-## 즉시 수정이 필요한 상위 이슈
+- `니콜스관`, `N관`, `니콜스`는 모두 정상이고, `availability_mode=estimated` + fallback note도 정확합니다.
+- `김수환관`은 더 이상 비강의동으로 막히지 않습니다.
+- 다만 현재 공개 snapshot에는 `김수환관` room timetable data가 없어 빈 결과 + 안내 note로 끝납니다.
 
-1. place/classroom/restaurant 사이 alias coverage가 일관되지 않습니다.
-   - `중도`, `니콜스`, `학생식당`이 대표 사례입니다.
-2. `김수환관`이 classroom lookup에서 비강의동으로 잘못 분류됩니다.
-   - 공식 캠퍼스맵 설명에는 강의실이 포함됩니다.
-3. notice taxonomy normalization이 아직 거칩니다.
-   - latest notice의 `place` category, `employment` vs `career` mismatch가 대표적입니다.
-4. restaurant budget filtering은 price coverage가 부족해 결과 신뢰도가 떨어집니다.
-   - `budget_max=10000`인데 price fields가 `null`인 item이 그대로 남습니다.
-5. place search short query에 노이즈가 남습니다.
-   - `정문` 조회에 `창업보육센터`가 함께 노출됩니다.
+### out_of_scope
 
-## 바로 이어갈 우선순위
+- public read-only 범위 설명은 명확합니다.
+- profile, timetable, admin 요청은 모두 거절이 정답이며 usage guide와 문서가 일치합니다.
 
-1. alias/naming 보정
-   - `중도`, `니콜스`, `학생식당`을 place/classroom/restaurant 전체에서 같은 방식으로 받게 만들기
-2. classroom building classification 보정
-   - `김수환관`과 room-to-building mapping 재검토
-3. notice category normalization 보정
-   - `employment`, `career`, `place` 계열 재매핑
-4. restaurant pricing coverage 보강
-   - `budget_max`가 실제 evidence를 갖고 동작하게 만들기
-5. 그다음 Shared GPT 응답 품질 보정
-   - alias와 taxonomy가 먼저 안정화된 뒤 진행하는 편이 효율적입니다.
+## 후속 재검증 (2026-03-15 KST)
 
-## 원문 리포트
+- `public-api/public-mcp` 재배포와 공개 DB snapshot sync(`songsim-sync --year 2026 --semester 1 --notice-pages 3`) 이후, 대표 URL 3개를 다시 확인했습니다.
+- 과목:
+  - `/courses?query=자료구조&year=2026&semester=1`은 이제 `자료구조`, `자료구조기초`를 정상 반환합니다.
+  - `/courses?query=객체지향&year=2026&semester=1`은 이제 `객체지향패러다임`, `객체지향프로그래밍`, `객체지향프로그래밍설계`를 정상 반환합니다.
+  - 다만 `데이터베이스`, `CSE301`, `김가톨`, `데이타베이스`, `CSE 420`처럼 릴리즈팩의 일부 대표 질의는 여전히 빈 결과거나 근사 결과만 보여 course snapshot/운영 경로 이슈가 완전히 해소된 것은 아닙니다.
+- 공지:
+  - `/notices?category=academic&limit=10`과 `/gpt/notices?category=academic&limit=5`는 이제 `academic` 공지를 정상 반환합니다.
+  - 대표 사례인 `Major Discovery Week` 공지도 `academic`으로 분류되어, 이전의 generic detail label(`공지`) 회귀는 해소됐습니다.
 
-- [공개 MCP 20문장 실측 검증](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-live-validation-20.md)
+요약하면:
+- `academic notice` 실패는 해결됐습니다.
+- `course coverage`는 부분 개선됐고, 대표 과목명(`자료구조`, `객체지향`) 기준으로는 합격 수준까지 올라왔습니다.
+- 남은 course 문제는 특정 코드/교수명/typo 질의의 **source coverage gap**과 **운영 경로 mismatch 가능성**을 분리해서 보는 편이 맞습니다.
+
+## 즉시 수정 우선순위
+
+1. course source coverage / 운영 경로 조사
+   - 남은 대표 질의 중 상당수는 공식 source 자체에 row가 없어서, search bug와 source gap을 분리해서 봐야 합니다.
+2. restaurant `open_now` spot revalidation
+   - strict filtering은 코드/테스트 기준으로 잠겼고, 공개 배포에서 representative query를 다시 확인하면 됩니다.
+3. short query ranking polish
+   - `정문`의 2차 노이즈와 `K관` alias 중복을 조금 더 줄일 필요가 있습니다.
+4. MCP resource/prompt spot check
+   - 이번 게이트는 API-first라 `songsim://notice-categories`, 자연어 transport/typo recovery를 간접 검증만 했습니다.
+5. release-pack course expectations 재조정
+   - `데이터베이스`, `CSE301`, `김가톨`, `데이타베이스`, `CSE 420`는 source truth와 릴리즈 기대를 다시 맞출 필요가 있습니다.
+
+## 다음 우선순위
+
+- `restaurant open_now representative recheck -> short query ranking polish -> release-pack course expectations 재조정` 순서가 가장 효과적입니다.
+- 그다음에 Shared GPT 핵심 10~15문장 샘플 검증으로 넘어가면 됩니다.
+
+## 관련 문서
+
+- [공개 MCP 500문장 코퍼스](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-corpus-500.md)
+- [공개 MCP 릴리즈팩 50](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-release-pack-50.md)
+- [공개 MCP 라이브 판정표 50](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-live-validation-50.md)
+- [기존 20문장 실측 리포트](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-live-validation-20.md)

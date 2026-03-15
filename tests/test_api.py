@@ -946,10 +946,7 @@ def test_nearby_restaurants_can_filter_open_now(client):
     )
 
     assert response.status_code == 200
-    assert len(response.json()) == 1
-    assert response.json()[0]["name"] == "알수없음식당"
-    assert response.json()[0]["origin"] == "central-library"
-    assert response.json()[0]["open_now"] is None
+    assert response.json() == []
 
 
 def test_nearby_restaurants_endpoint_reuses_kakao_cache(client, monkeypatch):

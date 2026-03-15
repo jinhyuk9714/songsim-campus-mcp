@@ -323,6 +323,25 @@ def search_courses(
     return [_normalize_record(dict(row)) for row in rows]
 
 
+def list_courses_snapshot(
+    conn: psycopg.Connection,
+    *,
+    year: int | None = None,
+    semester: int | None = None,
+) -> list[dict[str, Any]]:
+    sql = "SELECT * FROM courses WHERE 1=1"
+    params: list[Any] = []
+    if year is not None:
+        sql += " AND year = %s"
+        params.append(year)
+    if semester is not None:
+        sql += " AND semester = %s"
+        params.append(semester)
+    sql += " ORDER BY year DESC, semester DESC, title, code, section"
+    rows = conn.execute(sql, params).fetchall()
+    return [_normalize_record(dict(row)) for row in rows]
+
+
 def list_courses_with_rooms(
     conn: psycopg.Connection,
     *,

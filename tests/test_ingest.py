@@ -131,6 +131,33 @@ def test_notice_detail_parser_builds_summary_and_classifies_rules():
     assert parsed["category"] == "scholarship"
 
 
+def test_notice_detail_parser_prefers_explicit_list_category_over_generic_detail_label():
+    source = NoticeSource("https://www.catholic.ac.kr/ko/campuslife/notice.do")
+
+    parsed = source.parse_detail(
+        """
+        <div class="b-title-box">
+          <span class="b-cate">공지</span>
+          <h1 class="b-title">2026학년도 1학기 Major Discovery Week 특강 신청 마감 안내</h1>
+        </div>
+        <ul class="b-etc-box">
+          <li><span class="title">등록일</span><span>:</span><span>2026.03.14</span></li>
+        </ul>
+        <div class="b-content-box">
+          <div class="b-con-box">
+            학사 일정과 특강 신청 마감 일정을 안내합니다.
+          </div>
+        </div>
+        """,
+        default_title="2026학년도 1학기 Major Discovery Week 특강 신청 마감 안내",
+        default_category="학사",
+    )
+
+    assert parsed["published_at"] == "2026-03-14"
+    assert parsed["labels"] == ["학사"]
+    assert parsed["category"] == "academic"
+
+
 def test_notice_category_rules_cover_cafeteria_keywords():
     assert (
         classify_notice_category(
@@ -150,6 +177,17 @@ def test_notice_category_rules_normalize_career_keywords_to_employment():
             board_category="취창업",
         )
         == "employment"
+    )
+
+
+def test_notice_category_rules_prioritize_academic_board_category_over_urgent_keywords():
+    assert (
+        classify_notice_category(
+            title="2026학년도 1학기 수강신청 변경 마감 안내",
+            body="학사 일정과 수강 정정 마감 일정을 안내합니다.",
+            board_category="학사",
+        )
+        == "academic"
     )
 
 

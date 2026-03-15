@@ -162,7 +162,16 @@ def _normalize_schedule(
 
 
 def classify_notice_category(title: str, body: str, board_category: str | None = None) -> str:
-    text = " ".join(filter(None, [title, body, board_category])).lower()
+    normalized_board_category = _clean_text(board_category or "")
+    explicit_category_map = {
+        "학사": "academic",
+        "장학": "scholarship",
+        "취창업": "employment",
+    }
+    if normalized_board_category in explicit_category_map:
+        return explicit_category_map[normalized_board_category]
+
+    text = " ".join(filter(None, [title, body, normalized_board_category])).lower()
     if any(keyword in text for keyword in ["긴급", "중요", "마감", "휴강", "정전", "중단", "폐쇄"]):
         return "urgent"
     if "장학" in text:
@@ -186,6 +195,9 @@ def classify_notice_category(title: str, body: str, board_category: str | None =
     if board_category:
         return _slugify(board_category).replace("-", "_")
     return "general"
+
+
+GENERIC_NOTICE_DETAIL_LABELS = {"공지"}
 
 
 class CampusMapSource:
@@ -266,6 +278,7 @@ class CourseCatalogSource:
         department: str = "ALL",
         completion_type: str = "ALL",
         query: str = "",
+        offset: int = 0,
     ) -> str:
         params = {
             "mode": "list",
@@ -276,6 +289,7 @@ class CourseCatalogSource:
             "srSearchVal": query,
             "isEngCourses": "N",
             "alignKey": "sbjtNm",
+            "article.offset": offset,
         }
         response = httpx.get(self.url, params=params, timeout=20)
         response.raise_for_status()
@@ -615,10 +629,15 @@ class NoticeSource:
             if soup.select_one(".b-title-box .b-title")
             else default_title
         )
-        board_category = _clean_text(
+        detail_board_category = _clean_text(
             soup.select_one(".b-title-box .b-cate").get_text()
             if soup.select_one(".b-title-box .b-cate")
             else default_category
+        )
+        board_category = (
+            default_category
+            if default_category and detail_board_category in GENERIC_NOTICE_DETAIL_LABELS
+            else detail_board_category or default_category
         )
         published_at = self._normalize_date(
             self._extract_meta_value(soup, label="등록일") or ""

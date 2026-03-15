@@ -129,10 +129,12 @@ def test_observability_counts_local_fallback_when_no_cache_or_kakao(app_env, cap
     assert "event=restaurant_cache_decision" in caplog.text
 
 
-def test_observability_tracks_restaurant_hours_cache_paths(app_env, caplog):
+def test_observability_tracks_restaurant_hours_cache_paths(app_env, monkeypatch, caplog):
     caplog.set_level(logging.INFO)
     init_db()
     seed_demo(force=True)
+    now = datetime.fromisoformat("2026-03-14T12:00:00+09:00")
+    monkeypatch.setattr("songsim_campus.services._now", lambda: now)
 
     with connection() as conn:
         repo.replace_restaurant_cache_snapshot(

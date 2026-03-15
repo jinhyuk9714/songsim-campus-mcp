@@ -20,6 +20,7 @@ from songsim_campus.services import (
     find_nearby_restaurants,
     get_class_periods,
     get_place,
+    investigate_course_query_coverage,
     list_estimated_empty_classrooms,
     list_latest_notices,
     list_transport_guides,
@@ -1087,7 +1088,7 @@ def test_find_nearby_restaurants_marks_open_now_from_facility_hours(
     assert items[0].open_now is expected
 
 
-def test_find_nearby_restaurants_open_now_filters_closed_but_keeps_unknown(app_env):
+def test_find_nearby_restaurants_open_now_filters_closed_and_unknown_candidates(app_env):
     init_db()
     seed_demo(force=True)
     with connection() as conn:
@@ -1134,7 +1135,7 @@ def test_find_nearby_restaurants_open_now_filters_closed_but_keeps_unknown(app_e
     open_by_name = {item.name: item.open_now for item in all_items}
     assert open_by_name["카페드림"] is False
     assert open_by_name["알수없음식당"] is None
-    assert [item.name for item in filtered] == ["알수없음식당"]
+    assert filtered == []
 
 
 def test_find_nearby_restaurants_prefers_official_facility_hours_before_kakao_detail(
@@ -1143,6 +1144,8 @@ def test_find_nearby_restaurants_prefers_official_facility_hours_before_kakao_de
 ):
     init_db()
     seed_demo(force=True)
+    now = datetime.fromisoformat("2026-03-14T12:00:00+09:00")
+    monkeypatch.setattr("songsim_campus.services._now", lambda: now)
     calls = {"detail": 0}
 
     class ExplodingDetailClient:
@@ -1200,6 +1203,8 @@ def test_find_nearby_restaurants_prefers_official_facility_hours_before_kakao_de
 def test_find_nearby_restaurants_reuses_fresh_kakao_hours_cache(app_env, monkeypatch):
     init_db()
     seed_demo(force=True)
+    now = datetime.fromisoformat("2026-03-14T12:00:00+09:00")
+    monkeypatch.setattr("songsim_campus.services._now", lambda: now)
     calls = {"detail": 0}
 
     class ExplodingDetailClient:
@@ -1456,8 +1461,16 @@ class FakeCourseSource:
         department: str = 'ALL',
         completion_type: str = 'ALL',
         query: str = '',
+        offset: int = 0,
     ):
-        assert (year, semester, department, completion_type, query) == (2026, 1, 'ALL', 'ALL', '')
+        assert (year, semester, department, completion_type, query, offset) == (
+            2026,
+            1,
+            'ALL',
+            'ALL',
+            '',
+            0,
+        )
         return '<html></html>'
 
     def parse(self, html: str, *, fetched_at: str):
@@ -1515,6 +1528,195 @@ class FakeNoticeSource:
             'summary': '가족장학금 신청 안내',
             'labels': ['장학'],
             'category': 'scholarship',
+        }
+
+
+class FakePaginatedCourseSource:
+    def __init__(self):
+        self.fetch_offsets: list[int] = []
+
+    def fetch(
+        self,
+        *,
+        year: int,
+        semester: int,
+        department: str = 'ALL',
+        completion_type: str = 'ALL',
+        query: str = '',
+        offset: int = 0,
+    ):
+        assert (year, semester, department, completion_type, query) == (2026, 1, 'ALL', 'ALL', '')
+        self.fetch_offsets.append(offset)
+        return f'<html offset="{offset}"></html>'
+
+    def parse(self, html: str, *, fetched_at: str):
+        assert fetched_at == '2026-03-13T09:00:00+09:00'
+        if 'offset="0"' in html:
+            return [
+                {
+                    'year': 2026,
+                    'semester': 1,
+                    'code': f'CSE{index:03d}',
+                    'title': f'테스트과목{index:03d}',
+                    'professor': '테스트교수',
+                    'department': '컴퓨터정보공학부',
+                    'section': '01',
+                    'day_of_week': '월',
+                    'period_start': 1,
+                    'period_end': 1,
+                    'room': f'N{100 + index}',
+                    'raw_schedule': f'월1(N{100 + index})',
+                    'source_tag': 'cuk_subject_search',
+                    'last_synced_at': fetched_at,
+                }
+                for index in range(50)
+            ]
+        if 'offset="50"' in html:
+            return [
+                {
+                    'year': 2026,
+                    'semester': 1,
+                    'code': 'CSE049',
+                    'title': '테스트과목049',
+                    'professor': '테스트교수',
+                    'department': '컴퓨터정보공학부',
+                    'section': '01',
+                    'day_of_week': '월',
+                    'period_start': 1,
+                    'period_end': 1,
+                    'room': 'N149',
+                    'raw_schedule': '월1(N149)',
+                    'source_tag': 'cuk_subject_search',
+                    'last_synced_at': fetched_at,
+                },
+                {
+                    'year': 2026,
+                    'semester': 1,
+                    'code': 'CSE999',
+                    'title': '추가테스트과목',
+                    'professor': '테스트교수',
+                    'department': '컴퓨터정보공학부',
+                    'section': '02',
+                    'day_of_week': '화',
+                    'period_start': 2,
+                    'period_end': 3,
+                    'room': 'N999',
+                    'raw_schedule': '화2~3(N999)',
+                    'source_tag': 'cuk_subject_search',
+                    'last_synced_at': fetched_at,
+                },
+            ]
+        raise AssertionError(f'unexpected html: {html}')
+
+
+class FakeCourseCoverageSource:
+    def fetch(
+        self,
+        *,
+        year: int,
+        semester: int,
+        department: str = 'ALL',
+        completion_type: str = 'ALL',
+        query: str = '',
+        offset: int = 0,
+    ):
+        assert (year, semester, department, completion_type, query) == (2026, 1, 'ALL', 'ALL', '')
+        return f'<html offset="{offset}"></html>'
+
+    def parse(self, html: str, *, fetched_at: str):
+        assert fetched_at == '2026-03-13T09:00:00+09:00'
+        if 'offset="0"' in html:
+            return [
+                {
+                    'year': 2026,
+                    'semester': 1,
+                    'code': '05497',
+                    'title': '데이터베이스활용',
+                    'professor': '권보람',
+                    'department': '경영학과',
+                    'section': '01',
+                    'day_of_week': '화',
+                    'period_start': 1,
+                    'period_end': 2,
+                    'room': 'M307',
+                    'raw_schedule': '화1~2(M307)',
+                    'source_tag': 'cuk_subject_search',
+                    'last_synced_at': fetched_at,
+                },
+                {
+                    'year': 2026,
+                    'semester': 1,
+                    'code': 'CSE420',
+                    'title': '임베디드시스템',
+                    'professor': '박성심',
+                    'department': '컴퓨터정보공학부',
+                    'section': '01',
+                    'day_of_week': '목',
+                    'period_start': 5,
+                    'period_end': 6,
+                    'room': 'N201',
+                    'raw_schedule': '목5~6(N201)',
+                    'source_tag': 'cuk_subject_search',
+                    'last_synced_at': fetched_at,
+                },
+            ]
+        return []
+
+
+class FakeNoticeSourceWithDetailFailure:
+    def fetch_list(self, *, offset: int = 0, limit: int = 10):
+        assert offset == 0
+        assert limit == 10
+        return '<list></list>'
+
+    def parse_list(self, html: str):
+        assert html == '<list></list>'
+        return [
+            {
+                'article_no': '2001',
+                'title': '2026학년도 1학기 Major Discovery Week 특강 신청 마감 안내',
+                'board_category': '학사',
+                'published_at': '2026-03-14',
+                'source_url': 'https://example.edu/notice/2001',
+            }
+        ]
+
+    def fetch_detail(self, article_no: str, *, offset: int = 0, limit: int = 10):
+        raise httpx.ReadError('detail unavailable')
+
+
+class FakeNoticeSourceWithGenericDetailLabel:
+    def fetch_list(self, *, offset: int = 0, limit: int = 10):
+        assert offset == 0
+        assert limit == 10
+        return '<list></list>'
+
+    def parse_list(self, html: str):
+        assert html == '<list></list>'
+        return [
+            {
+                'article_no': '3001',
+                'title': '2026학년도 1학기 Major Discovery Week 특강 신청 마감 안내',
+                'board_category': '학사',
+                'published_at': '2026-03-14',
+                'source_url': 'https://example.edu/notice/3001',
+            }
+        ]
+
+    def fetch_detail(self, article_no: str, *, offset: int = 0, limit: int = 10):
+        assert article_no == '3001'
+        return '<detail></detail>'
+
+    def parse_detail(self, html: str, *, default_title: str = '', default_category: str = ''):
+        assert html == '<detail></detail>'
+        assert default_title == '2026학년도 1학기 Major Discovery Week 특강 신청 마감 안내'
+        assert default_category == '학사'
+        return {
+            'title': default_title,
+            'published_at': '2026-03-14',
+            'summary': '학사 일정과 특강 신청 마감 일정을 안내합니다.',
+            'labels': ['공지'],
+            'category': 'urgent',
         }
 
 
@@ -1576,6 +1778,223 @@ def test_refresh_courses_from_subject_search_replaces_course_rows(app_env):
     assert courses[0].source_tag == 'cuk_subject_search'
 
 
+def test_refresh_courses_from_subject_search_ingests_paginated_snapshot_and_dedupes(app_env):
+    init_db()
+    source = FakePaginatedCourseSource()
+
+    with connection() as conn:
+        refresh_courses_from_subject_search(
+            conn,
+            source=source,
+            year=2026,
+            semester=1,
+            fetched_at='2026-03-13T09:00:00+09:00',
+        )
+        stored = repo.search_courses(conn, year=2026, semester=1, limit=200)
+
+    assert source.fetch_offsets == [0, 50]
+    assert len(stored) == 51
+    assert any(item['code'] == 'CSE999' for item in stored)
+
+
+def test_investigate_course_query_coverage_reports_covered_and_source_gaps(app_env):
+    init_db()
+    with connection() as conn:
+        repo.replace_courses(
+            conn,
+            [
+                {
+                    'year': 2026,
+                    'semester': 1,
+                    'code': '05497',
+                    'title': '데이터베이스활용',
+                    'professor': '권보람',
+                    'department': '경영학과',
+                    'section': '01',
+                    'day_of_week': '화',
+                    'period_start': 1,
+                    'period_end': 2,
+                    'room': 'M307',
+                    'raw_schedule': '화1~2(M307)',
+                    'source_tag': 'cuk_subject_search',
+                    'last_synced_at': '2026-03-13T09:00:00+09:00',
+                },
+                {
+                    'year': 2026,
+                    'semester': 1,
+                    'code': 'CSE420',
+                    'title': '임베디드시스템',
+                    'professor': '박성심',
+                    'department': '컴퓨터정보공학부',
+                    'section': '01',
+                    'day_of_week': '목',
+                    'period_start': 5,
+                    'period_end': 6,
+                    'room': 'N201',
+                    'raw_schedule': '목5~6(N201)',
+                    'source_tag': 'cuk_subject_search',
+                    'last_synced_at': '2026-03-13T09:00:00+09:00',
+                },
+            ],
+        )
+        reports = investigate_course_query_coverage(
+            conn,
+            queries=['데이터베이스', 'CSE301', 'CSE 420'],
+            source=FakeCourseCoverageSource(),
+            year=2026,
+            semester=1,
+            fetched_at='2026-03-13T09:00:00+09:00',
+        )
+
+    assert reports == [
+        {
+            'query': '데이터베이스',
+            'year': 2026,
+            'semester': 1,
+            'status': 'covered',
+            'source_match_count': 1,
+            'db_match_count': 1,
+            'search_match_count': 1,
+            'source_matches': [
+                {
+                    'code': '05497',
+                    'title': '데이터베이스활용',
+                    'professor': '권보람',
+                    'department': '경영학과',
+                    'section': '01',
+                }
+            ],
+            'db_matches': [
+                {
+                    'code': '05497',
+                    'title': '데이터베이스활용',
+                    'professor': '권보람',
+                    'department': '경영학과',
+                    'section': '01',
+                }
+            ],
+            'search_matches': [
+                {
+                    'code': '05497',
+                    'title': '데이터베이스활용',
+                    'professor': '권보람',
+                    'department': '경영학과',
+                    'section': '01',
+                }
+            ],
+        },
+        {
+            'query': 'CSE301',
+            'year': 2026,
+            'semester': 1,
+            'status': 'source_gap',
+            'source_match_count': 0,
+            'db_match_count': 0,
+            'search_match_count': 0,
+            'source_matches': [],
+            'db_matches': [],
+            'search_matches': [],
+        },
+        {
+            'query': 'CSE 420',
+            'year': 2026,
+            'semester': 1,
+            'status': 'covered',
+            'source_match_count': 1,
+            'db_match_count': 1,
+            'search_match_count': 1,
+            'source_matches': [
+                {
+                    'code': 'CSE420',
+                    'title': '임베디드시스템',
+                    'professor': '박성심',
+                    'department': '컴퓨터정보공학부',
+                    'section': '01',
+                }
+            ],
+            'db_matches': [
+                {
+                    'code': 'CSE420',
+                    'title': '임베디드시스템',
+                    'professor': '박성심',
+                    'department': '컴퓨터정보공학부',
+                    'section': '01',
+                }
+            ],
+            'search_matches': [
+                {
+                    'code': 'CSE420',
+                    'title': '임베디드시스템',
+                    'professor': '박성심',
+                    'department': '컴퓨터정보공학부',
+                    'section': '01',
+                }
+            ],
+        },
+    ]
+
+
+def test_investigate_course_query_coverage_reports_db_gap_when_source_rows_are_not_synced(app_env):
+    init_db()
+    with connection() as conn:
+        reports = investigate_course_query_coverage(
+            conn,
+            queries=['데이터베이스'],
+            source=FakeCourseCoverageSource(),
+            year=2026,
+            semester=1,
+            fetched_at='2026-03-13T09:00:00+09:00',
+        )
+
+    assert reports[0]['status'] == 'db_gap'
+    assert reports[0]['source_match_count'] == 1
+    assert reports[0]['db_match_count'] == 0
+    assert reports[0]['search_match_count'] == 0
+
+
+def test_investigate_course_query_coverage_reports_search_gap(
+    app_env,
+    monkeypatch,
+):
+    init_db()
+    with connection() as conn:
+        repo.replace_courses(
+            conn,
+            [
+                {
+                    'year': 2026,
+                    'semester': 1,
+                    'code': 'CSE420',
+                    'title': '임베디드시스템',
+                    'professor': '박성심',
+                    'department': '컴퓨터정보공학부',
+                    'section': '01',
+                    'day_of_week': '목',
+                    'period_start': 5,
+                    'period_end': 6,
+                    'room': 'N201',
+                    'raw_schedule': '목5~6(N201)',
+                    'source_tag': 'cuk_subject_search',
+                    'last_synced_at': '2026-03-13T09:00:00+09:00',
+                }
+            ],
+        )
+        monkeypatch.setattr('songsim_campus.services.search_courses', lambda *args, **kwargs: [])
+        reports = investigate_course_query_coverage(
+            conn,
+            queries=['CSE 420'],
+            source=FakeCourseCoverageSource(),
+            year=2026,
+            semester=1,
+            fetched_at='2026-03-13T09:00:00+09:00',
+        )
+
+    assert reports[0]['status'] == 'search_gap'
+    assert reports[0]['source_match_count'] == 1
+    assert reports[0]['db_match_count'] == 1
+    assert reports[0]['search_match_count'] == 0
+
+
 def test_refresh_notices_from_notice_board_replaces_notice_rows(app_env):
     init_db()
 
@@ -1591,6 +2010,41 @@ def test_refresh_notices_from_notice_board_replaces_notice_rows(app_env):
     assert len(notices) == 1
     assert notices[0].category == 'scholarship'
     assert notices[0].source_tag == 'cuk_campus_notices'
+
+
+def test_refresh_notices_from_notice_board_fallback_classifies_board_category(app_env):
+    init_db()
+
+    with connection() as conn:
+        refresh_notices_from_notice_board(
+            conn,
+            source=FakeNoticeSourceWithDetailFailure(),
+            pages=1,
+            fetched_at='2026-03-13T09:00:00+09:00',
+        )
+        notices = list_latest_notices(conn)
+
+    assert len(notices) == 1
+    assert notices[0].category == 'academic'
+
+
+def test_refresh_notices_from_notice_board_preserves_list_board_category_over_generic_detail_label(
+    app_env,
+):
+    init_db()
+
+    with connection() as conn:
+        refresh_notices_from_notice_board(
+            conn,
+            source=FakeNoticeSourceWithGenericDetailLabel(),
+            pages=1,
+            fetched_at='2026-03-13T09:00:00+09:00',
+        )
+        notices = list_latest_notices(conn)
+
+    assert len(notices) == 1
+    assert notices[0].category == 'academic'
+    assert notices[0].labels == ['학사']
 
 
 class FakeLibraryHoursSource:

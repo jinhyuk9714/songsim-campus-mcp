@@ -31,6 +31,7 @@ from .ingest.official_sources import (
     LibraryHoursSource,
     NoticeSource,
     TransportGuideSource,
+    classify_notice_category,
 )
 from .schemas import (
     AutomationJobObservability,
@@ -111,6 +112,7 @@ NOTICE_CATEGORY_FILTER_ALIASES = {
     "general": ("general", "place"),
     "place": ("general", "place"),
 }
+NOTICE_CANONICAL_LIST_CATEGORIES = {"학사", "장학", "취창업"}
 
 
 class NotFoundError(ValueError):
@@ -626,6 +628,31 @@ def _normalize_notice_public_category(category: str | None) -> str:
     if normalized in {"academic", "scholarship", "event", "facility", "library"}:
         return normalized
     return "general"
+
+
+def _canonicalize_notice_detail(
+    *,
+    item: dict[str, Any],
+    detail: dict[str, Any],
+) -> dict[str, Any]:
+    board_category = _normalize_optional_text(item.get("board_category"))
+    if board_category not in NOTICE_CANONICAL_LIST_CATEGORIES:
+        return detail
+
+    labels = [
+        label
+        for label in detail.get("labels", [])
+        if _normalize_optional_text(label) not in {None, "공지", board_category}
+    ]
+    return {
+        **detail,
+        "labels": [board_category, *labels],
+        "category": classify_notice_category(
+            detail.get("title") or item.get("title", ""),
+            detail.get("summary", ""),
+            board_category,
+        ),
+    }
 
 
 def _normalize_optional_text(value: str | None) -> str | None:
@@ -1540,6 +1567,170 @@ def search_courses(
         if len(items) == limit:
             break
     return [Course.model_validate(item) for item in items]
+
+
+def _collect_course_snapshot_rows(
+    source: CourseCatalogSource | Any,
+    *,
+    year: int,
+    semester: int,
+    fetched_at: str,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    seen_course_keys: set[tuple[Any, ...]] = set()
+
+    for page_index in range(50):
+        offset = page_index * 50
+        html = source.fetch(
+            year=year,
+            semester=semester,
+            department="ALL",
+            completion_type="ALL",
+            query="",
+            offset=offset,
+        )
+        page_rows = source.parse(html, fetched_at=fetched_at)
+        if not page_rows:
+            break
+        for row in page_rows:
+            course_key = (
+                row.get("code"),
+                row.get("section"),
+                row.get("raw_schedule"),
+                row.get("professor"),
+                row.get("title"),
+            )
+            if course_key in seen_course_keys:
+                continue
+            seen_course_keys.add(course_key)
+            rows.append(row)
+        if len(page_rows) < 50:
+            break
+    return rows
+
+
+def _course_query_candidates(query: str) -> list[str]:
+    collapsed_query, compact_query = _normalized_query_variants(query)
+    queries = [collapsed_query or ""]
+    if compact_query is not None and compact_query != queries[0]:
+        queries.append(compact_query)
+    return queries
+
+
+def _course_row_matches_queries(row: dict[str, Any], queries: list[str]) -> bool:
+    text_fields = [
+        _normalize_optional_text(row.get("title")),
+        _normalize_optional_text(row.get("code")),
+        _normalize_optional_text(row.get("professor")),
+    ]
+    lowered_fields = [field.lower() for field in text_fields if field]
+    compacted_fields = [_compact_text(field).lower() for field in text_fields if field]
+
+    for query in queries:
+        lowered_query = query.lower()
+        compacted_query = _compact_text(query).lower()
+        if any(lowered_query in field for field in lowered_fields):
+            return True
+        if compacted_query and any(compacted_query in field for field in compacted_fields):
+            return True
+    return False
+
+
+def _course_match_preview(
+    rows: list[dict[str, Any]],
+    *,
+    limit: int = 5,
+) -> list[dict[str, str | None]]:
+    return [
+        {
+            "code": row.get("code"),
+            "title": row.get("title"),
+            "professor": row.get("professor"),
+            "department": row.get("department"),
+            "section": row.get("section"),
+        }
+        for row in rows[:limit]
+    ]
+
+
+def investigate_course_query_coverage(
+    conn: sqlite3.Connection,
+    *,
+    queries: list[str],
+    source: CourseCatalogSource | Any | None = None,
+    year: int | None = None,
+    semester: int | None = None,
+    fetched_at: str | None = None,
+    search_limit: int = 20,
+) -> list[dict[str, Any]]:
+    source = source or CourseCatalogSource(COURSE_SOURCE_URL)
+    synced_at = fetched_at or _now_iso()
+    resolved_year, resolved_semester = _current_year_and_semester()
+    resolved_year = year or resolved_year
+    resolved_semester = semester or resolved_semester
+
+    source_rows = _collect_course_snapshot_rows(
+        source,
+        year=resolved_year,
+        semester=resolved_semester,
+        fetched_at=synced_at,
+    )
+    db_rows = repo.list_courses_snapshot(
+        conn,
+        year=resolved_year,
+        semester=resolved_semester,
+    )
+
+    reports: list[dict[str, Any]] = []
+    for query in queries:
+        candidate_queries = _course_query_candidates(query)
+        source_matches = [
+            row for row in source_rows if _course_row_matches_queries(row, candidate_queries)
+        ]
+        db_direct_matches = [
+            row for row in db_rows if _course_row_matches_queries(row, candidate_queries)
+        ]
+        search_matches = search_courses(
+            conn,
+            query=query,
+            year=resolved_year,
+            semester=resolved_semester,
+            limit=search_limit,
+        )
+
+        if search_matches:
+            status = "covered"
+        elif db_direct_matches:
+            status = "search_gap"
+        elif source_matches:
+            status = "db_gap"
+        else:
+            status = "source_gap"
+
+        reports.append(
+            {
+                "query": query,
+                "year": resolved_year,
+                "semester": resolved_semester,
+                "status": status,
+                "source_match_count": len(source_matches),
+                "db_match_count": len(db_direct_matches),
+                "search_match_count": len(search_matches),
+                "source_matches": _course_match_preview(source_matches),
+                "db_matches": _course_match_preview(db_direct_matches),
+                "search_matches": [
+                    {
+                        "code": course.code,
+                        "title": course.title,
+                        "professor": course.professor,
+                        "department": course.department,
+                        "section": course.section,
+                    }
+                    for course in search_matches[:5]
+                ],
+            }
+        )
+    return reports
 
 
 def list_latest_notices(
@@ -2862,7 +3053,7 @@ def find_nearby_restaurants(
             current,
             kakao_place_detail_client=kakao_place_detail_client,
         )
-        if open_now and current_open_now is False:
+        if open_now and current_open_now is not True:
             continue
 
         results.append(
@@ -2978,21 +3169,22 @@ def refresh_courses_from_subject_search(
     source = source or CourseCatalogSource(COURSE_SOURCE_URL)
     synced_at = fetched_at or _now_iso()
     resolved_year, resolved_semester = _current_year_and_semester()
-    html = source.fetch(
-        year=year or resolved_year,
-        semester=semester or resolved_semester,
-        department="ALL",
-        completion_type="ALL",
-        query="",
+    resolved_year = year or resolved_year
+    resolved_semester = semester or resolved_semester
+    rows = _collect_course_snapshot_rows(
+        source,
+        year=resolved_year,
+        semester=resolved_semester,
+        fetched_at=synced_at,
     )
-    rows = source.parse(html, fetched_at=synced_at)
+
     repo.replace_courses(conn, rows)
     return [
         Course.model_validate(item)
         for item in repo.search_courses(
             conn,
-            year=year or resolved_year,
-            semester=semester or resolved_semester,
+            year=resolved_year,
+            semester=resolved_semester,
             limit=max(len(rows), 1),
         )
     ]
@@ -3024,13 +3216,18 @@ def refresh_notices_from_notice_board(
                     default_title=item["title"],
                     default_category=item.get("board_category", ""),
                 )
+                detail = _canonicalize_notice_detail(item=item, detail=detail)
             except httpx.HTTPError:
                 detail = {
                     "title": item["title"],
                     "published_at": item.get("published_at"),
                     "summary": "",
                     "labels": [],
-                    "category": item.get("board_category") or "general",
+                    "category": classify_notice_category(
+                        item["title"],
+                        "",
+                        item.get("board_category", ""),
+                    ),
                 }
 
             rows.append(

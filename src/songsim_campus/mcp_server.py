@@ -654,7 +654,8 @@ def build_mcp():
                 "origin, 예산(budget_max), open_now, walk_minutes를 함께 줄 수 있습니다. "
                 "origin은 slug, 대표 이름, alias(예: 중도, 학생식당)를 받을 수 있습니다. "
                 "출발지가 모호하면 tool_search_places를 먼저 사용합니다. budget_max를 "
-                "주면 가격 정보가 없는 후보는 제외합니다."
+                "주면 가격 정보가 없는 후보는 제외합니다. open_now=true면 "
+                "영업중이 확인된 후보만 남깁니다."
             )
             if public_readonly
             else (
@@ -688,7 +689,7 @@ def build_mcp():
         ] = None,
         open_now: Annotated[
             bool,
-            Field(description="지금 영업 중인 후보만 보고 싶으면 true"),
+            Field(description="지금 영업 중인 후보만 보고 싶으면 true. 확인된 후보만 남깁니다."),
         ] = False,
         walk_minutes: Annotated[
             int,
