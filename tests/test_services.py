@@ -710,6 +710,78 @@ def test_list_estimated_empty_classrooms_accepts_colloquial_building_alias(app_e
     assert payload.items[0].room == "N201"
 
 
+def test_list_estimated_empty_classrooms_bounds_place_lookups_by_unique_room_set(
+    app_env,
+    monkeypatch,
+):
+    init_db()
+    seed_demo(force=True)
+    synthetic_courses: list[dict[str, object]] = []
+    for index in range(60):
+        room_number = 100 + index
+        synthetic_courses.append(
+            {
+                "year": 2026,
+                "semester": 1,
+                "code": f"CSE{room_number}",
+                "title": f"니콜스 강의 {index}",
+                "professor": "테스트교수",
+                "department": "컴퓨터정보공학부",
+                "section": "01",
+                "day_of_week": "화",
+                "period_start": 1,
+                "period_end": 2,
+                "room": f"N{room_number}",
+                "raw_schedule": f"화1~2(N{room_number})",
+                "source_tag": "test",
+                "last_synced_at": "2026-03-13T09:00:00+09:00",
+            }
+        )
+        synthetic_courses.append(
+            {
+                "year": 2026,
+                "semester": 1,
+                "code": f"MAT{room_number}",
+                "title": f"김수환 강의 {index}",
+                "professor": "테스트교수",
+                "department": "수학과",
+                "section": "01",
+                "day_of_week": "화",
+                "period_start": 1,
+                "period_end": 2,
+                "room": f"K{room_number}",
+                "raw_schedule": f"화1~2(K{room_number})",
+                "source_tag": "test",
+                "last_synced_at": "2026-03-13T09:00:00+09:00",
+            }
+        )
+
+    with connection() as conn:
+        repo.replace_courses(conn, synthetic_courses)
+
+        list_places_calls = 0
+        original_list_places = repo.list_places
+
+        def counting_list_places(*args, **kwargs):
+            nonlocal list_places_calls
+            list_places_calls += 1
+            return original_list_places(*args, **kwargs)
+
+        monkeypatch.setattr(repo, "list_places", counting_list_places)
+
+        payload = list_estimated_empty_classrooms(
+            conn,
+            building="N관",
+            at=datetime.fromisoformat("2026-03-16T10:15:00+09:00"),
+            limit=100,
+        )
+
+    assert list_places_calls <= 2
+    assert payload.building.slug == "nichols-hall"
+    assert len(payload.items) == 60
+    assert all(item.room.startswith("N") for item in payload.items)
+
+
 def test_list_estimated_empty_classrooms_rejects_non_classroom_place(app_env):
     init_db()
     seed_demo(force=True)

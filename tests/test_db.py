@@ -83,6 +83,13 @@ def test_init_db_creates_postgis_schema(app_env):
             WHERE tablename = 'restaurants' AND indexname = 'idx_restaurants_geom'
             """
         ).fetchone()
+        course_room_index = conn.execute(
+            """
+            SELECT indexname
+            FROM pg_indexes
+            WHERE tablename = 'courses' AND indexname = 'idx_courses_year_semester_room'
+            """
+        ).fetchone()
 
     assert extension["extname"] == "postgis"
     assert places_geom["data_type"] == "USER-DEFINED"
@@ -94,3 +101,4 @@ def test_init_db_creates_postgis_schema(app_env):
     assert restaurant_hours["data_type"] == "jsonb"
     assert restaurant_cache_place_id["data_type"] == "text"
     assert geom_index["indexname"] == "idx_restaurants_geom"
+    assert course_room_index["indexname"] == "idx_courses_year_semester_room"

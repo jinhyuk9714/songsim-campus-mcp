@@ -8,6 +8,7 @@ from songsim_campus.db import connection
 from songsim_campus.repo import (
     replace_courses,
     replace_notices,
+    replace_places,
     replace_restaurants,
     update_place_opening_hours,
 )
@@ -682,6 +683,39 @@ def test_classrooms_empty_endpoint_accepts_kim_sou_hwan_hall_as_building(client)
     assert payload["availability_mode"] == "estimated"
     assert payload["items"]
     assert all(item["room"].startswith("K") for item in payload["items"])
+
+
+def test_classrooms_empty_endpoint_returns_fast_empty_note_for_student_future_hall(client):
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                {
+                    "slug": "sophie-barat-hall",
+                    "name": "학생미래인재관",
+                    "category": "building",
+                    "aliases": ["학생회관", "학생센터"],
+                    "description": "학생식당과 생활 편의시설이 있는 건물",
+                    "latitude": 37.486466,
+                    "longitude": 126.801297,
+                    "opening_hours": {},
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                }
+            ],
+        )
+        replace_courses(conn, [])
+
+    response = client.get(
+        "/classrooms/empty",
+        params={"building": "학생미래인재관", "at": "2026-03-16T10:15:00+09:00"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["building"]["slug"] == "sophie-barat-hall"
+    assert payload["items"] == []
+    assert "시간표 데이터를 찾지 못했습니다" in payload["estimate_note"]
 
 
 def test_gpt_empty_classrooms_endpoint_returns_estimate_payload(client):

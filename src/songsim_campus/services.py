@@ -481,14 +481,25 @@ def _normalize_place_key(value: str) -> str:
 
 
 def _place_index(conn: sqlite3.Connection) -> dict[str, str]:
+    return _build_place_slug_lookup(repo.list_places(conn))
+
+
+def _build_place_slug_lookup(place_rows: list[dict[str, Any]]) -> dict[str, str]:
     index: dict[str, str] = {}
-    for place in repo.list_places(conn):
+    for place in place_rows:
         keys = [place["name"], *place.get("aliases", [])]
         for key in keys:
             normalized = _normalize_place_key(key)
             if normalized:
                 index[normalized] = place["slug"]
     return index
+
+
+def _build_place_model_lookup(place_rows: list[dict[str, Any]]) -> dict[str, Place]:
+    return {
+        row["slug"]: Place.model_validate(row)
+        for row in place_rows
+    }
 
 
 def _location_candidates(value: str) -> list[str]:
@@ -1377,9 +1388,22 @@ def _estimate_restaurant_to_place_walk_minutes(
 
 
 def _resolve_place_from_room(conn: sqlite3.Connection, room: str | None) -> Place | None:
+    place_rows = repo.list_places(conn)
+    return _resolve_place_from_room_with_maps(
+        room,
+        place_lookup=_build_place_slug_lookup(place_rows),
+        place_by_slug=_build_place_model_lookup(place_rows),
+    )
+
+
+def _resolve_place_from_room_with_maps(
+    room: str | None,
+    *,
+    place_lookup: dict[str, str],
+    place_by_slug: dict[str, Place],
+) -> Place | None:
     if not room:
         return None
-    place_lookup = _place_index(conn)
     candidates = [room]
     match = re.match(r"([A-Za-z]+)", room)
     if match:
@@ -1388,8 +1412,29 @@ def _resolve_place_from_room(conn: sqlite3.Connection, room: str | None) -> Plac
     for candidate in candidates:
         slug = place_lookup.get(_normalize_place_key(candidate))
         if slug:
-            return get_place(conn, slug)
+            return place_by_slug.get(slug)
     return None
+
+
+def _resolve_places_from_rooms(
+    conn: sqlite3.Connection,
+    rooms: set[str],
+) -> dict[str, Place]:
+    if not rooms:
+        return {}
+    place_rows = repo.list_places(conn)
+    place_lookup = _build_place_slug_lookup(place_rows)
+    place_by_slug = _build_place_model_lookup(place_rows)
+    resolved: dict[str, Place] = {}
+    for room in sorted(rooms):
+        place = _resolve_place_from_room_with_maps(
+            room,
+            place_lookup=place_lookup,
+            place_by_slug=place_by_slug,
+        )
+        if place is not None:
+            resolved[room] = place
+    return resolved
 
 
 def _ensure_profile(conn: sqlite3.Connection, profile_id: str) -> Profile:
@@ -2732,21 +2777,29 @@ def list_estimated_empty_classrooms(
     target_building = _resolve_building_place(conn, building)
     effective_year = year or resolved_year
     effective_semester = semester or resolved_semester
-    courses = [
-        Course.model_validate(row)
-        for row in repo.list_courses_with_rooms(
-            conn,
-            year=effective_year,
-            semester=effective_semester,
-        )
-    ]
-
+    course_rows = repo.list_courses_with_rooms(
+        conn,
+        year=effective_year,
+        semester=effective_semester,
+    )
+    rooms = {
+        str(row["room"]).strip()
+        for row in course_rows
+        if row.get("room") is not None and str(row["room"]).strip()
+    }
+    room_places = _resolve_places_from_rooms(conn, rooms)
+    matching_rooms = {
+        room
+        for room, place in room_places.items()
+        if place.slug == target_building.slug
+    }
     by_room: dict[str, list[Course]] = {}
-    for course in courses:
-        mapped_place = _resolve_place_from_room(conn, course.room)
-        if mapped_place is None or mapped_place.slug != target_building.slug or not course.room:
+    for row in course_rows:
+        room = str(row.get("room") or "").strip()
+        if not room or room not in matching_rooms:
             continue
-        by_room.setdefault(course.room, []).append(course)
+        course = Course.model_validate(row)
+        by_room.setdefault(room, []).append(course)
 
     room_states = _build_empty_classroom_room_states(by_room, current=current)
     realtime_source = _get_official_classroom_availability_source()

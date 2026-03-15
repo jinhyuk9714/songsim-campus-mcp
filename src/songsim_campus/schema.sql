@@ -187,6 +187,8 @@ CREATE INDEX IF NOT EXISTS idx_places_name ON places(name);
 CREATE INDEX IF NOT EXISTS idx_places_geom ON places USING GIST (geom);
 CREATE INDEX IF NOT EXISTS idx_courses_title ON courses(title);
 CREATE INDEX IF NOT EXISTS idx_courses_code ON courses(code);
+CREATE INDEX IF NOT EXISTS idx_courses_year_semester_room
+ON courses(year, semester, room);
 CREATE INDEX IF NOT EXISTS idx_restaurants_name ON restaurants(name);
 CREATE INDEX IF NOT EXISTS idx_restaurants_geom ON restaurants USING GIST (geom);
 CREATE INDEX IF NOT EXISTS idx_restaurant_cache_key
