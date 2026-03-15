@@ -1,0 +1,12 @@
+{
+  "K관": {
+    "place_search": ["kim-sou-hwan-hall"],
+    "origin": ["kim-sou-hwan-hall"],
+    "building": ["kim-sou-hwan-hall"]
+  },
+  "정문": {
+    "place_search": ["main-gate"],
+    "origin": ["main-gate"],
+    "building": []
+  }
+}

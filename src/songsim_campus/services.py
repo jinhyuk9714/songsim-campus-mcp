@@ -75,6 +75,7 @@ CAMPUS_WALK_GRAPH_PATH = DATA_DIR / "campus_walk_graph.json"
 PERSONALIZATION_RULES_PATH = DATA_DIR / "personalization_rules.json"
 PLACE_ALIAS_OVERRIDES_PATH = DATA_DIR / "place_alias_overrides.json"
 PLACE_FACILITY_KEYWORDS_PATH = DATA_DIR / "place_facility_keywords.json"
+PLACE_SHORT_QUERY_PREFERENCES_PATH = DATA_DIR / "place_short_query_preferences.json"
 RESTAURANT_SEARCH_ALIASES_PATH = DATA_DIR / "restaurant_search_aliases.json"
 SYNC_DATASET_TABLES = ("places", "courses", "notices", "transport_guides")
 ADMIN_SYNC_TARGETS = {
@@ -499,6 +500,21 @@ def _build_place_slug_lookup(place_rows: list[dict[str, Any]]) -> dict[str, str]
     return index
 
 
+def _build_place_slug_candidates_lookup(place_rows: list[dict[str, Any]]) -> dict[str, list[str]]:
+    index: dict[str, list[str]] = {}
+    for place in place_rows:
+        keys = [place["name"], *place.get("aliases", [])]
+        for key in keys:
+            normalized = _normalize_place_key(key)
+            if not normalized:
+                continue
+            index.setdefault(normalized, [])
+            slug = str(place["slug"])
+            if slug not in index[normalized]:
+                index[normalized].append(slug)
+    return index
+
+
 def _build_place_model_lookup(place_rows: list[dict[str, Any]]) -> dict[str, Place]:
     return {
         row["slug"]: Place.model_validate(row)
@@ -649,6 +665,57 @@ def _parse_place_facility_keywords(payload: Any) -> dict[str, list[str]]:
 def _load_place_facility_keywords() -> dict[str, list[str]]:
     payload = json.loads(PLACE_FACILITY_KEYWORDS_PATH.read_text(encoding="utf-8"))
     return _parse_place_facility_keywords(payload)
+
+
+def _parse_place_short_query_preferences(payload: Any) -> dict[str, dict[str, list[str]]]:
+    if not isinstance(payload, dict):
+        raise ValueError("place short query preferences must be a JSON object keyed by query")
+
+    preferences: dict[str, dict[str, list[str]]] = {}
+    allowed_contexts = {"place_search", "origin", "building"}
+    for raw_query, raw_contexts in payload.items():
+        if not isinstance(raw_query, str) or not raw_query.strip():
+            raise ValueError("place short query preference key must be a non-empty string")
+        if not isinstance(raw_contexts, dict):
+            raise ValueError("place short query preference entries must be objects")
+        unknown_contexts = set(raw_contexts) - allowed_contexts
+        if unknown_contexts:
+            raise ValueError(
+                "place short query preference entries only support "
+                "place_search, origin, and building contexts"
+            )
+        parsed_contexts: dict[str, list[str]] = {}
+        for context in allowed_contexts:
+            raw_slugs = raw_contexts.get(context, [])
+            if not isinstance(raw_slugs, list) or any(
+                not isinstance(item, str) for item in raw_slugs
+            ):
+                raise ValueError(
+                    f"place short query preference {raw_query}.{context} must be a list of strings"
+                )
+            parsed_contexts[context] = _unique_stripped(list(raw_slugs))
+        preferences[raw_query.strip()] = parsed_contexts
+    return preferences
+
+
+@lru_cache(maxsize=1)
+def _load_place_short_query_preferences() -> dict[str, dict[str, list[str]]]:
+    payload = json.loads(PLACE_SHORT_QUERY_PREFERENCES_PATH.read_text(encoding="utf-8"))
+    return _parse_place_short_query_preferences(payload)
+
+
+def _preferred_place_slugs_for_query(query: str, *, context: str) -> list[str]:
+    collapsed_query, compact_query = _normalized_query_variants(query)
+    if collapsed_query is None:
+        return []
+    for preferred_query, context_map in _load_place_short_query_preferences().items():
+        if _matches_exact_text_candidate(
+            preferred_query,
+            collapsed_query=collapsed_query,
+            compact_query=compact_query,
+        ):
+            return list(context_map.get(context, []))
+    return []
 
 
 def apply_place_alias_overrides(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -1635,6 +1702,7 @@ def _resolve_place_from_room(conn: sqlite3.Connection, room: str | None) -> Plac
     return _resolve_place_from_room_with_maps(
         room,
         place_lookup=_build_place_slug_lookup(place_rows),
+        place_candidates_lookup=_build_place_slug_candidates_lookup(place_rows),
         place_by_slug=_build_place_model_lookup(place_rows),
     )
 
@@ -1643,6 +1711,7 @@ def _resolve_place_from_room_with_maps(
     room: str | None,
     *,
     place_lookup: dict[str, str],
+    place_candidates_lookup: dict[str, list[str]],
     place_by_slug: dict[str, Place],
 ) -> Place | None:
     if not room:
@@ -1653,6 +1722,15 @@ def _resolve_place_from_room_with_maps(
         prefix = match.group(1).upper()
         candidates.extend([prefix, f"{prefix}관"])
     for candidate in candidates:
+        preferred_slugs = set(_preferred_place_slugs_for_query(candidate, context="building"))
+        if preferred_slugs:
+            preferred_candidates = [
+                slug
+                for slug in place_candidates_lookup.get(_normalize_place_key(candidate), [])
+                if slug in preferred_slugs
+            ]
+            if len(preferred_candidates) == 1:
+                return place_by_slug.get(preferred_candidates[0])
         slug = place_lookup.get(_normalize_place_key(candidate))
         if slug:
             return place_by_slug.get(slug)
@@ -1667,12 +1745,14 @@ def _resolve_places_from_rooms(
         return {}
     place_rows = repo.list_places(conn)
     place_lookup = _build_place_slug_lookup(place_rows)
+    place_candidates_lookup = _build_place_slug_candidates_lookup(place_rows)
     place_by_slug = _build_place_model_lookup(place_rows)
     resolved: dict[str, Place] = {}
     for room in sorted(rooms):
         place = _resolve_place_from_room_with_maps(
             room,
             place_lookup=place_lookup,
+            place_candidates_lookup=place_candidates_lookup,
             place_by_slug=place_by_slug,
         )
         if place is not None:
@@ -1915,7 +1995,8 @@ def search_places(
         return [Place.model_validate(item) for item in places[:limit]]
 
     facility_index = _build_place_search_facility_index(places)
-    ranked: list[tuple[int, int, dict[str, Any]]] = []
+    preferred_slugs = set(_preferred_place_slugs_for_query(query, context="place_search"))
+    ranked: list[tuple[int, int, int, dict[str, Any]]] = []
     for index, item in enumerate(places):
         rank = _rank_place_search_candidate(
             item,
@@ -1926,9 +2007,10 @@ def search_places(
         )
         if rank is None:
             continue
-        ranked.append((rank, index, item))
-    ranked.sort(key=lambda item: (item[0], item[1]))
-    return [Place.model_validate(item) for _, _, item in ranked[:limit]]
+        preference_rank = 0 if str(item.get("slug") or "").strip() in preferred_slugs else 1
+        ranked.append((rank, preference_rank, index, item))
+    ranked.sort(key=lambda item: (item[0], item[1], item[2]))
+    return [Place.model_validate(item) for _, _, _, item in ranked[:limit]]
 
 
 def search_courses(
@@ -3263,6 +3345,7 @@ def _resolve_place_reference(
     *,
     label: str,
     not_found_prefix: str,
+    context: str | None = None,
 ) -> dict[str, Any]:
     cleaned_identifier = _normalize_optional_text(identifier)
     if cleaned_identifier is None:
@@ -3275,6 +3358,16 @@ def _resolve_place_reference(
     collapsed_identifier, compact_identifier = _normalized_query_variants(cleaned_identifier)
     assert collapsed_identifier is not None
     places = repo.list_places(conn)
+
+    if context is not None:
+        preferred_slugs = _preferred_place_slugs_for_query(cleaned_identifier, context=context)
+        preferred_matches = [
+            item
+            for item in places
+            if str(item.get("slug") or "").strip() in preferred_slugs
+        ]
+        if len(preferred_matches) == 1:
+            return preferred_matches[0]
 
     name_matches = [
         item
@@ -3320,6 +3413,7 @@ def _resolve_origin_place(conn: sqlite3.Connection, origin: str) -> dict[str, An
         origin,
         label="origin",
         not_found_prefix="Origin place not found",
+        context="origin",
     )
 
 
@@ -3345,6 +3439,7 @@ def _resolve_building_place(conn: sqlite3.Connection, building: str) -> Place:
         building,
         label="building",
         not_found_prefix="Building not found",
+        context="building",
     )
     if row["category"] not in CLASSROOM_BUILDING_CATEGORIES:
         raise InvalidRequestError(

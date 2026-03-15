@@ -17,6 +17,7 @@ from songsim_campus.services import (
     NotFoundError,
     _load_place_alias_overrides,
     _load_place_facility_keywords,
+    _load_place_short_query_preferences,
     _load_restaurant_search_aliases,
     _parse_campus_walk_graph,
     find_nearby_restaurants,
@@ -147,6 +148,44 @@ def test_search_places_prioritizes_exact_short_match_over_partial_noise(app_env)
         places = search_places(conn, query="정문", limit=10)
 
     assert [place.slug for place in places] == ["main-gate", "startup-incubator"]
+
+
+def test_load_place_short_query_preferences_supports_context_specific_slugs(app_env):
+    preferences = _load_place_short_query_preferences()
+
+    assert preferences["K관"]["place_search"] == ["kim-sou-hwan-hall"]
+    assert preferences["K관"]["origin"] == ["kim-sou-hwan-hall"]
+    assert preferences["K관"]["building"] == ["kim-sou-hwan-hall"]
+    assert preferences["정문"]["place_search"] == ["main-gate"]
+    assert preferences["정문"]["origin"] == ["main-gate"]
+    assert preferences["정문"]["building"] == []
+
+
+def test_search_places_prefers_short_query_place_preference_for_k_hall(app_env):
+    init_db()
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                _place_row(
+                    slug="dormitory-stephen",
+                    name="스테파노기숙사",
+                    category="dormitory",
+                    aliases=["K관"],
+                    description="기숙사 생활시설 건물",
+                ),
+                _place_row(
+                    slug="kim-sou-hwan-hall",
+                    name="김수환관",
+                    category="building",
+                    aliases=["김수환", "K관"],
+                    description="강의실과 연구실이 있는 건물",
+                ),
+            ],
+        )
+        places = search_places(conn, query="K관", limit=10)
+
+    assert [place.slug for place in places[:2]] == ["kim-sou-hwan-hall", "dormitory-stephen"]
 
 
 @pytest.mark.parametrize(
@@ -797,6 +836,61 @@ def test_list_estimated_empty_classrooms_accepts_colloquial_building_alias(app_e
     assert payload.items[0].room == "N201"
 
 
+def test_list_estimated_empty_classrooms_prefers_short_query_building_preference_for_k_hall(
+    app_env,
+):
+    init_db()
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                _place_row(
+                    slug="dormitory-stephen",
+                    name="스테파노기숙사",
+                    category="dormitory",
+                    aliases=["K관"],
+                    description="기숙사 생활시설 건물",
+                ),
+                _place_row(
+                    slug="kim-sou-hwan-hall",
+                    name="김수환관",
+                    category="building",
+                    aliases=["김수환", "K관"],
+                    description="강의실과 연구실이 있는 건물",
+                ),
+            ],
+        )
+        repo.replace_courses(
+            conn,
+            [
+                {
+                    "year": 2026,
+                    "semester": 1,
+                    "code": "CSE420",
+                    "title": "알고리즘",
+                    "professor": "홍길동",
+                    "department": "컴퓨터정보공학부",
+                    "section": "01",
+                    "day_of_week": "월",
+                    "period_start": 5,
+                    "period_end": 6,
+                    "room": "K201",
+                    "raw_schedule": "월5~6(K201)",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                }
+            ],
+        )
+        payload = list_estimated_empty_classrooms(
+            conn,
+            building="K관",
+            at=datetime.fromisoformat("2026-03-16T10:15:00+09:00"),
+        )
+
+    assert payload.building.slug == "kim-sou-hwan-hall"
+    assert [item.room for item in payload.items] == ["K201"]
+
+
 def test_list_estimated_empty_classrooms_bounds_place_lookups_by_unique_room_set(
     app_env,
     monkeypatch,
@@ -1284,6 +1378,50 @@ def test_find_nearby_restaurants_raises_for_ambiguous_origin_alias(app_env):
 
         with pytest.raises(InvalidRequestError, match="Ambiguous origin"):
             find_nearby_restaurants(conn, origin="중도", walk_minutes=15)
+
+
+def test_find_nearby_restaurants_prefers_short_query_origin_preference_for_k_hall(app_env):
+    init_db()
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                _place_row(
+                    slug="dormitory-stephen",
+                    name="스테파노기숙사",
+                    category="dormitory",
+                    aliases=["K관"],
+                    description="기숙사 생활시설 건물",
+                    latitude=37.4851,
+                    longitude=126.8032,
+                ),
+                _place_row(
+                    slug="kim-sou-hwan-hall",
+                    name="김수환관",
+                    category="building",
+                    aliases=["김수환", "K관"],
+                    description="강의실과 연구실이 있는 건물",
+                    latitude=37.4863,
+                    longitude=126.8012,
+                ),
+            ],
+        )
+        replace_restaurants(
+            conn,
+            [
+                _restaurant_row(
+                    slug="k-hall-cafe",
+                    name="K관카페",
+                    category="cafe",
+                    latitude=37.48631,
+                    longitude=126.80121,
+                )
+            ],
+        )
+
+        items = find_nearby_restaurants(conn, origin="K관", walk_minutes=5, limit=3)
+
+    assert [item.slug for item in items] == ["k-hall-cafe"]
 
 
 def test_find_nearby_restaurants_raises_when_origin_has_no_coordinates(app_env):

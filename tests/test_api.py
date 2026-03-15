@@ -740,6 +740,70 @@ def test_classrooms_empty_endpoint_accepts_kim_sou_hwan_hall_as_building(client)
     assert all(item["room"].startswith("K") for item in payload["items"])
 
 
+def test_classrooms_empty_endpoint_prefers_short_query_building_preference_for_k_hall(client):
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                {
+                    "slug": "dormitory-stephen",
+                    "name": "스테파노기숙사",
+                    "category": "dormitory",
+                    "aliases": ["K관"],
+                    "description": "기숙사 생활시설 건물",
+                    "latitude": 37.48516,
+                    "longitude": 126.80323,
+                    "opening_hours": {},
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "slug": "kim-sou-hwan-hall",
+                    "name": "김수환관",
+                    "category": "building",
+                    "aliases": ["김수환", "K관"],
+                    "description": "강의실과 연구실이 있는 건물",
+                    "latitude": 37.48630,
+                    "longitude": 126.80120,
+                    "opening_hours": {},
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+        replace_courses(
+            conn,
+            [
+                {
+                    "year": 2026,
+                    "semester": 1,
+                    "code": "CSE420",
+                    "title": "알고리즘",
+                    "professor": "홍길동",
+                    "department": "컴퓨터정보공학부",
+                    "section": "01",
+                    "day_of_week": "월",
+                    "period_start": 5,
+                    "period_end": 6,
+                    "room": "K201",
+                    "raw_schedule": "월5~6(K201)",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                }
+            ],
+        )
+
+    response = client.get(
+        "/classrooms/empty",
+        params={"building": "K관", "at": "2026-03-16T10:15:00+09:00"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["building"]["slug"] == "kim-sou-hwan-hall"
+    assert [item["room"] for item in payload["items"]] == ["K201"]
+
+
 def test_classrooms_empty_endpoint_returns_fast_empty_note_for_student_future_hall(client):
     with connection() as conn:
         replace_places(
@@ -1013,6 +1077,65 @@ def test_nearby_restaurants_uses_origin(client):
     assert all(item['estimated_walk_minutes'] <= 15 for item in items)
 
 
+def test_nearby_restaurants_endpoint_prefers_short_query_origin_preference_for_k_hall(client):
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                {
+                    "slug": "dormitory-stephen",
+                    "name": "스테파노기숙사",
+                    "category": "dormitory",
+                    "aliases": ["K관"],
+                    "description": "기숙사 생활시설 건물",
+                    "latitude": 37.48516,
+                    "longitude": 126.80323,
+                    "opening_hours": {},
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "slug": "kim-sou-hwan-hall",
+                    "name": "김수환관",
+                    "category": "building",
+                    "aliases": ["김수환", "K관"],
+                    "description": "강의실과 연구실이 있는 건물",
+                    "latitude": 37.48630,
+                    "longitude": 126.80120,
+                    "opening_hours": {},
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+        replace_restaurants(
+            conn,
+            [
+                {
+                    "slug": "k-hall-cafe",
+                    "name": "K관카페",
+                    "category": "cafe",
+                    "min_price": 5000,
+                    "max_price": 6000,
+                    "latitude": 37.48631,
+                    "longitude": 126.80121,
+                    "tags": ["카페"],
+                    "description": "김수환관 앞",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                }
+            ],
+        )
+
+    response = client.get(
+        "/restaurants/nearby",
+        params={"origin": "K관", "walk_minutes": 5, "limit": 3},
+    )
+
+    assert response.status_code == 200
+    assert [item["slug"] for item in response.json()] == ["k-hall-cafe"]
+
+
 def test_places_endpoint_prioritizes_exact_short_match_over_partial_noise(client):
     with connection() as conn:
         from songsim_campus.repo import replace_places
@@ -1051,6 +1174,47 @@ def test_places_endpoint_prioritizes_exact_short_match_over_partial_noise(client
 
     assert response.status_code == 200
     assert [item["slug"] for item in response.json()] == ["main-gate", "startup-incubator"]
+
+
+def test_places_endpoint_prefers_short_query_place_preference_for_k_hall(client):
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                {
+                    "slug": "dormitory-stephen",
+                    "name": "스테파노기숙사",
+                    "category": "dormitory",
+                    "aliases": ["K관"],
+                    "description": "기숙사 생활시설 건물",
+                    "latitude": 37.48516,
+                    "longitude": 126.80323,
+                    "opening_hours": {},
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "slug": "kim-sou-hwan-hall",
+                    "name": "김수환관",
+                    "category": "building",
+                    "aliases": ["김수환", "K관"],
+                    "description": "강의실과 연구실이 있는 건물",
+                    "latitude": 37.48630,
+                    "longitude": 126.80120,
+                    "opening_hours": {},
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+
+    response = client.get("/places", params={"query": "K관", "limit": 10})
+
+    assert response.status_code == 200
+    assert [item["slug"] for item in response.json()[:2]] == [
+        "kim-sou-hwan-hall",
+        "dormitory-stephen",
+    ]
 
 
 def test_places_endpoint_normalizes_spacing_variants(client):

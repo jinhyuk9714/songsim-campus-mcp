@@ -248,8 +248,8 @@ def _public_usage_guide() -> str:
             ),
             (
                 "3. Use tool_search_places for fuzzy building/facility queries such as "
-                "트러스트짐, 헬스장, 편의점, ATM, or 복사실, then tool_get_place when "
-                "you know the slug."
+                "트러스트짐, 헬스장, 편의점, ATM, 복사실, K관, or 정문, then "
+                "tool_get_place when you know the slug."
             ),
             (
                 "4. Use tool_list_estimated_empty_classrooms for classroom availability "
@@ -277,6 +277,8 @@ def _public_usage_guide() -> str:
             "",
             "Example questions:",
             "- 성심교정 중앙도서관 위치 알려줘",
+            "- K관 어디야?",
+            "- 정문 위치 알려줘",
             "- 트러스트짐 어디야?",
             "- 헬스장 어디야?",
             "- 편의점 어디 있어?",
@@ -387,7 +389,7 @@ def build_mcp():
                 Field(
                     description=(
                         "건물명, 별칭, 시설명, 교내 입점명. "
-                        "예: 중앙도서관, 중도, 학생회관, 트러스트짐, 헬스장, 편의점"
+                        "예: 중앙도서관, 중도, K관, 정문, 학생회관, 트러스트짐, 헬스장, 편의점"
                     )
                 ),
             ]
@@ -395,6 +397,8 @@ def build_mcp():
             return (
                 "Use songsim://usage-guide first if you need the public MCP rules.\n"
                 f"Then call tool_search_places with query={query}.\n"
+                "Short campus queries like K관 or 정문 are okay; the canonical campus "
+                "place should be ranked first.\n"
                 "If the result narrows to one clear candidate, call tool_get_place with the "
                 "slug from tool_search_places.\n"
                 "Use songsim://place-categories if you need to explain category labels."
@@ -450,7 +454,7 @@ def build_mcp():
                 Field(
                     description=(
                         "출발 장소 대표 이름 또는 alias. "
-                        "예: 중앙도서관, 중도, 학생식당"
+                        "예: 중앙도서관, 중도, 학생식당, K관, 정문"
                     )
                 ),
             ],
@@ -589,7 +593,7 @@ def build_mcp():
             Field(
                 description=(
                     "찾고 싶은 건물명, 별칭, 시설명, 교내 입점명, 생활 시설명. "
-                    "예: 중앙도서관, 중도, 정문, 트러스트짐, 헬스장, 편의점, ATM"
+                    "예: 중앙도서관, 중도, K관, 정문, 트러스트짐, 헬스장, 편의점, ATM"
                 )
             ),
         ] = "",
@@ -698,7 +702,7 @@ def build_mcp():
             Field(
                 description=(
                     "강의실을 확인할 건물 대표 이름 또는 alias. "
-                    "예: 니콜스관, 니콜스, N관, 김수환관"
+                    "예: 니콜스관, 니콜스, N관, K관, 김수환관"
                 )
             ),
         ],

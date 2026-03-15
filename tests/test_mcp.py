@@ -516,6 +516,8 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
     assert "트러스트짐" in place_query_description
     assert "헬스장" in place_query_description
     assert "편의점" in place_query_description
+    assert "K관" in place_query_description
+    assert "정문" in place_query_description
     assert "브랜드 상호" in (
         tools["tool_search_restaurants"]["inputSchema"]["properties"]["query"]["description"]
     )
@@ -539,6 +541,24 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
 def test_mcp_public_prompts_explain_tool_selection_flow(app_env, monkeypatch):
     pytest.importorskip('mcp.server.fastmcp')
     monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        prompt = await mcp.get_prompt(
+            "prompt_find_place",
+            {"query": "K관"},
+        )
+        return prompt
+
+    prompt = asyncio.run(main())
+    message = prompt.messages[0].content.text
+
+    assert "tool_search_places" in message
+    assert "query=K관" in message
+    assert "tool_get_place" in message
+    assert "songsim://place-categories" in message
+
     clear_settings_cache()
 
 
@@ -757,6 +777,60 @@ def test_mcp_public_search_places_supports_generic_facility_nouns(app_env, monke
     assert [item["slug"] for item in gym_payloads] == ["student-center"]
     assert [item["slug"] for item in store_payloads[:2]] == [
         "student-center",
+        "dormitory-stephen",
+    ]
+
+    clear_settings_cache()
+
+
+def test_mcp_public_search_places_prefers_short_query_place_preference_for_k_hall(
+    app_env,
+    monkeypatch,
+):
+    pytest.importorskip('mcp.server.fastmcp')
+    init_db()
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                {
+                    "slug": "dormitory-stephen",
+                    "name": "스테파노기숙사",
+                    "category": "dormitory",
+                    "aliases": ["K관"],
+                    "description": "기숙사 생활시설 건물",
+                    "latitude": 37.48516,
+                    "longitude": 126.80323,
+                    "opening_hours": {},
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "slug": "kim-sou-hwan-hall",
+                    "name": "김수환관",
+                    "category": "building",
+                    "aliases": ["김수환", "K관"],
+                    "description": "강의실과 연구실이 있는 건물",
+                    "latitude": 37.48630,
+                    "longitude": 126.80120,
+                    "opening_hours": {},
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        result = await mcp.call_tool("tool_search_places", {"query": "K관", "limit": 10})
+        return _tool_payloads(result)
+
+    payloads = asyncio.run(main())
+
+    assert [item["slug"] for item in payloads[:2]] == [
+        "kim-sou-hwan-hall",
         "dormitory-stephen",
     ]
 
@@ -1090,6 +1164,78 @@ def test_mcp_public_nearby_restaurants_accept_facility_alias_origin(app_env, mon
 
     assert alias_payload["name"] == slug_payload["name"]
     assert alias_payload["category_display"] == slug_payload["category_display"]
+
+    clear_settings_cache()
+
+
+def test_mcp_public_nearby_restaurants_prefers_short_query_origin_preference_for_k_hall(
+    app_env,
+    monkeypatch,
+):
+    pytest.importorskip('mcp.server.fastmcp')
+    init_db()
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                {
+                    "slug": "dormitory-stephen",
+                    "name": "스테파노기숙사",
+                    "category": "dormitory",
+                    "aliases": ["K관"],
+                    "description": "기숙사 생활시설 건물",
+                    "latitude": 37.48516,
+                    "longitude": 126.80323,
+                    "opening_hours": {},
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "slug": "kim-sou-hwan-hall",
+                    "name": "김수환관",
+                    "category": "building",
+                    "aliases": ["김수환", "K관"],
+                    "description": "강의실과 연구실이 있는 건물",
+                    "latitude": 37.48630,
+                    "longitude": 126.80120,
+                    "opening_hours": {},
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+        replace_restaurants(
+            conn,
+            [
+                {
+                    "slug": "k-hall-cafe",
+                    "name": "K관카페",
+                    "category": "cafe",
+                    "min_price": 5000,
+                    "max_price": 6000,
+                    "latitude": 37.48631,
+                    "longitude": 126.80121,
+                    "tags": ["카페"],
+                    "description": "김수환관 앞",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                }
+            ],
+        )
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        result = await mcp.call_tool(
+            "tool_find_nearby_restaurants",
+            {"origin": "K관", "walk_minutes": 5, "limit": 3},
+        )
+        return _tool_payloads(result)
+
+    payloads = asyncio.run(main())
+
+    assert [item["name"] for item in payloads] == ["K관카페"]
 
     clear_settings_cache()
 
