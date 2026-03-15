@@ -16,6 +16,7 @@ from songsim_campus.services import (
     InvalidRequestError,
     NotFoundError,
     _load_place_alias_overrides,
+    _load_restaurant_search_aliases,
     _parse_campus_walk_graph,
     find_nearby_restaurants,
     get_class_periods,
@@ -32,6 +33,7 @@ from songsim_campus.services import (
     refresh_transport_guides_from_location_page,
     search_courses,
     search_places,
+    search_restaurants,
     sync_official_snapshot,
 )
 
@@ -151,9 +153,114 @@ def test_load_place_alias_overrides_contract():
     overrides = _load_place_alias_overrides()
 
     assert overrides["central-library"]["aliases"] == ["중도"]
-    assert overrides["sophie-barat-hall"]["aliases"] == ["학생식당"]
+    assert "학생식당" in overrides["sophie-barat-hall"]["aliases"]
+    assert "트러스트짐" in overrides["sophie-barat-hall"]["aliases"]
+    assert "카페 보나" in overrides["sophie-barat-hall"]["aliases"]
+    assert "부온 프란조" in overrides["sophie-barat-hall"]["aliases"]
+    assert "학생센터" in overrides["student-center"]["aliases"]
     assert overrides["nicholls-hall"]["aliases"] == ["니콜스"]
     assert overrides["kim-sou-hwan-hall"]["category"] == "building"
+
+
+def test_load_restaurant_search_aliases_contract():
+    aliases = _load_restaurant_search_aliases()
+
+    assert aliases["매머드익스프레스"] == ["매머드커피", "매머드 커피", "매머드"]
+    assert "메가커피" in aliases["메가MGC커피"]
+    assert "이디야" in aliases["이디야커피"]
+
+
+def test_search_places_matches_facility_tenant_alias_from_override_taxonomy(app_env):
+    init_db()
+    seed_demo(force=True)
+    with connection() as conn:
+        places = search_places(conn, query="트러스트짐", limit=3)
+
+    assert places
+    assert places[0].slug == "student-center"
+    assert places[0].name == "학생회관"
+
+
+def test_search_places_matches_building_synonym_from_override_taxonomy(app_env):
+    init_db()
+    seed_demo(force=True)
+    with connection() as conn:
+        places = search_places(conn, query="학생센터", limit=3)
+
+    assert places
+    assert places[0].slug == "student-center"
+    assert places[0].name == "학생회관"
+
+
+def test_search_restaurants_matches_brand_alias_with_spacing_normalization(app_env):
+    init_db()
+    with connection() as conn:
+        replace_restaurants(
+            conn,
+            [
+                _restaurant_row(
+                    slug="mammoth",
+                    name="매머드익스프레스 부천가톨릭대학교점",
+                    category="cafe",
+                    latitude=37.48556,
+                    longitude=126.80379,
+                ),
+                _restaurant_row(
+                    slug="mega",
+                    name="메가MGC커피 부천가톨릭대점",
+                    category="cafe",
+                    latitude=37.48637,
+                    longitude=126.80495,
+                ),
+                _restaurant_row(
+                    slug="ediya",
+                    name="이디야커피 가톨릭대점",
+                    category="cafe",
+                    latitude=37.48611,
+                    longitude=126.80503,
+                ),
+            ],
+        )
+        items = search_restaurants(conn, query="매머드 커피", limit=3)
+
+    assert [item.slug for item in items] == ["mammoth"]
+    assert items[0].name == "매머드익스프레스 부천가톨릭대학교점"
+
+
+def test_search_restaurants_matches_brand_alias_against_snapshot_name_variants(app_env):
+    init_db()
+    with connection() as conn:
+        replace_restaurants(
+            conn,
+            [
+                _restaurant_row(
+                    slug="mammoth",
+                    name="매머드익스프레스 부천가톨릭대학교점",
+                    category="cafe",
+                    latitude=37.48556,
+                    longitude=126.80379,
+                ),
+                _restaurant_row(
+                    slug="mega",
+                    name="메가MGC커피 부천가톨릭대점",
+                    category="cafe",
+                    latitude=37.48637,
+                    longitude=126.80495,
+                ),
+                _restaurant_row(
+                    slug="ediya",
+                    name="이디야커피 가톨릭대점",
+                    category="cafe",
+                    latitude=37.48611,
+                    longitude=126.80503,
+                ),
+            ],
+        )
+        mega_items = search_restaurants(conn, query="메가커피", limit=3)
+        ediya_items = search_restaurants(conn, query="이디야", limit=3)
+
+    assert [item.slug for item in mega_items] == ["mega"]
+    assert [item.slug for item in ediya_items] == ["ediya"]
 
 
 def test_find_nearby_restaurants_sorted(app_env):

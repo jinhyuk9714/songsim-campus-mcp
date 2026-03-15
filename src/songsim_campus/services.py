@@ -56,6 +56,7 @@ from .schemas import (
     ProfileNoticePreferences,
     ProfileUpdateRequest,
     Restaurant,
+    RestaurantSearchResult,
     SyncObservability,
     SyncRun,
     TransportGuide,
@@ -73,6 +74,7 @@ DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 CAMPUS_WALK_GRAPH_PATH = DATA_DIR / "campus_walk_graph.json"
 PERSONALIZATION_RULES_PATH = DATA_DIR / "personalization_rules.json"
 PLACE_ALIAS_OVERRIDES_PATH = DATA_DIR / "place_alias_overrides.json"
+RESTAURANT_SEARCH_ALIASES_PATH = DATA_DIR / "restaurant_search_aliases.json"
 SYNC_DATASET_TABLES = ("places", "courses", "notices", "transport_guides")
 ADMIN_SYNC_TARGETS = {
     "snapshot",
@@ -589,6 +591,28 @@ def _load_place_alias_overrides() -> dict[str, dict[str, Any]]:
     return _parse_place_alias_overrides(payload)
 
 
+def _parse_restaurant_search_aliases(payload: Any) -> dict[str, list[str]]:
+    if not isinstance(payload, dict):
+        raise ValueError("restaurant search aliases must be a JSON object keyed by brand token")
+
+    aliases: dict[str, list[str]] = {}
+    for raw_brand, raw_aliases in payload.items():
+        if not isinstance(raw_brand, str) or not raw_brand.strip():
+            raise ValueError("restaurant search alias key must be a non-empty string")
+        if not isinstance(raw_aliases, list) or any(
+            not isinstance(item, str) for item in raw_aliases
+        ):
+            raise ValueError("restaurant search alias entries must be a list of strings")
+        aliases[raw_brand.strip()] = _unique_stripped(list(raw_aliases))
+    return aliases
+
+
+@lru_cache(maxsize=1)
+def _load_restaurant_search_aliases() -> dict[str, list[str]]:
+    payload = json.loads(RESTAURANT_SEARCH_ALIASES_PATH.read_text(encoding="utf-8"))
+    return _parse_restaurant_search_aliases(payload)
+
+
 def apply_place_alias_overrides(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     overrides = _load_place_alias_overrides()
     merged_rows: list[dict[str, Any]] = []
@@ -763,6 +787,76 @@ def _rank_place_search_candidate(
         compact_query=compact_query,
     ):
         return 5
+    return None
+
+
+def _restaurant_brand_aliases_for_row(item: dict[str, Any]) -> list[str]:
+    normalized_targets = {
+        _normalize_facility_name(str(item.get("name") or "")),
+        *[
+            _normalize_facility_name(str(tag))
+            for tag in item.get("tags", [])
+        ],
+    }
+    aliases: list[str] = []
+    for canonical_brand, brand_aliases in _load_restaurant_search_aliases().items():
+        normalized_brand = _normalize_facility_name(canonical_brand)
+        if normalized_brand and any(
+            normalized_brand in target for target in normalized_targets if target
+        ):
+            aliases.extend(brand_aliases)
+    return _unique_stripped(aliases)
+
+
+def _rank_restaurant_search_candidate(
+    item: dict[str, Any],
+    *,
+    collapsed_query: str,
+    compact_query: str | None,
+) -> int | None:
+    name = str(item.get("name") or "")
+    aliases = _restaurant_brand_aliases_for_row(item)
+    tags = [str(tag) for tag in item.get("tags", [])]
+
+    if any(
+        _matches_exact_text_candidate(
+            alias,
+            collapsed_query=collapsed_query,
+            compact_query=compact_query,
+        )
+        for alias in aliases
+    ):
+        return 0
+    if _matches_exact_text_candidate(
+        name,
+        collapsed_query=collapsed_query,
+        compact_query=compact_query,
+    ):
+        return 1
+    if any(
+        _matches_partial_text_candidate(
+            alias,
+            collapsed_query=collapsed_query,
+            compact_query=compact_query,
+        )
+        for alias in aliases
+    ):
+        return 2
+    if _matches_partial_text_candidate(
+        name,
+        collapsed_query=collapsed_query,
+        compact_query=compact_query,
+    ):
+        return 3
+    if any(
+        _matches_partial_text_candidate(
+            tag,
+            collapsed_query=collapsed_query,
+            compact_query=compact_query,
+        )
+        for tag in tags
+    ):
+        return 4
     return None
 
 
@@ -1567,6 +1661,92 @@ def search_courses(
         if len(items) == limit:
             break
     return [Course.model_validate(item) for item in items]
+
+
+def search_restaurants(
+    conn: sqlite3.Connection,
+    query: str = "",
+    *,
+    origin: str | None = None,
+    category: str | None = None,
+    limit: int = 10,
+) -> list[RestaurantSearchResult]:
+    restaurants = repo.list_restaurants(conn)
+    if category is not None:
+        restaurants = [item for item in restaurants if item["category"] == category]
+
+    origin_place: dict[str, Any] | None = None
+    if origin is not None:
+        origin_place = _resolve_origin_place(conn, origin)
+        if origin_place.get("latitude") is None or origin_place.get("longitude") is None:
+            raise NotFoundError(f"Origin place has no coordinates: {origin}")
+
+    collapsed_query, compact_query = _normalized_query_variants(query)
+    ranked: list[
+        tuple[
+            int,
+            int,
+            int,
+            str,
+            dict[str, Any],
+            int | None,
+            int | None,
+        ]
+    ] = []
+    for item in restaurants:
+        if collapsed_query is None:
+            rank = 0
+        else:
+            rank = _rank_restaurant_search_candidate(
+                item,
+                collapsed_query=collapsed_query,
+                compact_query=compact_query,
+            )
+            if rank is None:
+                continue
+
+        distance_meters: int | None = None
+        estimated_walk_minutes: int | None = None
+        if (
+            origin_place is not None
+            and item.get("latitude") is not None
+            and item.get("longitude") is not None
+        ):
+            distance_meters = _haversine_meters(
+                origin_place["latitude"],
+                origin_place["longitude"],
+                item["latitude"],
+                item["longitude"],
+            )
+            estimated_walk_minutes = _estimate_place_to_restaurant_walk_minutes(
+                conn,
+                origin_place=origin_place,
+                restaurant_row=item,
+            )
+
+        ranked.append(
+            (
+                rank,
+                estimated_walk_minutes if estimated_walk_minutes is not None else 999,
+                distance_meters if distance_meters is not None else 999999,
+                str(item.get("name") or ""),
+                item,
+                distance_meters,
+                estimated_walk_minutes,
+            )
+        )
+
+    ranked.sort(key=lambda item: (item[0], item[1], item[2], item[3]))
+    return [
+        RestaurantSearchResult.model_validate(
+            {
+                **item,
+                "distance_meters": distance_meters,
+                "estimated_walk_minutes": estimated_walk_minutes,
+            }
+        )
+        for _, _, _, _, item, distance_meters, estimated_walk_minutes in ranked[:limit]
+    ]
 
 
 def _collect_course_snapshot_rows(

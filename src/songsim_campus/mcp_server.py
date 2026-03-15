@@ -25,6 +25,7 @@ from .schemas import (
     McpNearbyRestaurantResult,
     McpNoticeResult,
     McpPlaceResult,
+    McpRestaurantSearchResult,
     McpToolError,
     NearbyRestaurant,
     Notice,
@@ -53,6 +54,7 @@ from .services import (
     list_transport_guides,
     search_courses,
     search_places,
+    search_restaurants,
     set_profile_interests,
     set_profile_notice_preferences,
     set_profile_timetable,
@@ -191,6 +193,25 @@ def _serialize_public_nearby_restaurant(restaurant: NearbyRestaurant) -> dict[st
     return payload
 
 
+def _serialize_public_restaurant_search(restaurant) -> dict[str, object]:
+    payload = McpRestaurantSearchResult(
+        name=restaurant.name,
+        category_display=RESTAURANT_CATEGORY_DISPLAY.get(restaurant.category, "식당"),
+        distance_meters=restaurant.distance_meters,
+        estimated_walk_minutes=restaurant.estimated_walk_minutes,
+        price_hint=_restaurant_price_hint(restaurant),
+        location_hint=(
+            _truncate_preview(restaurant.description, limit=80)
+            if restaurant.description
+            else None
+        ),
+    ).model_dump(exclude_none=True)
+    payload["distance_meters"] = restaurant.distance_meters
+    payload["estimated_walk_minutes"] = restaurant.estimated_walk_minutes
+    payload["price_hint"] = _restaurant_price_hint(restaurant)
+    return payload
+
+
 def _serialize_public_course(course: Course) -> dict[str, object]:
     payload = course.model_dump()
     summary_parts = [course.title]
@@ -241,12 +262,18 @@ def _public_usage_guide() -> str:
                 "or a clear alias like 중도 or 학생식당. If you set budget_max, only "
                 "restaurants with explicit price evidence remain."
             ),
-            "6. Use tool_list_latest_notices for latest notices; category is optional.",
+            (
+                "6. Use tool_search_restaurants for direct brand-name searches such as "
+                "매머드커피, 메가커피, or 이디야."
+            ),
+            "7. Use tool_list_latest_notices for latest notices; category is optional.",
             "",
             "Example questions:",
             "- 성심교정 중앙도서관 위치 알려줘",
+            "- 트러스트짐 어디야?",
             "- 최신 장학 공지 3개 보여줘",
             "- 니콜스관인데 지금 예상 빈 강의실 있어?",
+            "- 매머드커피 어디 있어?",
             "- 중앙도서관 근처 밥집 추천해줘",
             "- 중도 근처 밥집 추천해줘",
         ]
@@ -348,7 +375,12 @@ def build_mcp():
         def prompt_find_place(
             query: Annotated[
                 str,
-                Field(description="건물명, 별칭, 시설명. 예: 중앙도서관, 중도, 학생회관"),
+                Field(
+                    description=(
+                        "건물명, 별칭, 시설명, 교내 입점명. "
+                        "예: 중앙도서관, 중도, 학생회관, 트러스트짐"
+                    )
+                ),
             ]
         ):
             return (
@@ -431,6 +463,40 @@ def build_mcp():
             )
 
         @mcp.prompt(
+            name="prompt_search_restaurants",
+            description="Explain how to search restaurant or cafe brands directly by name.",
+        )
+        def prompt_search_restaurants(
+            query: Annotated[
+                str,
+                Field(
+                    description=(
+                        "브랜드 또는 상호 직접 검색어. "
+                        "예: 매머드커피, 메가커피, 이디야"
+                    )
+                ),
+            ],
+            origin: Annotated[
+                str | None,
+                Field(description="optional campus origin for distance sorting"),
+            ] = None,
+            category: Annotated[
+                str | None,
+                Field(description="optional category like cafe or korean"),
+            ] = None,
+            limit: Annotated[int, Field(description="최대 결과 수")] = 10,
+        ):
+            return (
+                "Use songsim://usage-guide first if you need the public MCP rules.\n"
+                f"Then call tool_search_restaurants with query={query}, "
+                f"origin={origin or '<optional>'}, category={category or '<optional>'}, "
+                f"limit={limit}.\n"
+                "Use this for direct brand searches like 매머드커피, 메가커피, or 이디야.\n"
+                "For recommendation-style questions from a campus origin, use the nearby "
+                "restaurant flow instead."
+            )
+
+        @mcp.prompt(
             name="prompt_find_empty_classrooms",
             description=(
                 "Explain how to find current empty classrooms in a building "
@@ -484,7 +550,8 @@ def build_mcp():
     @mcp.tool(
         description=(
             (
-                "사용자가 성심교정 건물명, 별칭, 시설명으로 장소를 찾을 때 사용합니다. "
+                "사용자가 성심교정 건물명, 별칭, 시설명, "
+                "교내 입점명으로 장소를 찾을 때 사용합니다. "
                 "질문이 모호하면 먼저 이 tool을 쓰고, 단일 slug가 정해지면 "
                 "tool_get_place로 넘어갑니다."
             )
@@ -496,7 +563,12 @@ def build_mcp():
     def tool_search_places(
         query: Annotated[
             str,
-            Field(description="찾고 싶은 건물명, 별칭, 시설명. 예: 중앙도서관, 중도, 정문"),
+            Field(
+                description=(
+                    "찾고 싶은 건물명, 별칭, 시설명, 교내 입점명. "
+                    "예: 중앙도서관, 중도, 정문, 트러스트짐"
+                )
+            ),
         ] = "",
         category: Annotated[
             str | None,
@@ -723,6 +795,61 @@ def build_mcp():
                 exc = InvalidRequestError(
                     "Invalid 'at' timestamp. Use ISO 8601, for example 2026-03-15T11:00:00+09:00."
                 )
+                if public_readonly:
+                    return _serialize_public_error(exc)
+                return {"error": str(exc)}
+
+    @mcp.tool(
+        description=(
+            (
+                "브랜드나 상호를 직접 검색할 때 사용합니다. "
+                "매머드커피, 메가커피, 이디야처럼 nearby 추천이 아니라 "
+                "이름으로 특정 매장을 찾고 싶을 때 적합합니다."
+            )
+            if public_readonly
+            else (
+                "브랜드 또는 상호를 직접 검색해 특정 카페/식당 후보를 찾습니다."
+            )
+        ),
+        meta=tool_meta,
+    )
+    def tool_search_restaurants(
+        query: Annotated[
+            str,
+            Field(
+                description=(
+                    "브랜드 상호 또는 직접 검색어. "
+                    "예: 매머드커피, 메가커피, 이디야"
+                )
+            ),
+        ] = "",
+        origin: Annotated[
+            str | None,
+            Field(description="거리 정렬 보조용 출발 장소. 예: 중앙도서관, 중도"),
+        ] = None,
+        category: Annotated[
+            str | None,
+            Field(description="식당 카테고리 필터. 예: cafe, korean"),
+        ] = None,
+        limit: Annotated[int, Field(description="최대 결과 수. 기본값은 10입니다.")] = 10,
+    ):
+        with connection() as conn:
+            try:
+                restaurants = search_restaurants(
+                    conn,
+                    query=query,
+                    origin=origin,
+                    category=category,
+                    limit=limit,
+                )
+                if public_readonly:
+                    return [_serialize_public_restaurant_search(item) for item in restaurants]
+                return [item.model_dump() for item in restaurants]
+            except NotFoundError as exc:
+                if public_readonly:
+                    return _serialize_public_error(exc)
+                return {"error": str(exc)}
+            except InvalidRequestError as exc:
                 if public_readonly:
                     return _serialize_public_error(exc)
                 return {"error": str(exc)}

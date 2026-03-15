@@ -59,6 +59,11 @@ class NearbyRestaurant(Restaurant):
     open_now: bool | None = None
 
 
+class RestaurantSearchResult(Restaurant):
+    distance_meters: int | None = None
+    estimated_walk_minutes: int | None = None
+
+
 class Notice(BaseModel):
     id: int
     title: str
@@ -122,6 +127,15 @@ class McpNearbyRestaurantResult(BaseModel):
     location_hint: str | None = None
 
 
+class McpRestaurantSearchResult(BaseModel):
+    name: str
+    category_display: str
+    distance_meters: int | None = None
+    estimated_walk_minutes: int | None = None
+    price_hint: str | None = None
+    location_hint: str | None = None
+
+
 class GptPlaceResult(BaseModel):
     name: str
     canonical_name: str
@@ -147,6 +161,15 @@ class GptNearbyRestaurantResult(BaseModel):
     estimated_walk_minutes: int | None = None
     price_hint: str | None = None
     open_now: bool | None = None
+    location_hint: str | None = None
+
+
+class GptRestaurantSearchResult(BaseModel):
+    name: str
+    category_display: str
+    distance_meters: int | None = None
+    estimated_walk_minutes: int | None = None
+    price_hint: str | None = None
     location_hint: str | None = None
 
 

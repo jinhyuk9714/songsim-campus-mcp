@@ -20,6 +20,7 @@ from .schemas import (
     GptNearbyRestaurantResult,
     GptNoticeResult,
     GptPlaceResult,
+    GptRestaurantSearchResult,
     MatchedCourse,
     MatchedNotice,
     McpCoordinates,
@@ -35,6 +36,7 @@ from .schemas import (
     ProfileNoticePreferences,
     ProfileUpdateRequest,
     Restaurant,
+    RestaurantSearchResult,
     TransportGuide,
 )
 from .seed import seed_demo
@@ -62,6 +64,7 @@ from .services import (
     run_automation_tick,
     search_courses,
     search_places,
+    search_restaurants,
     set_automation_leader,
     set_profile_interests,
     set_profile_notice_preferences,
@@ -102,6 +105,14 @@ GPT_ACTION_PATHS: dict[str, dict[str, str]] = {
             "Find walkable restaurants near a Songsim campus building or landmark."
         ),
     },
+    "/restaurants/search": {
+        "operationId": "searchRestaurants",
+        "summary": "Search restaurant brands or venue names",
+        "description": (
+            "Search nearby restaurant or cafe brands directly by venue name. "
+            "Use this for questions like 매머드커피 어디 있어 or 이디야 있나."
+        ),
+    },
     "/transport": {
         "operationId": "listTransportGuides",
         "summary": "List transit guides",
@@ -134,6 +145,15 @@ GPT_ACTION_V2_PATHS: dict[str, dict[str, str]] = {
             "Use when the user asks for food near a Songsim campus place. "
             "Returns concise restaurant summaries with distance, walk time, price "
             "hints, and open_now."
+        ),
+    },
+    "/gpt/restaurants/search": {
+        "operationId": "searchRestaurantsForGpt",
+        "summary": "Search restaurant brands with concise hints",
+        "description": (
+            "Use when the user asks whether a cafe or restaurant brand exists near "
+            "Songsim campus. Returns concise venue hints for names like 매머드커피, "
+            "메가커피, or 이디야."
         ),
     },
     "/gpt/classrooms/empty": {
@@ -292,6 +312,25 @@ def create_app() -> FastAPI:
             estimated_walk_minutes=restaurant.estimated_walk_minutes,
             price_hint=_restaurant_price_hint(restaurant),
             open_now=restaurant.open_now,
+            location_hint=(
+                _truncate_preview(restaurant.description, limit=80)
+                if restaurant.description
+                else None
+            ),
+        ).model_dump()
+
+    def _serialize_gpt_restaurant_search(
+        restaurant: RestaurantSearchResult,
+    ) -> dict[str, object]:
+        return GptRestaurantSearchResult(
+            name=restaurant.name,
+            category_display=GPT_RESTAURANT_CATEGORY_DISPLAY.get(
+                restaurant.category,
+                restaurant.tags[0] if restaurant.tags else "식당",
+            ),
+            distance_meters=restaurant.distance_meters,
+            estimated_walk_minutes=restaurant.estimated_walk_minutes,
+            price_hint=_restaurant_price_hint(restaurant),
             location_hint=(
                 _truncate_preview(restaurant.description, limit=80)
                 if restaurant.description
@@ -1326,6 +1365,36 @@ def create_app() -> FastAPI:
             for restaurant in restaurants
         ]
 
+    @app.get("/gpt/restaurants/search", response_model=list[GptRestaurantSearchResult])
+    def gpt_restaurants_search(
+        query: str = Query(default="", description="브랜드 또는 상호 직접 검색어"),
+        origin: str | None = Query(
+            default=None,
+            description="거리 정렬 보조용 캠퍼스 출발지 slug, 대표 이름, 또는 alias",
+        ),
+        category: str | None = Query(default=None),
+        limit: int = Query(default=10, ge=1, le=50),
+    ) -> list[GptRestaurantSearchResult]:
+        with connection() as conn:
+            try:
+                restaurants = search_restaurants(
+                    conn,
+                    query=query,
+                    origin=origin,
+                    category=category,
+                    limit=limit,
+                )
+            except NotFoundError as exc:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+            except InvalidRequestError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return [
+            GptRestaurantSearchResult.model_validate(
+                _serialize_gpt_restaurant_search(restaurant)
+            )
+            for restaurant in restaurants
+        ]
+
     @app.get("/gpt/classrooms/empty", response_model=EstimatedEmptyClassroomResponse)
     def gpt_empty_classrooms(
         building: str = Query(description="강의실을 확인할 건물 slug, 대표 이름, 또는 alias"),
@@ -1405,6 +1474,30 @@ def create_app() -> FastAPI:
                     budget_max=budget_max,
                     open_now=open_now,
                     walk_minutes=walk_minutes,
+                    limit=limit,
+                )
+            except NotFoundError as exc:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+            except InvalidRequestError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/restaurants/search", response_model=list[RestaurantSearchResult])
+    def restaurants_search(
+        query: str = Query(default="", description="브랜드 또는 상호 직접 검색어"),
+        origin: str | None = Query(
+            default=None,
+            description="거리 정렬 보조용 캠퍼스 출발지 slug, 대표 이름, 또는 alias",
+        ),
+        category: str | None = Query(default=None),
+        limit: int = Query(default=10, ge=1, le=50),
+    ) -> list[RestaurantSearchResult]:
+        with connection() as conn:
+            try:
+                return search_restaurants(
+                    conn,
+                    query=query,
+                    origin=origin,
+                    category=category,
                     limit=limit,
                 )
             except NotFoundError as exc:

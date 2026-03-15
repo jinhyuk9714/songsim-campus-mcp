@@ -25,11 +25,15 @@
 
 - `성심교정 중앙도서관 위치 알려줘`
 - `중도 어디야`
+- `트러스트짐 어디야`
+- `학생회관 어디야`
 - `니콜스인데 2026-03-16 오전 10시 15분 기준 비어 있는 강의실 있어?`
 - `김수환관 지금 비어 있는 강의실 있어?`
 - `정문 기준 빈 강의실 보여줘`
 - `장학 공지 최신순으로 3개 보여줘`
 - `최신 취업 공지 3개 보여줘`
+- `매머드커피 어디 있어?`
+- `이디야 있나?`
 - `중앙도서관 근처 한식집 찾아줘`
 - `중앙도서관에서 10분 안쪽에 1만원 이하 식당 보여줘`
 - `성심교정 지하철 오는 길 알려줘`
@@ -230,6 +234,7 @@ curl 'http://127.0.0.1:8000/courses?query=객체지향&year=2026&semester=1'
 curl 'http://127.0.0.1:8000/classrooms/empty?building=%EB%8B%88%EC%BD%9C%EC%8A%A4%EA%B4%80&at=2026-03-16T10:15:00%2B09:00'
 curl 'http://127.0.0.1:8000/restaurants/nearby?origin=central-library&budget_max=10000&walk_minutes=15'
 curl 'http://127.0.0.1:8000/restaurants/nearby?origin=central-library&open_now=true&at=2026-03-15T11:00:00%2B09:00'
+curl 'http://127.0.0.1:8000/restaurants/search?query=%EB%A7%A4%EB%A8%B8%EB%93%9C%EC%BB%A4%ED%94%BC'
 curl 'http://127.0.0.1:8000/transport?mode=subway'
 curl 'http://127.0.0.1:8000/readyz'
 curl -X POST 'http://127.0.0.1:8000/profiles' -H 'content-type: application/json' -d '{"display_name":"성심학생"}'

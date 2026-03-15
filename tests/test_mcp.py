@@ -356,6 +356,7 @@ def test_mcp_public_readonly_mode_registers_only_read_only_tools(app_env, monkey
         "tool_search_courses",
         "tool_get_class_periods",
         "tool_list_estimated_empty_classrooms",
+        "tool_search_restaurants",
         "tool_find_nearby_restaurants",
         "tool_list_latest_notices",
         "tool_list_transport_guides",
@@ -386,6 +387,7 @@ def test_mcp_public_readonly_mode_registers_prompts_and_extended_resources(app_e
         "prompt_search_courses",
         "prompt_latest_notices",
         "prompt_find_empty_classrooms",
+        "prompt_search_restaurants",
         "prompt_find_nearby_restaurants",
         "prompt_transport_guide",
     }
@@ -433,9 +435,12 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
     assert "건물명" in tools["tool_search_places"]["description"]
     assert "별칭" in tools["tool_search_places"]["description"]
     assert "tool_get_place" in tools["tool_search_places"]["description"]
+    assert "교내 입점명" in tools["tool_search_places"]["description"]
     assert "slug" in tools["tool_get_place"]["description"]
     assert "과목명" in tools["tool_search_courses"]["description"]
     assert "교수" in tools["tool_search_courses"]["description"]
+    assert "브랜드" in tools["tool_search_restaurants"]["description"]
+    assert "매머드커피" in tools["tool_search_restaurants"]["description"]
     assert "실시간" in tools["tool_list_estimated_empty_classrooms"]["description"]
     assert "예상 공실" in tools["tool_list_estimated_empty_classrooms"]["description"]
     assert "니콜스관" in tools["tool_list_estimated_empty_classrooms"]["description"]
@@ -456,6 +461,10 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
         tools["tool_search_places"]["inputSchema"]["properties"]["query"]["description"]
     )
     assert "건물명" in place_query_description
+    assert "트러스트짐" in place_query_description
+    assert "브랜드 상호" in (
+        tools["tool_search_restaurants"]["inputSchema"]["properties"]["query"]["description"]
+    )
     assert "출발 장소" in (
         tools["tool_find_nearby_restaurants"]["inputSchema"]["properties"]["origin"]["description"]
     )
@@ -518,6 +527,23 @@ def test_mcp_public_empty_classroom_prompt_explains_estimate_flow(app_env, monke
 
     clear_settings_cache()
 
+    async def main():
+        mcp = build_mcp()
+        prompt = await mcp.get_prompt(
+            "prompt_search_restaurants",
+            {"query": "매머드커피"},
+        )
+        return prompt
+
+    prompt = asyncio.run(main())
+    message = prompt.messages[0].content.text
+
+    assert "tool_search_restaurants" in message
+    assert "query=매머드커피" in message
+    assert "tool_find_nearby_restaurants" not in message
+
+    clear_settings_cache()
+
 
 def test_mcp_public_usage_and_class_period_resources_are_readable(app_env, monkeypatch):
     pytest.importorskip('mcp.server.fastmcp')
@@ -535,12 +561,14 @@ def test_mcp_public_usage_and_class_period_resources_are_readable(app_env, monke
 
     assert "read-only" in usage_content
     assert "tool_search_places" in usage_content
+    assert "tool_search_restaurants" in usage_content
     assert "tool_list_estimated_empty_classrooms" in usage_content
     assert "실시간" in usage_content
     assert "tool_find_nearby_restaurants" in usage_content
     assert "예상 공실" in usage_content
     assert "profile" in usage_content
     assert "중도" in usage_content
+    assert "매머드커피" in usage_content
     assert periods_payload[0]["period"] == 1
     assert {"period", "start", "end"} <= set(periods_payload[0].keys())
 
@@ -570,6 +598,72 @@ def test_mcp_public_search_places_returns_condensed_place_payload(app_env, monke
     assert payload["highlights"][0] == "별칭: 도서관, 중도"
     assert "description" not in payload
     assert "opening_hours" not in payload
+
+    clear_settings_cache()
+
+
+def test_mcp_public_search_places_supports_facility_tenant_alias(app_env, monkeypatch):
+    pytest.importorskip('mcp.server.fastmcp')
+    init_db()
+    seed_demo(force=True)
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        result = await mcp.call_tool('tool_search_places', {'query': '트러스트짐', 'limit': 1})
+        return _tool_payloads(result)[0]
+
+    payload = asyncio.run(main())
+
+    assert payload["slug"] == "student-center"
+    assert payload["name"] == "학생회관"
+
+    clear_settings_cache()
+
+
+def test_mcp_public_search_restaurants_returns_compact_brand_match(app_env, monkeypatch):
+    pytest.importorskip('mcp.server.fastmcp')
+    init_db()
+    with connection() as conn:
+        replace_restaurants(
+            conn,
+            [
+                {
+                    "slug": "mammoth",
+                    "name": "매머드익스프레스 부천가톨릭대학교점",
+                    "category": "cafe",
+                    "min_price": None,
+                    "max_price": None,
+                    "latitude": 37.48556,
+                    "longitude": 126.80379,
+                    "tags": ["커피전문점", "매머드익스프레스"],
+                    "description": "경기 부천시 원미구 지봉로 43",
+                    "source_tag": "kakao_local_cache",
+                    "last_synced_at": "2026-03-15T01:19:14+00:00",
+                }
+            ],
+        )
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        result = await mcp.call_tool('tool_search_restaurants', {'query': '매머드커피', 'limit': 5})
+        return _tool_payloads(result)
+
+    payload = asyncio.run(main())
+
+    assert payload == [
+        {
+            "name": "매머드익스프레스 부천가톨릭대학교점",
+            "category_display": "카페",
+            "distance_meters": None,
+            "estimated_walk_minutes": None,
+            "price_hint": None,
+            "location_hint": "경기 부천시 원미구 지봉로 43",
+        }
+    ]
 
     clear_settings_cache()
 

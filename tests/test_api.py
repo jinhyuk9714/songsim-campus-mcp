@@ -103,6 +103,7 @@ def test_public_readonly_mode_exposes_gpt_actions_openapi(app_env, monkeypatch):
         "/places",
         "/courses",
         "/notices",
+        "/restaurants/search",
         "/restaurants/nearby",
         "/transport",
     }
@@ -113,6 +114,7 @@ def test_public_readonly_mode_exposes_gpt_actions_openapi(app_env, monkeypatch):
         payload["paths"]["/restaurants/nearby"]["get"]["operationId"]
         == "findNearbyRestaurants"
     )
+    assert payload["paths"]["/restaurants/search"]["get"]["operationId"] == "searchRestaurants"
     assert payload["paths"]["/transport"]["get"]["operationId"] == "listTransportGuides"
 
 
@@ -134,11 +136,16 @@ def test_public_readonly_mode_exposes_gpt_actions_openapi_v2(app_env, monkeypatc
     assert set(payload["paths"]) == {
         "/gpt/places",
         "/gpt/notices",
+        "/gpt/restaurants/search",
         "/gpt/restaurants/nearby",
         "/gpt/classrooms/empty",
     }
     assert payload["paths"]["/gpt/places"]["get"]["operationId"] == "searchPlacesForGpt"
     assert payload["paths"]["/gpt/notices"]["get"]["operationId"] == "listLatestNoticesForGpt"
+    assert (
+        payload["paths"]["/gpt/restaurants/search"]["get"]["operationId"]
+        == "searchRestaurantsForGpt"
+    )
     assert (
         payload["paths"]["/gpt/restaurants/nearby"]["get"]["operationId"]
         == "findNearbyRestaurantsForGpt"
@@ -168,6 +175,82 @@ def test_gpt_places_endpoint_returns_compact_summary_payload(client):
             "운영: mon-fri: 08:30-22:00 / sat: 09:00-17:00",
         ],
     }
+
+
+def test_places_endpoint_matches_facility_tenant_alias_from_override_taxonomy(client):
+    response = client.get("/places", params={"query": "트러스트짐", "limit": 5})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload
+    assert payload[0]["slug"] == "student-center"
+    assert payload[0]["name"] == "학생회관"
+
+
+def test_restaurants_search_endpoint_matches_brand_alias(client):
+    with connection() as conn:
+        replace_restaurants(
+            conn,
+            [
+                {
+                    "slug": "mammoth",
+                    "name": "매머드익스프레스 부천가톨릭대학교점",
+                    "category": "cafe",
+                    "min_price": None,
+                    "max_price": None,
+                    "latitude": 37.48556,
+                    "longitude": 126.80379,
+                    "tags": ["커피전문점", "매머드익스프레스"],
+                    "description": "경기 부천시 원미구 지봉로 43",
+                    "source_tag": "kakao_local_cache",
+                    "last_synced_at": "2026-03-15T01:19:14+00:00",
+                }
+            ],
+        )
+
+    response = client.get("/restaurants/search", params={"query": "매머드 커피", "limit": 5})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [item["slug"] for item in payload] == ["mammoth"]
+    assert payload[0]["name"] == "매머드익스프레스 부천가톨릭대학교점"
+
+
+def test_gpt_restaurants_search_endpoint_returns_compact_brand_match(client):
+    with connection() as conn:
+        replace_restaurants(
+            conn,
+            [
+                {
+                    "slug": "ediya",
+                    "name": "이디야커피 가톨릭대점",
+                    "category": "cafe",
+                    "min_price": None,
+                    "max_price": None,
+                    "latitude": 37.48611,
+                    "longitude": 126.80503,
+                    "tags": ["커피전문점", "이디야커피"],
+                    "description": "경기 부천시 원미구 지봉로 48",
+                    "source_tag": "kakao_local_cache",
+                    "last_synced_at": "2026-03-15T01:19:14+00:00",
+                }
+            ],
+        )
+
+    response = client.get("/gpt/restaurants/search", params={"query": "이디야", "limit": 5})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload == [
+        {
+            "name": "이디야커피 가톨릭대점",
+            "category_display": "카페",
+            "distance_meters": None,
+            "estimated_walk_minutes": None,
+            "price_hint": None,
+            "location_hint": "경기 부천시 원미구 지봉로 48",
+        }
+    ]
 
 
 def test_gpt_notices_endpoint_returns_normalized_category_and_summary_preview(client):
