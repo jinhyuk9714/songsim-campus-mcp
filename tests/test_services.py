@@ -15,6 +15,7 @@ from songsim_campus.seed import seed_demo
 from songsim_campus.services import (
     InvalidRequestError,
     NotFoundError,
+    _load_place_alias_overrides,
     _parse_campus_walk_graph,
     find_nearby_restaurants,
     get_class_periods,
@@ -79,6 +80,79 @@ def test_search_places_matches_alias(app_env):
     with connection() as conn:
         places = search_places(conn, query='중도')
     assert any(item.name == '중앙도서관' for item in places)
+
+
+def test_search_places_prioritizes_exact_short_match_over_partial_noise(app_env):
+    init_db()
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                {
+                    "slug": "main-gate",
+                    "name": "정문",
+                    "category": "gate",
+                    "aliases": ["학교 정문"],
+                    "description": "성심교정의 정문",
+                    "latitude": 37.4855,
+                    "longitude": 126.8018,
+                    "opening_hours": {},
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "slug": "startup-incubator",
+                    "name": "창업보육센터",
+                    "category": "building",
+                    "aliases": [],
+                    "description": "정문 옆 창업 지원 공간",
+                    "latitude": 37.4857,
+                    "longitude": 126.8020,
+                    "opening_hours": {},
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+        places = search_places(conn, query="정문", limit=10)
+
+    assert [place.slug for place in places] == ["main-gate", "startup-incubator"]
+
+
+@pytest.mark.parametrize(
+    ("query", "expected_slug"),
+    [
+        ("중앙 도서관", "central-library"),
+        ("니콜스 관", "nichols-hall"),
+    ],
+)
+def test_search_places_normalizes_spacing_variants(app_env, query, expected_slug):
+    init_db()
+    seed_demo(force=True)
+    with connection() as conn:
+        places = search_places(conn, query=query, limit=5)
+
+    assert places
+    assert places[0].slug == expected_slug
+
+
+def test_search_courses_normalizes_spacing_variants(app_env):
+    init_db()
+    seed_demo(force=True)
+    with connection() as conn:
+        courses = search_courses(conn, query="객체 지향", year=2026, semester=1, limit=5)
+
+    assert courses
+    assert courses[0].title == "객체지향프로그래밍설계"
+
+
+def test_load_place_alias_overrides_contract():
+    overrides = _load_place_alias_overrides()
+
+    assert overrides["central-library"]["aliases"] == ["중도"]
+    assert overrides["sophie-barat-hall"]["aliases"] == ["학생식당"]
+    assert overrides["nicholls-hall"]["aliases"] == ["니콜스"]
+    assert overrides["kim-sou-hwan-hall"]["category"] == "building"
 
 
 def test_find_nearby_restaurants_sorted(app_env):
@@ -231,9 +305,44 @@ def test_list_estimated_empty_classrooms_returns_empty_with_note_when_building_h
             at=datetime.fromisoformat("2026-03-16T10:15:00+09:00"),
         )
 
-    assert payload.building.slug == "kim-soo-hwan-hall"
+    assert payload.building.slug == "kim-sou-hwan-hall"
     assert payload.items == []
     assert "시간표 데이터를 찾지 못했습니다" in payload.estimate_note
+
+
+def test_list_estimated_empty_classrooms_accepts_colloquial_building_alias(app_env):
+    init_db()
+    seed_demo(force=True)
+    with connection() as conn:
+        repo.replace_courses(
+            conn,
+            [
+                {
+                    "year": 2026,
+                    "semester": 1,
+                    "code": "CSE332",
+                    "title": "데이터베이스",
+                    "professor": "김가톨",
+                    "department": "컴퓨터정보공학부",
+                    "section": "01",
+                    "day_of_week": "월",
+                    "period_start": 5,
+                    "period_end": 6,
+                    "room": "N201",
+                    "raw_schedule": "월5~6(N201)",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                }
+            ],
+        )
+        payload = list_estimated_empty_classrooms(
+            conn,
+            building="니콜스",
+            at=datetime.fromisoformat("2026-03-16T10:15:00+09:00"),
+        )
+
+    assert payload.building.slug == "nichols-hall"
+    assert payload.items[0].room == "N201"
 
 
 def test_list_estimated_empty_classrooms_rejects_non_classroom_place(app_env):
@@ -246,6 +355,94 @@ def test_list_estimated_empty_classrooms_rejects_non_classroom_place(app_env):
             building="정문",
             at=datetime.fromisoformat("2026-03-16T10:15:00+09:00"),
         )
+
+
+def test_list_latest_notices_employment_filter_includes_legacy_career_rows(app_env):
+    init_db()
+    with connection() as conn:
+        repo.replace_notices(
+            conn,
+            [
+                {
+                    "title": "진로취업상담 안내",
+                    "category": "career",
+                    "published_at": "2026-03-12",
+                    "summary": "",
+                    "labels": ["취창업"],
+                    "source_url": "https://example.edu/career",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "title": "채용 설명회 안내",
+                    "category": "employment",
+                    "published_at": "2026-03-13",
+                    "summary": "",
+                    "labels": ["취업"],
+                    "source_url": "https://example.edu/employment",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+        employment_items = list_latest_notices(conn, category="employment", limit=10)
+        career_items = list_latest_notices(conn, category="career", limit=10)
+
+    assert [item.title for item in employment_items] == [
+        "채용 설명회 안내",
+        "진로취업상담 안내",
+    ]
+    assert [item.title for item in career_items] == [
+        "채용 설명회 안내",
+        "진로취업상담 안내",
+    ]
+
+
+def test_list_latest_notices_normalizes_public_display_categories(app_env):
+    init_db()
+    with connection() as conn:
+        repo.replace_notices(
+            conn,
+            [
+                {
+                    "title": "중앙도서관 자리 안내",
+                    "category": "place",
+                    "published_at": "2026-03-12",
+                    "summary": "",
+                    "labels": ["도서관"],
+                    "source_url": "https://example.edu/place",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "title": "채용 설명회 안내",
+                    "category": "career",
+                    "published_at": "2026-03-13",
+                    "summary": "",
+                    "labels": ["취업"],
+                    "source_url": "https://example.edu/career",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "title": "알 수 없는 분류 안내",
+                    "category": "mystery",
+                    "published_at": "2026-03-11",
+                    "summary": "",
+                    "labels": [],
+                    "source_url": "https://example.edu/mystery",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+        notices = list_latest_notices(conn, limit=10)
+
+    assert [(item.title, item.category) for item in notices] == [
+        ("채용 설명회 안내", "employment"),
+        ("중앙도서관 자리 안내", "general"),
+        ("알 수 없는 분류 안내", "general"),
+    ]
 
 
 def test_list_estimated_empty_classrooms_prefers_official_realtime_data_when_available(
@@ -776,8 +973,67 @@ def test_find_nearby_restaurants_cache_key_ignores_budget_open_now_and_limit(app
         )
 
     assert client.calls == 1
-    assert len(filtered) == 1
-    assert filtered[0].source_tag == 'kakao_local_cache'
+    assert filtered == []
+
+
+def test_find_nearby_restaurants_budget_max_requires_price_evidence(app_env):
+    init_db()
+    seed_demo(force=True)
+    with connection() as conn:
+        library = get_place(conn, "central-library")
+        replace_restaurants(
+            conn,
+            [
+                {
+                    "slug": "budget-kimbap",
+                    "name": "버짓김밥",
+                    "category": "korean",
+                    "min_price": 7000,
+                    "max_price": 9000,
+                    "latitude": library.latitude + 0.0001,
+                    "longitude": library.longitude + 0.0001,
+                    "tags": ["한식"],
+                    "description": "가격 정보가 있는 김밥집",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "slug": "mystery-price-cafe",
+                    "name": "가격미상카페",
+                    "category": "cafe",
+                    "min_price": None,
+                    "max_price": None,
+                    "latitude": library.latitude + 0.0002,
+                    "longitude": library.longitude + 0.0002,
+                    "tags": ["카페"],
+                    "description": "가격 정보가 없는 후보",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "slug": "expensive-pasta",
+                    "name": "비싼파스타",
+                    "category": "western",
+                    "min_price": 14000,
+                    "max_price": 18000,
+                    "latitude": library.latitude + 0.0003,
+                    "longitude": library.longitude + 0.0003,
+                    "tags": ["양식"],
+                    "description": "예산 초과 후보",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+        items = find_nearby_restaurants(
+            conn,
+            origin="central-library",
+            budget_max=10000,
+            walk_minutes=15,
+            limit=10,
+        )
+
+    assert [item.slug for item in items] == ["budget-kimbap"]
 
 
 @pytest.mark.parametrize(
@@ -1151,7 +1407,43 @@ class FakeCampusMapSource:
                 'opening_hours': {},
                 'source_tag': 'cuk_campus_map',
                 'last_synced_at': fetched_at,
-            }
+            },
+            {
+                'slug': 'sophie-barat-hall',
+                'name': '학생미래인재관',
+                'category': 'building',
+                'aliases': ['B관'],
+                'description': '학생식당이 있는 건물',
+                'latitude': 37.486466,
+                'longitude': 126.801297,
+                'opening_hours': {},
+                'source_tag': 'cuk_campus_map',
+                'last_synced_at': fetched_at,
+            },
+            {
+                'slug': 'nicholls-hall',
+                'name': '니콜스관',
+                'category': 'building',
+                'aliases': ['N관'],
+                'description': '강의동',
+                'latitude': 37.48587,
+                'longitude': 126.802323,
+                'opening_hours': {},
+                'source_tag': 'cuk_campus_map',
+                'last_synced_at': fetched_at,
+            },
+            {
+                'slug': 'kim-sou-hwan-hall',
+                'name': '김수환관',
+                'category': 'dormitory',
+                'aliases': [],
+                'description': '강의실과 연구실, 기숙사가 함께 있는 건물',
+                'latitude': 37.4855467,
+                'longitude': 126.803851,
+                'opening_hours': {},
+                'source_tag': 'cuk_campus_map',
+                'last_synced_at': fetched_at,
+            },
         ]
 
 
@@ -1239,6 +1531,32 @@ def test_refresh_places_from_campus_map_replaces_place_rows(app_env):
 
     assert len(places) == 1
     assert places[0].source_tag == 'cuk_campus_map'
+
+
+def test_refresh_places_from_campus_map_applies_place_alias_overrides(app_env):
+    init_db()
+    seed_demo(force=True)
+
+    with connection() as conn:
+        refresh_places_from_campus_map(
+            conn,
+            source=FakeCampusMapSource(),
+            fetched_at='2026-03-13T09:00:00+09:00',
+        )
+        place_alias_hits = search_places(conn, query='중도')
+        restaurant_items = find_nearby_restaurants(conn, origin='학생식당', limit=1)
+        classroom_payload = list_estimated_empty_classrooms(
+            conn,
+            building='니콜스',
+            at=datetime.fromisoformat("2026-03-16T10:15:00+09:00"),
+        )
+        kim_place = get_place(conn, 'kim-sou-hwan-hall')
+
+    assert any(item.slug == 'central-library' for item in place_alias_hits)
+    assert restaurant_items
+    assert restaurant_items[0].origin == 'sophie-barat-hall'
+    assert classroom_payload.building.slug == 'nicholls-hall'
+    assert kim_place.category == 'building'
 
 
 def test_refresh_courses_from_subject_search_replaces_course_rows(app_env):
@@ -1376,9 +1694,9 @@ def test_refresh_facility_hours_merges_by_location_and_skips_unknown_places(app_
             fetched_at='2026-03-13T09:00:00+09:00',
         )
         library = get_place(conn, 'central-library')
-        hall = get_place(conn, 'kim-soo-hwan-hall')
+        hall = get_place(conn, 'kim-sou-hwan-hall')
 
-    assert sorted(item.slug for item in places) == ['central-library', 'kim-soo-hwan-hall']
+    assert sorted(item.slug for item in places) == ['central-library', 'kim-sou-hwan-hall']
     assert library.opening_hours['카페드림'] == '평일 08:00~19:00 토 10:00~16:00 (일/공휴일휴무)'
     assert hall.opening_hours['매머드커피'] == '평일 08:00~20:00 주말,공휴일 09:00~17:00'
     assert '없는시설' not in library.opening_hours

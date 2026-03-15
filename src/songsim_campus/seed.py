@@ -6,6 +6,7 @@ from pathlib import Path
 
 from . import repo
 from .db import connection, init_db
+from .services import apply_place_alias_overrides
 
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 
@@ -19,7 +20,7 @@ def seed_demo(force: bool = False) -> None:
     with connection() as conn:
         if not force and repo.count_rows(conn, "places") > 0:
             return
-        repo.replace_places(conn, _load_json("sample_places.json"))
+        repo.replace_places(conn, apply_place_alias_overrides(_load_json("sample_places.json")))
         repo.replace_courses(conn, _load_json("sample_courses.json"))
         repo.replace_restaurants(conn, _load_json("sample_restaurants.json"))
         repo.replace_notices(conn, _load_json("sample_notices.json"))

@@ -593,14 +593,18 @@ def upsert_restaurant_hours_cache(
 
 def list_notices(
     conn: psycopg.Connection,
-    category: str | None = None,
+    category: str | list[str] | tuple[str, ...] | None = None,
     limit: int = 10,
 ) -> list[dict[str, Any]]:
     sql = "SELECT * FROM notices"
     params: list[Any] = []
     if category:
-        sql += " WHERE category = %s"
-        params.append(category)
+        if isinstance(category, (list, tuple)):
+            sql += " WHERE category = ANY(%s)"
+            params.append(list(category))
+        else:
+            sql += " WHERE category = %s"
+            params.append(category)
     sql += " ORDER BY published_at DESC, id DESC LIMIT %s"
     params.append(limit)
     rows = conn.execute(sql, params).fetchall()

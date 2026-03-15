@@ -67,6 +67,7 @@ NOTICE_CATEGORY_DISPLAY = {
     "academic": "학사",
     "scholarship": "장학",
     "employment": "취업",
+    "career": "취업",
     "event": "행사",
     "facility": "시설",
     "library": "도서관",
@@ -230,13 +231,15 @@ def _public_usage_guide() -> str:
             ),
             (
                 "4. Use tool_list_estimated_empty_classrooms for classroom availability "
-                "in a lecture building like 니콜스관 or N관. 공식 실시간 데이터가 있으면 "
-                "먼저 사용하고, 없으면 시간표 기반 예상 공실로 폴백합니다."
+                "in a lecture building like 니콜스관, N관, or 김수환관. 공식 실시간 "
+                "데이터가 있으면 먼저 사용하고, 없으면 시간표 기반 예상 공실로 "
+                "폴백합니다."
             ),
             (
                 "5. Use tool_find_nearby_restaurants for walkable food "
                 "recommendations from a campus origin. You can pass a slug, 대표 이름, "
-                "or a clear alias like 중도."
+                "or a clear alias like 중도 or 학생식당. If you set budget_max, only "
+                "restaurants with explicit price evidence remain."
             ),
             "6. Use tool_list_latest_notices for latest notices; category is optional.",
             "",
@@ -405,8 +408,8 @@ def build_mcp():
                 str,
                 Field(
                     description=(
-                        "출발 장소 slug, 대표 이름, 또는 alias. "
-                        "예: central-library, 중앙도서관, 중도"
+                        "출발 장소 대표 이름 또는 alias. "
+                        "예: 중앙도서관, 중도, 학생식당"
                     )
                 ),
             ],
@@ -439,8 +442,8 @@ def build_mcp():
                 str,
                 Field(
                     description=(
-                        "강의실을 확인할 건물 slug, 대표 이름, 또는 alias. "
-                        "예: nichols-hall, 니콜스관, N관"
+                        "강의실을 확인할 건물 대표 이름 또는 alias. "
+                        "예: 니콜스관, 니콜스, N관, 김수환관"
                     )
                 ),
             ],
@@ -580,7 +583,8 @@ def build_mcp():
             (
                 "강의동에서 지금 비어 있을 가능성이 높은 강의실을 "
                 "찾을 때 사용합니다. "
-                "building은 slug, 대표 이름, alias(예: 니콜스관, N관)를 받을 수 있습니다. "
+                "building은 대표 이름과 alias를 받을 수 있습니다. "
+                "예: 니콜스관, 니콜스, N관, 김수환관. "
                 "공식 실시간 데이터가 있으면 우선 사용하고, "
                 "없으면 시간표 기준 예상 공실로 폴백합니다. "
                 "결과에는 availability_mode와 다음 점유 시각을 함께 보여줍니다."
@@ -598,8 +602,8 @@ def build_mcp():
             str,
             Field(
                 description=(
-                    "강의실을 확인할 건물 slug, 대표 이름, 또는 alias. "
-                    "예: nichols-hall, 니콜스관, N관"
+                    "강의실을 확인할 건물 대표 이름 또는 alias. "
+                    "예: 니콜스관, 니콜스, N관, 김수환관"
                 )
             ),
         ],
@@ -649,7 +653,8 @@ def build_mcp():
                 "캠퍼스 출발지 기준으로 주변 식당을 찾을 때 사용합니다. "
                 "origin, 예산(budget_max), open_now, walk_minutes를 함께 줄 수 있습니다. "
                 "origin은 slug, 대표 이름, alias(예: 중도, 학생식당)를 받을 수 있습니다. "
-                "출발지가 모호하면 tool_search_places를 먼저 사용합니다."
+                "출발지가 모호하면 tool_search_places를 먼저 사용합니다. budget_max를 "
+                "주면 가격 정보가 없는 후보는 제외합니다."
             )
             if public_readonly
             else (
@@ -664,8 +669,8 @@ def build_mcp():
             str,
             Field(
                 description=(
-                    "식당을 찾을 출발 장소 slug, 대표 이름, 또는 alias. "
-                    "예: central-library, 중앙도서관, 중도"
+                    "식당을 찾을 출발 장소 대표 이름 또는 alias. "
+                    "예: 중앙도서관, 중도, 학생식당"
                 )
             ),
         ],
@@ -677,7 +682,10 @@ def build_mcp():
             str | None,
             Field(description="식당 카테고리 필터. 예: korean, cafe, western"),
         ] = None,
-        budget_max: Annotated[int | None, Field(description="최대 예산(원)")] = None,
+        budget_max: Annotated[
+            int | None,
+            Field(description="최대 예산(원). 가격 정보가 확인된 후보만 남깁니다."),
+        ] = None,
         open_now: Annotated[
             bool,
             Field(description="지금 영업 중인 후보만 보고 싶으면 true"),
@@ -735,7 +743,12 @@ def build_mcp():
     def tool_list_latest_notices(
         category: Annotated[
             str | None,
-            Field(description="공지 카테고리 필터. 예: academic, scholarship, employment"),
+            Field(
+                description=(
+                    "공지 카테고리 필터. 예: academic, scholarship, employment. "
+                    "career도 employment와 동일하게 처리합니다."
+                )
+            ),
         ] = None,
         limit: Annotated[int, Field(description="최대 결과 수. 기본값은 10입니다.")] = 10,
     ):

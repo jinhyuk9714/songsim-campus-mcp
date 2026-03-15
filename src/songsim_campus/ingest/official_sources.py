@@ -175,7 +175,7 @@ def classify_notice_category(title: str, body: str, board_category: str | None =
     if any(keyword in text for keyword in ["도서관", "library"]):
         return "library"
     if any(keyword in text for keyword in ["취업", "진로", "커리어", "자기소개서", "채용"]):
-        return "career"
+        return "employment"
     if any(keyword in text for keyword in ["행사", "특강", "설명회", "공모전", "축제", "세미나"]):
         return "event"
     if any(

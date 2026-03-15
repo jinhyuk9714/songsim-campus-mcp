@@ -142,6 +142,17 @@ def test_notice_category_rules_cover_cafeteria_keywords():
     )
 
 
+def test_notice_category_rules_normalize_career_keywords_to_employment():
+    assert (
+        classify_notice_category(
+            title="커리어상담센터 진로취업상담 안내",
+            body="채용 준비와 진로 상담을 지원합니다.",
+            board_category="취창업",
+        )
+        == "employment"
+    )
+
+
 def test_library_hours_parser_extracts_room_labels_and_schedules():
     source = LibraryHoursSource("https://library.catholic.ac.kr/webcontent/info/45")
     shared_room_hours = (

@@ -207,6 +207,77 @@ def test_gpt_notices_endpoint_returns_normalized_category_and_summary_preview(cl
     assert payload[0]["summary"] != long_summary
 
 
+def test_notice_endpoints_treat_employment_and_career_as_same_filter(client):
+    with connection() as conn:
+        replace_notices(
+            conn,
+            [
+                {
+                    "title": "진로취업상담 안내",
+                    "category": "career",
+                    "published_at": "2026-03-12",
+                    "summary": "취업 상담 일정",
+                    "labels": ["취업"],
+                    "source_url": "https://example.edu/notices/career",
+                    "source_tag": "demo",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "title": "채용 설명회 안내",
+                    "category": "employment",
+                    "published_at": "2026-03-13",
+                    "summary": "채용 설명회 일정",
+                    "labels": ["취업"],
+                    "source_url": "https://example.edu/notices/employment",
+                    "source_tag": "demo",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+
+    api_response = client.get("/notices", params={"category": "employment", "limit": 10})
+    gpt_response = client.get("/gpt/notices", params={"category": "career", "limit": 10})
+
+    assert api_response.status_code == 200
+    assert [item["title"] for item in api_response.json()] == [
+        "채용 설명회 안내",
+        "진로취업상담 안내",
+    ]
+    assert gpt_response.status_code == 200
+    assert [item["title"] for item in gpt_response.json()] == [
+        "채용 설명회 안내",
+        "진로취업상담 안내",
+    ]
+    assert all(item["category_display"] == "employment" for item in gpt_response.json())
+
+
+def test_notice_endpoints_normalize_place_category_to_general(client):
+    with connection() as conn:
+        replace_notices(
+            conn,
+            [
+                {
+                    "title": "중앙도서관 자리 안내",
+                    "category": "place",
+                    "published_at": "2026-03-12",
+                    "summary": "도서관 좌석 안내",
+                    "labels": ["도서관"],
+                    "source_url": "https://example.edu/notices/place",
+                    "source_tag": "demo",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                }
+            ],
+        )
+
+    api_response = client.get("/notices", params={"limit": 1})
+    gpt_response = client.get("/gpt/notices", params={"limit": 1})
+
+    assert api_response.status_code == 200
+    assert api_response.json()[0]["category"] == "general"
+    assert gpt_response.status_code == 200
+    assert gpt_response.json()[0]["category_display"] == "general"
+
+
 def test_gpt_nearby_restaurants_endpoint_returns_compact_summary_payload(client):
     response = client.get(
         "/gpt/restaurants/nearby",
@@ -402,6 +473,20 @@ def test_classrooms_empty_endpoint_returns_404_for_missing_building(client):
     )
 
     assert response.status_code == 404
+
+
+def test_classrooms_empty_endpoint_accepts_kim_sou_hwan_hall_as_building(client):
+    response = client.get(
+        "/classrooms/empty",
+        params={"building": "김수환관", "at": "2026-03-16T10:15:00+09:00"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["building"]["slug"] == "kim-sou-hwan-hall"
+    assert payload["availability_mode"] == "estimated"
+    assert payload["items"]
+    assert all(item["room"].startswith("K") for item in payload["items"])
 
 
 def test_gpt_empty_classrooms_endpoint_returns_estimate_payload(client):
@@ -644,6 +729,62 @@ def test_nearby_restaurants_uses_origin(client):
     assert all(item['estimated_walk_minutes'] <= 15 for item in items)
 
 
+def test_places_endpoint_prioritizes_exact_short_match_over_partial_noise(client):
+    with connection() as conn:
+        from songsim_campus.repo import replace_places
+
+        replace_places(
+            conn,
+            [
+                {
+                    "slug": "main-gate",
+                    "name": "정문",
+                    "category": "gate",
+                    "aliases": ["학교 정문"],
+                    "description": "성심교정의 정문",
+                    "latitude": 37.4855,
+                    "longitude": 126.8018,
+                    "opening_hours": {},
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "slug": "startup-incubator",
+                    "name": "창업보육센터",
+                    "category": "building",
+                    "aliases": [],
+                    "description": "정문 옆 창업 지원 공간",
+                    "latitude": 37.4857,
+                    "longitude": 126.8020,
+                    "opening_hours": {},
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+
+    response = client.get("/places", params={"query": "정문", "limit": 10})
+
+    assert response.status_code == 200
+    assert [item["slug"] for item in response.json()] == ["main-gate", "startup-incubator"]
+
+
+def test_places_endpoint_normalizes_spacing_variants(client):
+    response = client.get("/places", params={"query": "중앙 도서관", "limit": 5})
+
+    assert response.status_code == 200
+    assert response.json()
+    assert response.json()[0]["slug"] == "central-library"
+
+
+def test_courses_endpoint_normalizes_spacing_variants(client):
+    response = client.get("/courses", params={"query": "객체 지향", "year": 2026, "semester": 1})
+
+    assert response.status_code == 200
+    assert response.json()
+    assert response.json()[0]["title"] == "객체지향프로그래밍설계"
+
+
 def test_nearby_restaurants_endpoint_uses_campus_graph_for_external_routes(client):
     with connection() as conn:
         replace_restaurants(
@@ -674,10 +815,61 @@ def test_nearby_restaurants_endpoint_uses_campus_graph_for_external_routes(clien
     assert response.json()[0]['estimated_walk_minutes'] == 6
 
 
+def test_nearby_restaurants_endpoint_budget_max_requires_price_evidence(client):
+    with connection() as conn:
+        replace_restaurants(
+            conn,
+            [
+                {
+                    "slug": "budget-kimbap",
+                    "name": "버짓김밥",
+                    "category": "korean",
+                    "min_price": 7000,
+                    "max_price": 9000,
+                    "latitude": 37.48653,
+                    "longitude": 126.80174,
+                    "tags": ["한식"],
+                    "description": "가격 정보가 있는 김밥집",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "slug": "mystery-price-cafe",
+                    "name": "가격미상카페",
+                    "category": "cafe",
+                    "min_price": None,
+                    "max_price": None,
+                    "latitude": 37.48663,
+                    "longitude": 126.80184,
+                    "tags": ["카페"],
+                    "description": "가격 정보가 없는 후보",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+
+    response = client.get(
+        "/restaurants/nearby",
+        params={"origin": "central-library", "budget_max": 10000, "walk_minutes": 15},
+    )
+
+    assert response.status_code == 200
+    assert [item["slug"] for item in response.json()] == ["budget-kimbap"]
+
+
 def test_place_detail_returns_404_for_missing_place(client):
     response = client.get('/places/does-not-exist')
 
     assert response.status_code == 404
+
+
+def test_places_endpoint_matches_alias_from_override_taxonomy(client):
+    response = client.get('/places', params={'query': '중도', 'limit': 5})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert any(item['slug'] == 'central-library' for item in payload)
 
 
 def test_nearby_restaurants_returns_404_for_missing_origin(client):
@@ -693,6 +885,15 @@ def test_nearby_restaurants_accepts_origin_alias(client):
     items = response.json()
     assert items
     assert all(item['origin'] == 'central-library' for item in items)
+
+
+def test_nearby_restaurants_accepts_facility_alias_origin(client):
+    response = client.get('/restaurants/nearby', params={'origin': '학생식당', 'limit': 3})
+
+    assert response.status_code == 200
+    items = response.json()
+    assert items
+    assert all(item['origin'] == 'student-center' for item in items)
 
 
 def test_nearby_restaurants_can_filter_open_now(client):

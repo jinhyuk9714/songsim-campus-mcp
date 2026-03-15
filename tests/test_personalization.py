@@ -492,7 +492,7 @@ def test_meal_recommendations_use_next_course_destination_when_room_maps_to_plac
             ],
         )
         library = get_place(conn, "central-library")
-        hall = get_place(conn, "kim-soo-hwan-hall")
+        hall = get_place(conn, "kim-sou-hwan-hall")
         replace_restaurants(
             conn,
             [
@@ -522,7 +522,7 @@ def test_meal_recommendations_use_next_course_destination_when_room_maps_to_plac
 
     assert recommendation.reason is None
     assert recommendation.next_place is not None
-    assert recommendation.next_place.slug == "kim-soo-hwan-hall"
+    assert recommendation.next_place.slug == "kim-sou-hwan-hall"
     assert recommendation.items[0].restaurant.name == "중간백반"
 
 
@@ -572,7 +572,7 @@ def test_meal_recommendations_use_campus_graph_for_external_route_segments(app_e
         )
 
     assert recommendation.next_place is not None
-    assert recommendation.next_place.slug == "kim-soo-hwan-hall"
+    assert recommendation.next_place.slug == "kim-sou-hwan-hall"
     assert recommendation.items[0].restaurant.estimated_walk_minutes == 6
     assert recommendation.items[0].total_estimated_walk_minutes == 11
 

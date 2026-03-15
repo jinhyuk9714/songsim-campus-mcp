@@ -71,6 +71,7 @@ TRANSPORT_SOURCE_URL = "https://www.catholic.ac.kr/ko/about/location_songsim.do"
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 CAMPUS_WALK_GRAPH_PATH = DATA_DIR / "campus_walk_graph.json"
 PERSONALIZATION_RULES_PATH = DATA_DIR / "personalization_rules.json"
+PLACE_ALIAS_OVERRIDES_PATH = DATA_DIR / "place_alias_overrides.json"
 SYNC_DATASET_TABLES = ("places", "courses", "notices", "transport_guides")
 ADMIN_SYNC_TARGETS = {
     "snapshot",
@@ -104,6 +105,12 @@ EMPTY_CLASSROOM_ESTIMATE_NOTE = (
     "공식 시간표 기준 예상 공실입니다. 실시간 점유는 반영되지 않습니다."
 )
 CLASSROOM_BUILDING_CATEGORIES = {"building", "library"}
+NOTICE_CATEGORY_FILTER_ALIASES = {
+    "employment": ("employment", "career"),
+    "career": ("employment", "career"),
+    "general": ("general", "place"),
+    "place": ("general", "place"),
+}
 
 
 class NotFoundError(ValueError):
@@ -544,11 +551,192 @@ def _unique_lower_stripped(values: list[str]) -> list[str]:
     return result
 
 
+def _parse_place_alias_overrides(payload: Any) -> dict[str, dict[str, Any]]:
+    if not isinstance(payload, dict):
+        raise ValueError("place alias overrides must be a JSON object keyed by slug")
+
+    overrides: dict[str, dict[str, Any]] = {}
+    for raw_slug, raw_value in payload.items():
+        if not isinstance(raw_slug, str) or not raw_slug.strip():
+            raise ValueError("place alias override slug must be a non-empty string")
+        if not isinstance(raw_value, dict):
+            raise ValueError("place alias override entries must be objects")
+        unknown_keys = set(raw_value) - {"aliases", "category"}
+        if unknown_keys:
+            raise ValueError(
+                "place alias override entries only support aliases and category keys"
+            )
+        aliases = raw_value.get("aliases", [])
+        if not isinstance(aliases, list) or any(not isinstance(item, str) for item in aliases):
+            raise ValueError("place alias override aliases must be a list of strings")
+        category = raw_value.get("category")
+        if category is not None and (not isinstance(category, str) or not category.strip()):
+            raise ValueError("place alias override category must be a non-empty string")
+        override_payload: dict[str, Any] = {
+            "aliases": _unique_stripped(list(aliases)),
+        }
+        if category is not None:
+            override_payload["category"] = category.strip()
+        overrides[raw_slug.strip()] = override_payload
+    return overrides
+
+
+@lru_cache(maxsize=1)
+def _load_place_alias_overrides() -> dict[str, dict[str, Any]]:
+    payload = json.loads(PLACE_ALIAS_OVERRIDES_PATH.read_text(encoding="utf-8"))
+    return _parse_place_alias_overrides(payload)
+
+
+def apply_place_alias_overrides(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    overrides = _load_place_alias_overrides()
+    merged_rows: list[dict[str, Any]] = []
+    for row in rows:
+        merged = dict(row)
+        override = overrides.get(str(merged.get("slug") or "").strip())
+        if override is not None:
+            merged["aliases"] = _unique_stripped(
+                [*list(merged.get("aliases", [])), *override.get("aliases", [])]
+            )
+            if override.get("category"):
+                merged["category"] = override["category"]
+        merged_rows.append(merged)
+    return merged_rows
+
+
+def _normalize_notice_category_filter(category: str | None) -> list[str] | None:
+    cleaned = _normalize_optional_text(category)
+    if cleaned is None:
+        return None
+    normalized = cleaned.lower()
+    aliases = NOTICE_CATEGORY_FILTER_ALIASES.get(normalized)
+    if aliases is not None:
+        return list(aliases)
+    return [normalized]
+
+
+def _normalize_notice_public_category(category: str | None) -> str:
+    cleaned = _normalize_optional_text(category)
+    if cleaned is None:
+        return "general"
+    normalized = cleaned.lower()
+    if normalized in {"employment", "career"}:
+        return "employment"
+    if normalized in {"general", "place"}:
+        return "general"
+    if normalized in {"academic", "scholarship", "event", "facility", "library"}:
+        return normalized
+    return "general"
+
+
 def _normalize_optional_text(value: str | None) -> str | None:
     if value is None:
         return None
     cleaned = value.strip()
     return cleaned or None
+
+
+def _collapse_whitespace(value: str) -> str:
+    return " ".join(value.split())
+
+
+def _compact_text(value: str) -> str:
+    return re.sub(r"\s+", "", value).strip()
+
+
+def _normalized_query_variants(value: str | None) -> tuple[str | None, str | None]:
+    cleaned = _normalize_optional_text(value)
+    if cleaned is None:
+        return None, None
+    collapsed = _collapse_whitespace(cleaned)
+    compacted = _compact_text(cleaned)
+    return collapsed, compacted or None
+
+
+def _matches_exact_text_candidate(
+    text: str | None,
+    *,
+    collapsed_query: str,
+    compact_query: str | None,
+) -> bool:
+    cleaned = _normalize_optional_text(text)
+    if cleaned is None:
+        return False
+    collapsed_text = _collapse_whitespace(cleaned).lower()
+    if collapsed_text == collapsed_query.lower():
+        return True
+    if compact_query is None:
+        return False
+    return _compact_text(cleaned).lower() == compact_query.lower()
+
+
+def _matches_partial_text_candidate(
+    text: str | None,
+    *,
+    collapsed_query: str,
+    compact_query: str | None,
+) -> bool:
+    cleaned = _normalize_optional_text(text)
+    if cleaned is None:
+        return False
+    collapsed_text = _collapse_whitespace(cleaned).lower()
+    if collapsed_query.lower() in collapsed_text:
+        return True
+    if compact_query is None:
+        return False
+    compact_text = _compact_text(cleaned).lower()
+    return bool(compact_query) and compact_query.lower() in compact_text
+
+
+def _rank_place_search_candidate(
+    item: dict[str, Any],
+    *,
+    collapsed_query: str,
+    compact_query: str | None,
+) -> int | None:
+    slug = str(item.get("slug") or "").strip()
+    name = str(item.get("name") or "")
+    aliases = [str(alias) for alias in item.get("aliases", [])]
+    description = str(item.get("description") or "")
+    lowered_query = collapsed_query.lower()
+    if slug.lower() == lowered_query:
+        return 0
+    if _matches_exact_text_candidate(
+        name,
+        collapsed_query=collapsed_query,
+        compact_query=compact_query,
+    ):
+        return 1
+    if any(
+        _matches_exact_text_candidate(
+            alias,
+            collapsed_query=collapsed_query,
+            compact_query=compact_query,
+        )
+        for alias in aliases
+    ):
+        return 2
+    if _matches_partial_text_candidate(
+        name,
+        collapsed_query=collapsed_query,
+        compact_query=compact_query,
+    ):
+        return 3
+    if any(
+        _matches_partial_text_candidate(
+            alias,
+            collapsed_query=collapsed_query,
+            compact_query=compact_query,
+        )
+        for alias in aliases
+    ):
+        return 4
+    if _matches_partial_text_candidate(
+        description,
+        collapsed_query=collapsed_query,
+        compact_query=compact_query,
+    ):
+        return 5
+    return None
 
 
 def _normalize_profile_display_name(value: str | None) -> str:
@@ -1297,7 +1485,25 @@ def search_places(
     category: str | None = None,
     limit: int = 10,
 ) -> list[Place]:
-    return [Place.model_validate(item) for item in repo.search_places(conn, query, category, limit)]
+    places = repo.list_places(conn)
+    if category is not None:
+        places = [item for item in places if item["category"] == category]
+    collapsed_query, compact_query = _normalized_query_variants(query)
+    if collapsed_query is None:
+        return [Place.model_validate(item) for item in places[:limit]]
+
+    ranked: list[tuple[int, int, dict[str, Any]]] = []
+    for index, item in enumerate(places):
+        rank = _rank_place_search_candidate(
+            item,
+            collapsed_query=collapsed_query,
+            compact_query=compact_query,
+        )
+        if rank is None:
+            continue
+        ranked.append((rank, index, item))
+    ranked.sort(key=lambda item: (item[0], item[1]))
+    return [Place.model_validate(item) for _, _, item in ranked[:limit]]
 
 
 def search_courses(
@@ -1308,10 +1514,32 @@ def search_courses(
     semester: int | None = None,
     limit: int = 20,
 ) -> list[Course]:
-    return [
-        Course.model_validate(item)
-        for item in repo.search_courses(conn, query, year=year, semester=semester, limit=limit)
-    ]
+    collapsed_query, compact_query = _normalized_query_variants(query)
+    queries = [collapsed_query or ""]
+    if compact_query is not None and compact_query != queries[0]:
+        queries.append(compact_query)
+
+    items: list[dict[str, Any]] = []
+    seen_ids: set[int] = set()
+    fetch_limit = max(limit * 2, limit)
+    for candidate_query in queries:
+        for item in repo.search_courses(
+            conn,
+            candidate_query,
+            year=year,
+            semester=semester,
+            limit=fetch_limit,
+        ):
+            item_id = int(item["id"])
+            if item_id in seen_ids:
+                continue
+            seen_ids.add(item_id)
+            items.append(item)
+            if len(items) == limit:
+                break
+        if len(items) == limit:
+            break
+    return [Course.model_validate(item) for item in items]
 
 
 def list_latest_notices(
@@ -1319,7 +1547,16 @@ def list_latest_notices(
     category: str | None = None,
     limit: int = 10,
 ) -> list[Notice]:
-    return [Notice.model_validate(item) for item in repo.list_notices(conn, category, limit)]
+    categories = _normalize_notice_category_filter(category)
+    return [
+        Notice.model_validate(
+            {
+                **item,
+                "category": _normalize_notice_public_category(item.get("category")),
+            }
+        )
+        for item in repo.list_notices(conn, category=categories, limit=limit)
+    ]
 
 
 def list_transport_guides(
@@ -2157,27 +2394,54 @@ def _resolve_place_reference(
     label: str,
     not_found_prefix: str,
 ) -> dict[str, Any]:
-    place = repo.get_place_by_slug(conn, identifier)
+    cleaned_identifier = _normalize_optional_text(identifier)
+    if cleaned_identifier is None:
+        raise NotFoundError(f"{not_found_prefix}: {identifier}")
+
+    place = repo.get_place_by_slug(conn, cleaned_identifier)
     if place is not None:
         return place
 
-    name_matches = repo.list_places_by_exact_name(conn, identifier)
+    collapsed_identifier, compact_identifier = _normalized_query_variants(cleaned_identifier)
+    assert collapsed_identifier is not None
+    places = repo.list_places(conn)
+
+    name_matches = [
+        item
+        for item in places
+        if _matches_exact_text_candidate(
+            item.get("name"),
+            collapsed_query=collapsed_identifier,
+            compact_query=compact_identifier,
+        )
+    ]
     if len(name_matches) == 1:
         return name_matches[0]
     if len(name_matches) > 1:
         raise InvalidRequestError(
-            _format_ambiguous_place_error(identifier, name_matches, label=label)
+            _format_ambiguous_place_error(cleaned_identifier, name_matches, label=label)
         )
 
-    alias_matches = repo.list_places_by_exact_alias(conn, identifier)
+    alias_matches = [
+        item
+        for item in places
+        if any(
+            _matches_exact_text_candidate(
+                alias,
+                collapsed_query=collapsed_identifier,
+                compact_query=compact_identifier,
+            )
+            for alias in item.get("aliases", [])
+        )
+    ]
     if len(alias_matches) == 1:
         return alias_matches[0]
     if len(alias_matches) > 1:
         raise InvalidRequestError(
-            _format_ambiguous_place_error(identifier, alias_matches, label=label)
+            _format_ambiguous_place_error(cleaned_identifier, alias_matches, label=label)
         )
 
-    raise NotFoundError(f"{not_found_prefix}: {identifier}")
+    raise NotFoundError(f"{not_found_prefix}: {cleaned_identifier}")
 
 
 def _resolve_origin_place(conn: sqlite3.Connection, origin: str) -> dict[str, Any]:
@@ -2564,12 +2828,17 @@ def find_nearby_restaurants(
     for raw in raw_restaurants:
         if category and raw["category"] != category:
             continue
-        if (
-            budget_max is not None
-            and raw.get("min_price") is not None
-            and raw["min_price"] > budget_max
-        ):
-            continue
+        if budget_max is not None:
+            min_price = raw.get("min_price")
+            max_price = raw.get("max_price")
+            if min_price is not None:
+                if min_price > budget_max:
+                    continue
+            elif max_price is not None:
+                if max_price > budget_max:
+                    continue
+            else:
+                continue
         if raw.get("latitude") is None or raw.get("longitude") is None:
             continue
 
@@ -2628,7 +2897,7 @@ def refresh_places_from_campus_map(
     source = source or CampusMapSource(CAMPUS_MAP_SOURCE_URL)
     synced_at = fetched_at or _now_iso()
     payload = source.fetch_place_list(campus=campus)
-    rows = source.parse_place_list(payload, fetched_at=synced_at)
+    rows = apply_place_alias_overrides(source.parse_place_list(payload, fetched_at=synced_at))
     repo.replace_places(conn, rows)
     return [
         Place.model_validate(item)

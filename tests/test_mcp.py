@@ -438,9 +438,12 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
     assert "실시간" in tools["tool_list_estimated_empty_classrooms"]["description"]
     assert "예상 공실" in tools["tool_list_estimated_empty_classrooms"]["description"]
     assert "니콜스관" in tools["tool_list_estimated_empty_classrooms"]["description"]
+    assert "김수환관" in tools["tool_list_estimated_empty_classrooms"]["description"]
     assert "출발지" in tools["tool_find_nearby_restaurants"]["description"]
     assert "alias" in tools["tool_find_nearby_restaurants"]["description"]
+    assert "학생식당" in tools["tool_find_nearby_restaurants"]["description"]
     assert "예산" in tools["tool_find_nearby_restaurants"]["description"]
+    assert "가격 정보가 없는" in tools["tool_find_nearby_restaurants"]["description"]
     assert "open_now" in tools["tool_find_nearby_restaurants"]["description"]
     assert "walk_minutes" in tools["tool_find_nearby_restaurants"]["description"]
     assert "카테고리" in tools["tool_list_latest_notices"]["description"]
@@ -457,6 +460,9 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
     )
     assert "중도" in (
         tools["tool_find_nearby_restaurants"]["inputSchema"]["properties"]["origin"]["description"]
+    )
+    assert "김수환관" in (
+        tools["tool_list_estimated_empty_classrooms"]["inputSchema"]["properties"]["building"]["description"]
     )
 
     clear_settings_cache()
@@ -608,6 +614,99 @@ def test_mcp_public_notices_return_category_display_and_summary_preview(app_env,
     clear_settings_cache()
 
 
+def test_mcp_public_notices_display_legacy_career_as_employment(app_env, monkeypatch):
+    pytest.importorskip('mcp.server.fastmcp')
+    init_db()
+    with connection() as conn:
+        replace_notices(
+            conn,
+            [
+                {
+                    "title": "진로취업상담 안내",
+                    "category": "career",
+                    "published_at": "2026-03-13",
+                    "summary": "취업 상담 일정",
+                    "labels": ["취업"],
+                    "source_url": "https://example.com/notices/career",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                }
+            ],
+        )
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        result = await mcp.call_tool(
+            'tool_list_latest_notices',
+            {'category': 'employment', 'limit': 1},
+        )
+        return _tool_payloads(result)[0]
+
+    payload = asyncio.run(main())
+
+    assert payload["title"] == "진로취업상담 안내"
+    assert payload["category_display"] == "취업"
+
+    clear_settings_cache()
+
+
+def test_mcp_public_notices_display_place_as_general(app_env, monkeypatch):
+    pytest.importorskip('mcp.server.fastmcp')
+    init_db()
+    with connection() as conn:
+        replace_notices(
+            conn,
+            [
+                {
+                    "title": "중앙도서관 자리 안내",
+                    "category": "place",
+                    "published_at": "2026-03-13",
+                    "summary": "도서관 좌석 안내",
+                    "labels": ["도서관"],
+                    "source_url": "https://example.com/notices/place",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                }
+            ],
+        )
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        result = await mcp.call_tool('tool_list_latest_notices', {'limit': 1})
+        return _tool_payloads(result)[0]
+
+    payload = asyncio.run(main())
+
+    assert payload["title"] == "중앙도서관 자리 안내"
+    assert payload["category_display"] == "일반"
+
+    clear_settings_cache()
+
+
+def test_mcp_public_search_places_normalizes_spacing_variants(app_env, monkeypatch):
+    pytest.importorskip('mcp.server.fastmcp')
+    init_db()
+    seed_demo(force=True)
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        result = await mcp.call_tool('tool_search_places', {'query': '중앙 도서관', 'limit': 1})
+        return _tool_payloads(result)[0]
+
+    payload = asyncio.run(main())
+
+    assert payload["slug"] == "central-library"
+    assert payload["name"] == "중앙도서관"
+
+    clear_settings_cache()
+
+
 def test_mcp_public_nearby_restaurants_return_condensed_payload(app_env, monkeypatch):
     pytest.importorskip('mcp.server.fastmcp')
     init_db()
@@ -664,6 +763,87 @@ def test_mcp_public_nearby_restaurants_accept_origin_alias(app_env, monkeypatch)
     clear_settings_cache()
 
 
+def test_mcp_public_nearby_restaurants_accept_facility_alias_origin(app_env, monkeypatch):
+    pytest.importorskip('mcp.server.fastmcp')
+    init_db()
+    seed_demo(force=True)
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        alias_result = await mcp.call_tool(
+            'tool_find_nearby_restaurants',
+            {'origin': '학생식당', 'limit': 1},
+        )
+        slug_result = await mcp.call_tool(
+            'tool_find_nearby_restaurants',
+            {'origin': 'student-center', 'limit': 1},
+        )
+        return _tool_payloads(alias_result)[0], _tool_payloads(slug_result)[0]
+
+    alias_payload, slug_payload = asyncio.run(main())
+
+    assert alias_payload["name"] == slug_payload["name"]
+    assert alias_payload["category_display"] == slug_payload["category_display"]
+
+    clear_settings_cache()
+
+
+def test_mcp_public_nearby_restaurants_budget_max_requires_price_evidence(app_env, monkeypatch):
+    pytest.importorskip('mcp.server.fastmcp')
+    init_db()
+    seed_demo(force=True)
+    with connection() as conn:
+        replace_restaurants(
+            conn,
+            [
+                {
+                    "slug": "budget-kimbap",
+                    "name": "버짓김밥",
+                    "category": "korean",
+                    "min_price": 7000,
+                    "max_price": 9000,
+                    "latitude": 37.48653,
+                    "longitude": 126.80174,
+                    "tags": ["한식"],
+                    "description": "가격 정보가 있는 김밥집",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "slug": "mystery-price-cafe",
+                    "name": "가격미상카페",
+                    "category": "cafe",
+                    "min_price": None,
+                    "max_price": None,
+                    "latitude": 37.48663,
+                    "longitude": 126.80184,
+                    "tags": ["카페"],
+                    "description": "가격 정보가 없는 후보",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        result = await mcp.call_tool(
+            'tool_find_nearby_restaurants',
+            {'origin': 'central-library', 'budget_max': 10000, 'walk_minutes': 15},
+        )
+        return _tool_payloads(result)
+
+    payload = asyncio.run(main())
+
+    assert [item["name"] for item in payload] == ["버짓김밥"]
+
+    clear_settings_cache()
+
+
 def test_mcp_public_empty_classrooms_tool_supports_building_alias(app_env, monkeypatch):
     pytest.importorskip('mcp.server.fastmcp')
     init_db()
@@ -709,6 +889,31 @@ def test_mcp_public_empty_classrooms_tool_supports_building_alias(app_env, monke
     assert payload["items"][0]["room"] == "N201"
     assert payload["items"][0]["availability_mode"] == "estimated"
     assert payload["items"][0]["next_occupied_at"] == "2026-03-16T13:00:00+09:00"
+
+    clear_settings_cache()
+
+
+def test_mcp_public_empty_classrooms_tool_accepts_kim_sou_hwan_hall(app_env, monkeypatch):
+    pytest.importorskip('mcp.server.fastmcp')
+    init_db()
+    seed_demo(force=True)
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        result = await mcp.call_tool(
+            'tool_list_estimated_empty_classrooms',
+            {'building': '김수환관', 'at': '2026-03-16T10:15:00+09:00'},
+        )
+        return _tool_payloads(result)[0]
+
+    payload = asyncio.run(main())
+
+    assert payload["building"]["slug"] == "kim-sou-hwan-hall"
+    assert payload["availability_mode"] == "estimated"
+    assert payload["items"]
+    assert all(item["room"].startswith("K") for item in payload["items"])
 
     clear_settings_cache()
 
