@@ -47,6 +47,12 @@
   - `데이터베이스` -> `데이터베이스활용` 1건
   - `데이타베이스`, `CSE 420` -> 빈 결과
 - 따라서 남은 course 문제는 계속 `search bug`보다 `source/snapshot coverage gap` 쪽으로 보는 편이 맞습니다.
+- 이 질의들은 현재 release gate가 아니라 `course source-gap watchlist`로 관리합니다.
+  - `데이터베이스`
+  - `CSE301`
+  - `김가톨`
+  - `데이타베이스`
+  - `CSE 420`
 
 - `open_now` strict semantics는 이미 코드상으로 잠겼지만,
   - `학생식당 기준 지금 여는 카페만 3개`

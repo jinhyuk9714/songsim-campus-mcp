@@ -164,7 +164,10 @@
 
 ## Course 100
 
-- `CO001 | course | normal | 2026년 1학기 데이터베이스 과목 찾아줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | year, semester, query가 함께 반영된다 | filter mismatch`
+- 릴리즈 게이트용 source-backed canary는 `자료구조`, `객체지향`, `03149`, `전혜경`, `C0 106`, `7교시 시작 과목` 계열로 재조정했습니다.
+- `데이터베이스`, `CSE301`, `김가톨`, `데이타베이스`, `CSE 420`는 500문장 코퍼스에는 유지하되 release gate가 아니라 `source-gap watchlist`로 추적합니다.
+
+- `CO001 | course | normal | 2026년 1학기 데이터베이스 과목 찾아줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | direct hit보다 근사 결과/빈 결과를 source-gap watchlist로 기록한다 | source-gap watchlist`
 - `CO002 | course | normal | 2026년 1학기 운영체제 수업 보여줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 운영체제 결과가 학기 조건과 함께 나온다 | filter mismatch`
 - `CO003 | course | normal | 2026년 1학기 자료구조 과목 찾아줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 자료구조 결과가 학기 조건과 함께 나온다 | filter mismatch`
 - `CO004 | course | normal | 2026년 1학기 알고리즘 과목 찾아줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 알고리즘 결과가 나온다 | empty result`
@@ -174,11 +177,11 @@
 - `CO008 | course | normal | 웹프로그래밍 수업 있어 | tool:tool_search_courses | tool_search_courses | 웹프로그래밍 결과가 나온다 | empty result`
 - `CO009 | course | normal | 캡스톤디자인 수업 찾아줘 | tool:tool_search_courses | tool_search_courses | 캡스톤디자인 결과가 나온다 | empty result`
 - `CO010 | course | normal | 머신러닝 과목 보여줘 | tool:tool_search_courses | tool_search_courses | 머신러닝 결과가 나온다 | empty result`
-- `CO011 | course | normal | CSE301 과목 뭐야 | tool:tool_search_courses | tool_search_courses | code query로 결과가 나온다 | empty result`
+- `CO011 | course | normal | 03149 과목 뭐야 | tool:tool_search_courses | tool_search_courses | code query가 자료구조 row로 정확히 풀린다 | code mismatch`
 - `CO012 | course | normal | CSE302 수업 뭐야 | tool:tool_search_courses | tool_search_courses | code query로 결과가 나온다 | empty result`
 - `CO013 | course | normal | CSE401 시간표 보여줘 | tool:tool_search_courses | tool_search_courses | code query로 시간표가 나온다 | payload gap`
 - `CO014 | course | normal | CSE420 과목 뭐야 | tool:tool_search_courses | tool_search_courses | code query로 결과가 나온다 | empty result`
-- `CO015 | course | normal | 김가톨 교수 수업 보여줘 | tool:tool_search_courses | tool_search_courses | professor filter가 적용된다 | filter mismatch`
+- `CO015 | course | normal | 전혜경 교수 수업 보여줘 | tool:tool_search_courses | tool_search_courses | professor query가 source-backed 결과를 1건 이상 반환한다 | professor mismatch`
 - `CO016 | course | normal | 홍길동 교수 강의 찾아줘 | tool:tool_search_courses | tool_search_courses | professor filter가 적용된다 | filter mismatch`
 - `CO017 | course | normal | 박요셉 교수 수업 알려줘 | tool:tool_search_courses | tool_search_courses | professor filter가 적용된다 | filter mismatch`
 - `CO018 | course | normal | 객체지향 수업 시간 알려줘 | tool:tool_search_courses | tool_search_courses | raw schedule 또는 요약 필드가 보인다 | payload gap`
@@ -204,18 +207,18 @@
 - `CO038 | course | alias | 교수 이름으로도 찾아줘 김가톨 | resource:songsim://usage-guide | songsim://usage-guide -> tool_search_courses | professor search 가능 안내 후 조회로 이어진다 | resource ignored`
 - `CO039 | course | alias | 과목코드로 찾기 CSE420 | tool:tool_search_courses | tool_search_courses | code filter로 결과가 나온다 | empty result`
 - `CO040 | course | alias | 분반 확인용으로 데이터베이스 찾아줘 | tool:tool_search_courses | tool_search_courses | section 정보가 포함된 결과가 나온다 | payload gap`
-- `CO041 | course | composite | 2026년 1학기 데이터베이스인데 김가톨 교수 수업만 보여줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | year, semester, query, professor가 함께 반영된다 | filter mismatch`
+- `CO041 | course | composite | 2026년 1학기 데이터베이스인데 김가톨 교수 수업만 보여줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | current source gap을 watchlist로 계속 추적한다 | source-gap watchlist`
 - `CO042 | course | composite | 2026년 1학기 운영체제 1분반만 찾아줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | year, semester, query, section이 함께 반영된다 | filter mismatch`
 - `CO043 | course | composite | CSE420인데 홍길동 교수 맞는지 확인해줘 | tool:tool_search_courses | tool_search_courses | code와 professor를 함께 검증할 수 있다 | payload gap`
 - `CO044 | course | composite | 데이터베이스 중 화목 수업만 찾아줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | schedule 확인이 가능한 결과가 나온다 | unsupported schedule filter`
 - `CO045 | course | composite | 객체지향 과목 중 오전 수업만 보여줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 오전 여부는 후처리 가능할 만큼 schedule이 있다 | unsupported ranking`
 - `CO046 | course | composite | 자료구조랑 알고리즘 둘 중 이번 학기 열린 것만 보여줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 두 query 중 해당 학기 결과를 찾는다 | tool selection ambiguity`
 - `CO047 | course | composite | 교수명은 모르는데 데이터베이스 계열 과목만 3개 보여줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | query+limit 기준으로 3개 이내 결과가 나온다 | limit ignored`
-- `CO048 | course | composite | CSE301이 2026년 1학기 개설됐는지 확인해줘 | tool:tool_search_courses | tool_search_courses | code+학기 조합으로 개설 여부 확인이 가능하다 | filter mismatch`
+- `CO048 | course | composite | CSE301이 2026년 1학기 개설됐는지 확인해줘 | tool:tool_search_courses | tool_search_courses | current source gap을 watchlist로 계속 추적한다 | source-gap watchlist`
 - `CO049 | course | composite | 운영체제랑 네트워크 중 교수명이 홍길동인 것만 보여줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | query+professor 조합 결과가 나온다 | filter mismatch`
 - `CO050 | course | composite | 2026년 1학기 객체지향 수업 중 금요일 수업 있나 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | schedule로 후처리 가능한 결과가 나온다 | unsupported schedule filter`
 - `CO051 | course | composite | 2026년 1학기 AI 수업 중 코드도 같이 보여줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | query 결과와 code 필드가 함께 보인다 | payload gap`
-- `CO052 | course | composite | 김가톨 교수 수업 중 2026년 1학기 것만 | tool:tool_search_courses | tool_search_courses | professor+학기 조합으로 결과가 좁혀진다 | filter mismatch`
+- `CO052 | course | composite | 김가톨 교수 수업 중 2026년 1학기 것만 | tool:tool_search_courses | tool_search_courses | current source gap을 watchlist로 계속 추적한다 | source-gap watchlist`
 - `CO053 | course | composite | 박요셉 교수 강의 중 데이터 관련만 | tool:tool_search_courses | tool_search_courses | professor+query 조합 결과가 나온다 | filter mismatch`
 - `CO054 | course | composite | 운영체제 수업 중 분반 많은 순으로 보여줘 | tool:tool_search_courses | tool_search_courses | raw 결과가 있어 후처리 비교가 가능하다 | unsupported ranking`
 - `CO055 | course | composite | 객체지향 수업실 room도 보여줘 | tool:tool_search_courses | tool_search_courses | room 필드 확인이 가능하다 | payload gap`
@@ -240,7 +243,7 @@
 - `CO074 | course | typo | 소프트 웨어 공학 수업 있어 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 공백 정규화 후 소프트웨어공학 query를 처리한다 | spacing recovery miss`
 - `CO075 | course | typo | 웹 프로그래밍 과목 있어 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 공백 정규화 후 웹프로그래밍 query를 처리한다 | spacing recovery miss`
 - `CO076 | course | typo | 객채지향 수업 찾아줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 약한 오타 tolerance 여부를 점검한다 | typo miss`
-- `CO077 | course | typo | 데이타베이스 과목 있어 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 제품 alias 수준의 오타 복구를 기대한다 | wording issue`
+- `CO077 | course | typo | 데이타베이스 과목 있어 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | current source gap을 watchlist로 계속 추적한다 | source-gap watchlist`
 - `CO078 | course | typo | 운체 과목 찾아줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 축약 표현 처리 한계를 점검한다 | wording issue`
 - `CO079 | course | typo | 자료 구조 수업 있어 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 공백 정규화 후 자료구조 query를 처리한다 | spacing recovery miss`
 - `CO080 | course | typo | 알 고 리 즘 수업 보여줘 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 공백 정규화 후 알고리즘 query를 처리한다 | spacing recovery miss`
@@ -248,7 +251,7 @@
 - `CO082 | course | typo | 머신 러닝 과목 있나 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 공백 정규화 후 머신러닝 query를 처리한다 | spacing recovery miss`
 - `CO083 | course | typo | 컴퓨터 네트워크 과목 있어 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 공백 정규화 후 컴퓨터네트워크 query를 처리한다 | spacing recovery miss`
 - `CO084 | course | typo | 캡 스 톤 디 자 인 수업 있어 | prompt:prompt_search_courses | prompt_search_courses -> tool_search_courses | 공백 정규화 후 캡스톤디자인 query를 처리한다 | spacing recovery miss`
-- `CO085 | course | typo | CSE 420 과목 뭐야 | tool:tool_search_courses | tool_search_courses | 코드 공백 제거 후 처리 가능하다 | spacing recovery miss`
+- `CO085 | course | typo | C0 106 과목 뭐야 | tool:tool_search_courses | tool_search_courses | code spacing 변형이 C0106 row로 풀린다 | spacing recovery miss`
 - `CO086 | course | typo | CSE-420 과목 뭐야 | tool:tool_search_courses | tool_search_courses | 코드 기호 차이 처리 여부를 점검한다 | wording issue`
 - `CO087 | course | typo | 김 가 톨 교수 수업 있어 | tool:tool_search_courses | tool_search_courses | 교수명 공백 정규화 후 처리 가능하다 | spacing recovery miss`
 - `CO088 | course | typo | 박 요 셉 교수 강의 보여줘 | tool:tool_search_courses | tool_search_courses | 교수명 공백 정규화 후 처리 가능하다 | spacing recovery miss`

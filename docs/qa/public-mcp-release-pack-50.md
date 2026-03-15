@@ -34,15 +34,15 @@
 | RP08 | PL091 | place | 중앙 도서관 위치 알려줘 | spacing 복구 핵심 | `prompt_find_place -> tool_search_places -> tool_get_place` | 공백 변형이 중앙도서관으로 복구된다 |
 | RP09 | PL093 | place | 니콜스 관 위치 | spacing 복구 핵심 | `prompt_find_place -> tool_search_places -> tool_get_place` | 공백 변형이 니콜스관으로 복구된다 |
 | RP10 | PL063 | place | building 카테고리에서 K관 찾아줘 | resource -> tool 흐름 점검 | `songsim://place-categories -> tool_search_places -> tool_get_place` | category resource와 alias search가 함께 동작한다 |
-| RC01 | CO001 | course | 2026년 1학기 데이터베이스 과목 찾아줘 | 학기 + query 기본 경로 | `prompt_search_courses -> tool_search_courses` | year, semester, query가 함께 반영된다 |
+| RC01 | CO003 | course | 2026년 1학기 자료구조 과목 찾아줘 | 학기 + query 기본 경로 | `prompt_search_courses -> tool_search_courses` | 자료구조 title family 결과가 1건 이상 나온다 |
 | RC02 | CO005 | course | 2026년 1학기 객체지향 과목 찾아줘 | 대표 과목명 경로 | `prompt_search_courses -> tool_search_courses` | 객체지향 관련 결과가 조회된다 |
-| RC03 | CO011 | course | CSE301 과목 뭐야 | 코드 검색 | `tool_search_courses` | code query가 안정적으로 처리된다 |
-| RC04 | CO015 | course | 김가톨 교수 수업 보여줘 | 교수명 검색 | `tool_search_courses` | professor filter가 반영된다 |
-| RC05 | CO041 | course | 2026년 1학기 데이터베이스인데 김가톨 교수 수업만 보여줘 | 복합 필터 대표 | `prompt_search_courses -> tool_search_courses` | year, semester, query, professor가 함께 반영된다 |
+| RC03 | CO011 | course | 03149 과목 뭐야 | 코드 검색 | `tool_search_courses` | code query가 정확히 자료구조 row로 풀린다 |
+| RC04 | CO015 | course | 전혜경 교수 수업 보여줘 | 교수명 검색 | `tool_search_courses` | professor query 결과가 1건 이상 나온다 |
+| RC05 | CO020 | course | 자료구조 교수가 누구야 | payload 확인 대표 | `tool_search_courses` | 반환 payload에서 professor 필드를 확인할 수 있다 |
 | RC06 | CO061 | course | 객체지향 과목 2개만 보여줘 | limit 처리 | `tool_search_courses` | limit이 적용된다 |
 | RC07 | CO071 | course | 객체 지향 과목 찾아줘 | spacing 복구 | `prompt_search_courses -> tool_search_courses` | 공백 변형이 복구된다 |
-| RC08 | CO077 | course | 데이타베이스 과목 있어 | 제품성 typo | `prompt_search_courses -> tool_search_courses` | 제품 alias 수준 오타가 처리된다 |
-| RC09 | CO085 | course | CSE 420 과목 뭐야 | 코드 spacing 변형 | `tool_search_courses` | 코드 spacing 변형이 처리된다 |
+| RC08 | CO079 | course | 자료 구조 수업 있어 | spacing 복구 | `prompt_search_courses -> tool_search_courses` | 공백 변형이 자료구조 query로 복구된다 |
+| RC09 | CO085 | course | C0 106 과목 뭐야 | 코드 spacing 변형 | `tool_search_courses` | code spacing 변형이 C0106 row로 풀린다 |
 | RC10 | CO099 | course | 7교시에 시작하는 과목 찾고 싶어 | 교시 resource 연계 | `songsim://class-periods -> tool_search_courses` | 교시 정보와 course search를 함께 쓸 수 있다 |
 | RN01 | NO001 | notices | 최신 공지 3개 보여줘 | latest baseline | `prompt_latest_notices -> tool_list_latest_notices` | latest 3건이 안정적으로 내려온다 |
 | RN02 | NO003 | notices | 최신 장학 공지 3개 보여줘 | scholarship happy path | `prompt_latest_notices -> tool_list_latest_notices` | scholarship filter가 안정적이다 |
