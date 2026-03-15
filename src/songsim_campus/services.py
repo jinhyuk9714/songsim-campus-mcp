@@ -77,6 +77,7 @@ PLACE_ALIAS_OVERRIDES_PATH = DATA_DIR / "place_alias_overrides.json"
 PLACE_FACILITY_KEYWORDS_PATH = DATA_DIR / "place_facility_keywords.json"
 PLACE_SHORT_QUERY_PREFERENCES_PATH = DATA_DIR / "place_short_query_preferences.json"
 RESTAURANT_SEARCH_ALIASES_PATH = DATA_DIR / "restaurant_search_aliases.json"
+RESTAURANT_SEARCH_NOISE_TERMS_PATH = DATA_DIR / "restaurant_search_noise_terms.json"
 SYNC_DATASET_TABLES = ("places", "courses", "notices", "transport_guides")
 ADMIN_SYNC_TARGETS = {
     "snapshot",
@@ -645,6 +646,34 @@ def _load_restaurant_search_aliases() -> dict[str, list[str]]:
     return _parse_restaurant_search_aliases(payload)
 
 
+def _parse_restaurant_search_noise_terms(payload: Any) -> dict[str, list[str]]:
+    if not isinstance(payload, dict):
+        raise ValueError("restaurant search noise terms must be a JSON object")
+    allowed_keys = {"name_terms", "tag_terms", "description_terms"}
+    unknown_keys = set(payload) - allowed_keys
+    if unknown_keys:
+        raise ValueError(
+            "restaurant search noise terms only support name_terms, tag_terms, "
+            "and description_terms"
+        )
+
+    parsed: dict[str, list[str]] = {}
+    for key in allowed_keys:
+        raw_values = payload.get(key, [])
+        if not isinstance(raw_values, list) or any(
+            not isinstance(item, str) for item in raw_values
+        ):
+            raise ValueError(f"restaurant search noise terms {key} must be a list of strings")
+        parsed[key] = _unique_stripped(list(raw_values))
+    return parsed
+
+
+@lru_cache(maxsize=1)
+def _load_restaurant_search_noise_terms() -> dict[str, list[str]]:
+    payload = json.loads(RESTAURANT_SEARCH_NOISE_TERMS_PATH.read_text(encoding="utf-8"))
+    return _parse_restaurant_search_noise_terms(payload)
+
+
 def _parse_place_facility_keywords(payload: Any) -> dict[str, list[str]]:
     if not isinstance(payload, dict):
         raise ValueError("place facility keywords must be a JSON object keyed by noun")
@@ -1075,6 +1104,68 @@ def _resolve_restaurant_brand_query_token(query: str) -> str:
     if collapsed_query is not None:
         return collapsed_query
     return query.strip()
+
+
+def _restaurant_brand_exactness(
+    item: dict[str, Any],
+    *,
+    canonical_query: str | None,
+) -> int:
+    if canonical_query is None:
+        return 0
+
+    normalized_brand_terms = _unique_lower_stripped(
+        [
+            canonical_query,
+            *(_load_restaurant_search_aliases().get(canonical_query, [])),
+        ]
+    )
+    if not normalized_brand_terms:
+        return 2
+
+    tag_targets = [
+        _normalize_facility_name(str(tag))
+        for tag in item.get("tags", [])
+    ]
+    name_target = _normalize_facility_name(str(item.get("name") or ""))
+
+    if any(target == term for term in normalized_brand_terms for target in tag_targets if target):
+        return 0
+    if any(target == term for term in normalized_brand_terms for target in [name_target] if target):
+        return 0
+    if any(term in target for term in normalized_brand_terms for target in tag_targets if target):
+        return 1
+    if any(term in name_target for term in normalized_brand_terms if term and name_target):
+        return 1
+    return 2
+
+
+def _restaurant_search_text_contains_noise(value: str | None, terms: list[str]) -> bool:
+    normalized_value = _normalize_facility_name(value)
+    if not normalized_value:
+        return False
+    return any(
+        normalized_term in normalized_value
+        for normalized_term in (_normalize_facility_name(term) for term in terms)
+        if normalized_term
+    )
+
+
+def _is_restaurant_search_noise_candidate(item: dict[str, Any]) -> bool:
+    noise_terms = _load_restaurant_search_noise_terms()
+    if _restaurant_search_text_contains_noise(item.get("name"), noise_terms["name_terms"]):
+        return True
+    if any(
+        _restaurant_search_text_contains_noise(str(tag), noise_terms["tag_terms"])
+        for tag in item.get("tags", [])
+    ):
+        return True
+    if _restaurant_search_text_contains_noise(
+        item.get("description"),
+        noise_terms["description_terms"],
+    ):
+        return True
+    return False
 
 
 def _rank_restaurant_search_candidate(
@@ -2069,12 +2160,18 @@ def search_restaurants(
             raise NotFoundError(f"Origin place has no coordinates: {origin}")
 
     collapsed_query, compact_query = _normalized_query_variants(query)
+    canonical_brand_query = (
+        _resolve_restaurant_brand_query_token(query)
+        if collapsed_query is not None
+        else None
+    )
     ranking_origin_place = origin_place or _default_restaurant_search_origin(
         conn,
         collapsed_query=collapsed_query,
     )
     ranked: list[
         tuple[
+            int,
             int,
             int,
             int,
@@ -2086,6 +2183,8 @@ def search_restaurants(
         ]
     ] = []
     for item in restaurants:
+        if _is_restaurant_search_noise_candidate(item):
+            continue
         if collapsed_query is None:
             rank = 0
         else:
@@ -2096,6 +2195,10 @@ def search_restaurants(
             )
             if rank is None:
                 continue
+        brand_exactness = _restaurant_brand_exactness(
+            item,
+            canonical_query=canonical_brand_query,
+        )
 
         hidden_distance_meters: int | None = None
         hidden_walk_minutes: int | None = None
@@ -2130,6 +2233,7 @@ def search_restaurants(
         ranked.append(
             (
                 rank,
+                brand_exactness,
                 campus_bucket,
                 hidden_walk_minutes if hidden_walk_minutes is not None else 999,
                 hidden_distance_meters if hidden_distance_meters is not None else 999999,
@@ -2140,7 +2244,7 @@ def search_restaurants(
             )
         )
 
-    ranked.sort(key=lambda item: (item[0], item[1], item[2], item[3], item[4]))
+    ranked.sort(key=lambda item: (item[0], item[1], item[2], item[3], item[4], item[5]))
     snapshot_results = [
         RestaurantSearchResult.model_validate(
             {
@@ -2149,7 +2253,7 @@ def search_restaurants(
                 "estimated_walk_minutes": estimated_walk_minutes,
             }
         )
-        for _, _, _, _, _, item, distance_meters, estimated_walk_minutes in ranked[:limit]
+        for _, _, _, _, _, _, item, distance_meters, estimated_walk_minutes in ranked[:limit]
     ]
     if snapshot_results or collapsed_query is None:
         return snapshot_results
@@ -2232,6 +2336,7 @@ def search_restaurants(
             int,
             int,
             int,
+            int,
             str,
             dict[str, Any],
             int | None,
@@ -2239,6 +2344,8 @@ def search_restaurants(
         ]
     ] = []
     for item in raw_restaurants:
+        if _is_restaurant_search_noise_candidate(item):
+            continue
         rank = _rank_restaurant_search_candidate(
             item,
             collapsed_query=collapsed_query,
@@ -2246,6 +2353,10 @@ def search_restaurants(
         )
         if rank is None:
             continue
+        brand_exactness = _restaurant_brand_exactness(
+            item,
+            canonical_query=canonical_brand_query,
+        )
 
         hidden_distance_meters: int | None = None
         hidden_walk_minutes: int | None = None
@@ -2280,6 +2391,7 @@ def search_restaurants(
         live_ranked.append(
             (
                 rank,
+                brand_exactness,
                 campus_bucket,
                 hidden_walk_minutes if hidden_walk_minutes is not None else 999,
                 hidden_distance_meters if hidden_distance_meters is not None else 999999,
@@ -2290,7 +2402,7 @@ def search_restaurants(
             )
         )
 
-    live_ranked.sort(key=lambda item: (item[0], item[1], item[2], item[3], item[4]))
+    live_ranked.sort(key=lambda item: (item[0], item[1], item[2], item[3], item[4], item[5]))
     return [
         RestaurantSearchResult.model_validate(
             {
@@ -2299,7 +2411,7 @@ def search_restaurants(
                 "estimated_walk_minutes": estimated_walk_minutes,
             }
         )
-        for _, _, _, _, _, item, distance_meters, estimated_walk_minutes in live_ranked[:limit]
+        for _, _, _, _, _, _, item, distance_meters, estimated_walk_minutes in live_ranked[:limit]
     ]
 
 

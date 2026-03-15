@@ -19,6 +19,7 @@ from songsim_campus.services import (
     _load_place_facility_keywords,
     _load_place_short_query_preferences,
     _load_restaurant_search_aliases,
+    _load_restaurant_search_noise_terms,
     _parse_campus_walk_graph,
     find_nearby_restaurants,
     get_class_periods,
@@ -234,6 +235,18 @@ def test_load_restaurant_search_aliases_contract():
     assert aliases["매머드익스프레스"] == ["매머드커피", "매머드 커피", "매머드"]
     assert "메가커피" in aliases["메가MGC커피"]
     assert "이디야" in aliases["이디야커피"]
+    assert aliases["스타벅스"] == ["스타벅스", "starbucks"]
+    assert aliases["커피빈"] == ["커피빈", "coffee bean"]
+    assert aliases["투썸플레이스"] == ["투썸", "투썸플레이스", "투썸 플레이스"]
+    assert aliases["빽다방"] == ["빽다방"]
+
+
+def test_load_restaurant_search_noise_terms_contract():
+    noise_terms = _load_restaurant_search_noise_terms()
+
+    assert noise_terms["name_terms"] == ["주차장"]
+    assert noise_terms["tag_terms"] == ["교통시설"]
+    assert noise_terms["description_terms"] == ["주차장"]
 
 
 def test_load_place_facility_keywords_contract():
@@ -454,6 +467,95 @@ def test_search_restaurants_can_use_kakao_live_results_without_origin(app_env):
     assert items[0].source_tag == "kakao_local"
     assert items[0].distance_meters is None
     assert items[0].estimated_walk_minutes is None
+
+
+@pytest.mark.parametrize(
+    ("query", "expected_query", "result_name"),
+    [
+        ("스타벅스", "스타벅스", "스타벅스 역곡역DT점"),
+        ("커피빈", "커피빈", "커피빈 역곡점"),
+        ("투썸", "투썸플레이스", "투썸플레이스 역곡역점"),
+        ("빽다방", "빽다방", "빽다방 역곡남부역점"),
+    ],
+)
+def test_search_restaurants_resolves_long_tail_brand_aliases_via_live_fallback(
+    app_env,
+    query,
+    expected_query,
+    result_name,
+):
+    init_db()
+    seed_demo(force=True)
+
+    class LongTailBrandClient:
+        def __init__(self):
+            self.calls: list[str] = []
+
+        def search_sync(self, query: str, *, x=None, y=None, radius: int = 1000):
+            self.calls.append(query)
+            return [
+                KakaoPlace(
+                    name=result_name,
+                    category="음식점 > 카페 > 커피전문점",
+                    address="경기 부천시 원미구 지봉로 99",
+                    latitude=37.48556,
+                    longitude=126.80379,
+                    place_id="901",
+                    place_url="https://place.map.kakao.com/901",
+                )
+            ]
+
+    client = LongTailBrandClient()
+    with connection() as conn:
+        items = search_restaurants(
+            conn,
+            query=query,
+            limit=5,
+            category="cafe",
+            kakao_client=client,
+        )
+
+    assert client.calls == [expected_query]
+    assert [item.name for item in items] == [result_name]
+
+
+def test_search_restaurants_filters_non_restaurant_noise_from_live_fallback(app_env):
+    init_db()
+    seed_demo(force=True)
+
+    class StarbucksClient:
+        def search_sync(self, query: str, *, x=None, y=None, radius: int = 1000):
+            assert query == "스타벅스"
+            return [
+                KakaoPlace(
+                    name="스타벅스 역곡역DT점 주차장",
+                    category="교통시설 > 주차장",
+                    address="경기 부천시 소사구 괴안동 112-25",
+                    latitude=37.48345,
+                    longitude=126.80935,
+                    place_id="902",
+                    place_url="https://place.map.kakao.com/902",
+                ),
+                KakaoPlace(
+                    name="스타벅스 역곡역DT점",
+                    category="음식점 > 카페 > 커피전문점",
+                    address="경기 부천시 소사구 경인로 485",
+                    latitude=37.48354,
+                    longitude=126.80929,
+                    place_id="903",
+                    place_url="https://place.map.kakao.com/903",
+                ),
+            ]
+
+    with connection() as conn:
+        items = search_restaurants(
+            conn,
+            query="스타벅스",
+            limit=5,
+            kakao_client=StarbucksClient(),
+        )
+
+    assert [item.name for item in items] == ["스타벅스 역곡역DT점"]
 
 
 def test_search_restaurants_without_origin_prioritizes_campus_adjacent_live_match(app_env):

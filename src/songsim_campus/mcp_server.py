@@ -265,8 +265,9 @@ def _public_usage_guide() -> str:
             ),
             (
                 "6. Use tool_search_restaurants for direct brand-name searches such as "
-                "매머드커피, 메가커피, or 이디야. origin이 없어도 캠퍼스 주변에서 "
-                "브랜드를 직접 찾을 수 있고, 캠퍼스에 가까운 후보를 먼저 보여줍니다."
+                "매머드커피, 메가커피, 이디야, 스타벅스, 커피빈, 투썸, or 빽다방. "
+                "origin이 없어도 캠퍼스 주변에서 브랜드를 직접 찾을 수 있고, "
+                "캠퍼스에 가까운 후보를 먼저 보여줍니다."
             ),
             "7. Use tool_list_latest_notices for latest notices; category is optional.",
             (
@@ -285,6 +286,7 @@ def _public_usage_guide() -> str:
             "- 최신 장학 공지 3개 보여줘",
             "- 니콜스관인데 지금 예상 빈 강의실 있어?",
             "- 매머드커피 어디 있어?",
+            "- 스타벅스 있어?",
             "- 중앙도서관 근처 밥집 추천해줘",
             "- 중도 근처 밥집 추천해줘",
         ]
@@ -485,7 +487,7 @@ def build_mcp():
                 Field(
                     description=(
                         "브랜드 또는 상호 직접 검색어. "
-                        "예: 매머드커피, 메가커피, 이디야"
+                        "예: 매머드커피, 메가커피, 이디야, 스타벅스, 커피빈"
                     )
                 ),
             ],
@@ -504,7 +506,8 @@ def build_mcp():
                 f"Then call tool_search_restaurants with query={query}, "
                 f"origin={origin or '<optional>'}, category={category or '<optional>'}, "
                 f"limit={limit}.\n"
-                "Use this for direct brand searches like 매머드커피, 메가커피, or 이디야.\n"
+                "Use this for direct brand searches like 매머드커피, 메가커피, "
+                "이디야, 스타벅스, or 커피빈.\n"
                 "If origin is omitted, search around the campus center first and show "
                 "campus-nearest matches first.\n"
                 "For recommendation-style questions from a campus origin, use the nearby "
@@ -830,7 +833,7 @@ def build_mcp():
         description=(
             (
                 "브랜드나 상호를 직접 검색할 때 사용합니다. "
-                "매머드커피, 메가커피, 이디야처럼 nearby 추천이 아니라 "
+                "매머드커피, 메가커피, 이디야, 스타벅스처럼 nearby 추천이 아니라 "
                 "이름으로 특정 매장을 찾고 싶을 때 적합합니다."
             )
             if public_readonly
@@ -846,7 +849,7 @@ def build_mcp():
             Field(
                 description=(
                     "브랜드 상호 또는 직접 검색어. "
-                    "예: 매머드커피, 메가커피, 이디야"
+                    "예: 매머드커피, 메가커피, 이디야, 스타벅스, 커피빈"
                 )
             ),
         ] = "",

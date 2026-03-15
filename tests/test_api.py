@@ -411,6 +411,84 @@ def test_gpt_restaurants_search_endpoint_uses_kakao_live_fallback(client, monkey
     ]
 
 
+def test_restaurants_search_endpoint_filters_brand_noise_candidates(client, monkeypatch):
+    monkeypatch.setenv("SONGSIM_KAKAO_REST_API_KEY", "test-key")
+    clear_settings_cache()
+
+    class ApiBrandKakaoClient:
+        def __init__(self, api_key: str):
+            assert api_key == "test-key"
+
+        def search_sync(self, query: str, *, x=None, y=None, radius: int = 1000):
+            assert query == "스타벅스"
+            return [
+                services.KakaoPlace(
+                    name="스타벅스 역곡역DT점 주차장",
+                    category="교통시설 > 주차장",
+                    address="경기 부천시 소사구 괴안동 112-25",
+                    latitude=37.48345,
+                    longitude=126.80935,
+                    place_id="902",
+                    place_url="https://place.map.kakao.com/902",
+                ),
+                services.KakaoPlace(
+                    name="스타벅스 역곡역DT점",
+                    category="음식점 > 카페 > 커피전문점",
+                    address="경기 부천시 소사구 경인로 485",
+                    latitude=37.48354,
+                    longitude=126.80929,
+                    place_id="903",
+                    place_url="https://place.map.kakao.com/903",
+                ),
+            ]
+
+    monkeypatch.setattr("songsim_campus.services.KakaoLocalClient", ApiBrandKakaoClient)
+
+    response = client.get("/restaurants/search", params={"query": "스타벅스", "limit": 5})
+
+    assert response.status_code == 200
+    assert [item["name"] for item in response.json()] == ["스타벅스 역곡역DT점"]
+
+
+def test_gpt_restaurants_search_endpoint_supports_long_tail_brand_alias(client, monkeypatch):
+    monkeypatch.setenv("SONGSIM_KAKAO_REST_API_KEY", "test-key")
+    clear_settings_cache()
+
+    class ApiBrandKakaoClient:
+        def __init__(self, api_key: str):
+            assert api_key == "test-key"
+
+        def search_sync(self, query: str, *, x=None, y=None, radius: int = 1000):
+            assert query == "커피빈"
+            return [
+                services.KakaoPlace(
+                    name="커피빈 역곡점",
+                    category="음식점 > 카페 > 커피전문점",
+                    address="경기 부천시 원미구 지봉로 70",
+                    latitude=37.48621,
+                    longitude=126.80491,
+                    place_id="904",
+                    place_url="https://place.map.kakao.com/904",
+                )
+            ]
+
+    monkeypatch.setattr("songsim_campus.services.KakaoLocalClient", ApiBrandKakaoClient)
+
+    response = client.get("/gpt/restaurants/search", params={"query": "커피빈", "limit": 5})
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "name": "커피빈 역곡점",
+            "category_display": "카페",
+            "distance_meters": None,
+            "estimated_walk_minutes": None,
+            "price_hint": None,
+            "location_hint": "경기 부천시 원미구 지봉로 70",
+        }
+    ]
+
+
 def test_restaurants_search_endpoint_returns_404_for_unknown_origin(client):
     response = client.get(
         "/restaurants/search",
