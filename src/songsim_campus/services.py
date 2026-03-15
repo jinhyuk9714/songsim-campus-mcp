@@ -1696,8 +1696,13 @@ def search_restaurants(
             raise NotFoundError(f"Origin place has no coordinates: {origin}")
 
     collapsed_query, compact_query = _normalized_query_variants(query)
+    ranking_origin_place = origin_place or _default_restaurant_search_origin(
+        conn,
+        collapsed_query=collapsed_query,
+    )
     ranked: list[
         tuple[
+            int,
             int,
             int,
             int,
@@ -1719,30 +1724,42 @@ def search_restaurants(
             if rank is None:
                 continue
 
+        hidden_distance_meters: int | None = None
+        hidden_walk_minutes: int | None = None
         distance_meters: int | None = None
         estimated_walk_minutes: int | None = None
         if (
-            origin_place is not None
+            ranking_origin_place is not None
             and item.get("latitude") is not None
             and item.get("longitude") is not None
         ):
-            distance_meters = _haversine_meters(
-                origin_place["latitude"],
-                origin_place["longitude"],
+            hidden_distance_meters = _haversine_meters(
+                ranking_origin_place["latitude"],
+                ranking_origin_place["longitude"],
                 item["latitude"],
                 item["longitude"],
             )
-            estimated_walk_minutes = _estimate_place_to_restaurant_walk_minutes(
+            hidden_walk_minutes = _estimate_place_to_restaurant_walk_minutes(
                 conn,
-                origin_place=origin_place,
+                origin_place=ranking_origin_place,
                 restaurant_row=item,
+            )
+            if origin_place is not None:
+                distance_meters = hidden_distance_meters
+                estimated_walk_minutes = hidden_walk_minutes
+
+        campus_bucket = 0
+        if origin_place is None:
+            campus_bucket = (
+                0 if hidden_walk_minutes is not None and hidden_walk_minutes <= 15 else 1
             )
 
         ranked.append(
             (
                 rank,
-                estimated_walk_minutes if estimated_walk_minutes is not None else 999,
-                distance_meters if distance_meters is not None else 999999,
+                campus_bucket,
+                hidden_walk_minutes if hidden_walk_minutes is not None else 999,
+                hidden_distance_meters if hidden_distance_meters is not None else 999999,
                 str(item.get("name") or ""),
                 item,
                 distance_meters,
@@ -1750,7 +1767,7 @@ def search_restaurants(
             )
         )
 
-    ranked.sort(key=lambda item: (item[0], item[1], item[2], item[3]))
+    ranked.sort(key=lambda item: (item[0], item[1], item[2], item[3], item[4]))
     snapshot_results = [
         RestaurantSearchResult.model_validate(
             {
@@ -1759,12 +1776,12 @@ def search_restaurants(
                 "estimated_walk_minutes": estimated_walk_minutes,
             }
         )
-        for _, _, _, _, item, distance_meters, estimated_walk_minutes in ranked[:limit]
+        for _, _, _, _, _, item, distance_meters, estimated_walk_minutes in ranked[:limit]
     ]
     if snapshot_results or collapsed_query is None:
         return snapshot_results
 
-    internal_origin_place = origin_place
+    internal_origin_place = ranking_origin_place
     if internal_origin_place is None:
         internal_origin_place = _resolve_origin_place(conn, DEFAULT_RESTAURANT_SEARCH_ORIGIN)
         if (
@@ -1841,6 +1858,7 @@ def search_restaurants(
             int,
             int,
             int,
+            int,
             str,
             dict[str, Any],
             int | None,
@@ -1856,30 +1874,42 @@ def search_restaurants(
         if rank is None:
             continue
 
+        hidden_distance_meters: int | None = None
+        hidden_walk_minutes: int | None = None
         distance_meters: int | None = None
         estimated_walk_minutes: int | None = None
         if (
-            origin_place is not None
+            internal_origin_place is not None
             and item.get("latitude") is not None
             and item.get("longitude") is not None
         ):
-            distance_meters = _haversine_meters(
-                origin_place["latitude"],
-                origin_place["longitude"],
+            hidden_distance_meters = _haversine_meters(
+                internal_origin_place["latitude"],
+                internal_origin_place["longitude"],
                 item["latitude"],
                 item["longitude"],
             )
-            estimated_walk_minutes = _estimate_place_to_restaurant_walk_minutes(
+            hidden_walk_minutes = _estimate_place_to_restaurant_walk_minutes(
                 conn,
-                origin_place=origin_place,
+                origin_place=internal_origin_place,
                 restaurant_row=item,
+            )
+            if origin_place is not None:
+                distance_meters = hidden_distance_meters
+                estimated_walk_minutes = hidden_walk_minutes
+
+        campus_bucket = 0
+        if origin_place is None:
+            campus_bucket = (
+                0 if hidden_walk_minutes is not None and hidden_walk_minutes <= 15 else 1
             )
 
         live_ranked.append(
             (
                 rank,
-                estimated_walk_minutes if estimated_walk_minutes is not None else 999,
-                distance_meters if distance_meters is not None else 999999,
+                campus_bucket,
+                hidden_walk_minutes if hidden_walk_minutes is not None else 999,
+                hidden_distance_meters if hidden_distance_meters is not None else 999999,
                 str(item.get("name") or ""),
                 item,
                 distance_meters,
@@ -1887,7 +1917,7 @@ def search_restaurants(
             )
         )
 
-    live_ranked.sort(key=lambda item: (item[0], item[1], item[2], item[3]))
+    live_ranked.sort(key=lambda item: (item[0], item[1], item[2], item[3], item[4]))
     return [
         RestaurantSearchResult.model_validate(
             {
@@ -1896,7 +1926,7 @@ def search_restaurants(
                 "estimated_walk_minutes": estimated_walk_minutes,
             }
         )
-        for _, _, _, _, item, distance_meters, estimated_walk_minutes in live_ranked[:limit]
+        for _, _, _, _, _, item, distance_meters, estimated_walk_minutes in live_ranked[:limit]
     ]
 
 
@@ -2982,6 +3012,22 @@ def _resolve_origin_place(conn: sqlite3.Connection, origin: str) -> dict[str, An
         label="origin",
         not_found_prefix="Origin place not found",
     )
+
+
+def _default_restaurant_search_origin(
+    conn: sqlite3.Connection,
+    *,
+    collapsed_query: str | None,
+) -> dict[str, Any] | None:
+    if collapsed_query is None:
+        return None
+    try:
+        place = _resolve_origin_place(conn, DEFAULT_RESTAURANT_SEARCH_ORIGIN)
+    except NotFoundError:
+        return None
+    if place.get("latitude") is None or place.get("longitude") is None:
+        return None
+    return place
 
 
 def _resolve_building_place(conn: sqlite3.Connection, building: str) -> Place:

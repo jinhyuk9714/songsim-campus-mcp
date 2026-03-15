@@ -540,6 +540,7 @@ def test_mcp_public_empty_classroom_prompt_explains_estimate_flow(app_env, monke
 
     assert "tool_search_restaurants" in message
     assert "query=매머드커피" in message
+    assert "campus-nearest matches first" in message
     assert "tool_find_nearby_restaurants" not in message
 
     clear_settings_cache()
@@ -568,6 +569,7 @@ def test_mcp_public_usage_and_class_period_resources_are_readable(app_env, monke
     assert "예상 공실" in usage_content
     assert "profile" in usage_content
     assert "중도" in usage_content
+    assert "가까운 후보를 먼저" in usage_content
     assert "매머드커피" in usage_content
     assert periods_payload[0]["period"] == 1
     assert {"period", "start", "end"} <= set(periods_payload[0].keys())
@@ -686,6 +688,15 @@ def test_mcp_public_search_restaurants_uses_live_fallback(app_env, monkeypatch):
 
             return [
                 KakaoPlace(
+                    name="매머드익스프레스 가상의외부점",
+                    category="음식점 > 카페 > 커피전문점",
+                    address="경기 부천시 소사구 경인옛로 37",
+                    latitude=37.48186,
+                    longitude=126.79612,
+                    place_id="201",
+                    place_url="https://place.map.kakao.com/201",
+                ),
+                KakaoPlace(
                     name="매머드익스프레스 부천가톨릭대학교점",
                     category="음식점 > 카페 > 커피전문점",
                     address="경기 부천시 원미구 지봉로 43",
@@ -705,7 +716,7 @@ def test_mcp_public_search_restaurants_uses_live_fallback(app_env, monkeypatch):
 
     payload = asyncio.run(main())
 
-    assert payload == [
+    assert payload[:2] == [
         {
             "name": "매머드익스프레스 부천가톨릭대학교점",
             "category_display": "카페",
@@ -713,6 +724,14 @@ def test_mcp_public_search_restaurants_uses_live_fallback(app_env, monkeypatch):
             "estimated_walk_minutes": None,
             "price_hint": None,
             "location_hint": "경기 부천시 원미구 지봉로 43",
+        },
+        {
+            "name": "매머드익스프레스 가상의외부점",
+            "category_display": "카페",
+            "distance_meters": None,
+            "estimated_walk_minutes": None,
+            "price_hint": None,
+            "location_hint": "경기 부천시 소사구 경인옛로 37",
         }
     ]
 

@@ -250,6 +250,7 @@ SONGSIM_ADMIN_ENABLED=true uv run songsim-api
 ```
 
 `budget_max`는 엄격 필터입니다. 가격 정보가 없는 식당은 결과에서 제외됩니다.
+브랜드 direct search는 `origin`이 없어도 동작하고, 캠퍼스에 가까운 후보를 먼저 보여줍니다.
 
 ## 대표 MCP 테스트 질문
 

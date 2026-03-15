@@ -330,6 +330,81 @@ def test_search_restaurants_can_use_kakao_live_results_without_origin(app_env):
     assert items[0].estimated_walk_minutes is None
 
 
+def test_search_restaurants_without_origin_prioritizes_campus_adjacent_live_match(app_env):
+    init_db()
+    seed_demo(force=True)
+
+    class BrandKakaoClient:
+        def search_sync(self, query: str, *, x=None, y=None, radius: int = 1000):
+            assert query == "매머드익스프레스"
+            return [
+                KakaoPlace(
+                    name="매머드익스프레스 가상의외부점",
+                    category="음식점 > 카페 > 커피전문점",
+                    address="경기 부천시 소사구 경인옛로 37",
+                    latitude=37.48186,
+                    longitude=126.79612,
+                    place_id="201",
+                    place_url="https://place.map.kakao.com/201",
+                ),
+                KakaoPlace(
+                    name="매머드익스프레스 부천가톨릭대학교점",
+                    category="음식점 > 카페 > 커피전문점",
+                    address="경기 부천시 원미구 지봉로 43",
+                    latitude=37.48556,
+                    longitude=126.80379,
+                    place_id="101",
+                    place_url="https://place.map.kakao.com/101",
+                ),
+            ]
+
+    with connection() as conn:
+        items = search_restaurants(
+            conn,
+            query="매머드커피",
+            limit=5,
+            category="cafe",
+            kakao_client=BrandKakaoClient(),
+        )
+
+    assert [item.name for item in items[:2]] == [
+        "매머드익스프레스 부천가톨릭대학교점",
+        "매머드익스프레스 가상의외부점",
+    ]
+    assert all(item.distance_meters is None for item in items[:2])
+    assert all(item.estimated_walk_minutes is None for item in items[:2])
+
+
+def test_search_restaurants_without_origin_prioritizes_campus_adjacent_snapshot_match(app_env):
+    init_db()
+    seed_demo(force=True)
+    with connection() as conn:
+        replace_restaurants(
+            conn,
+            [
+                _restaurant_row(
+                    slug="mammoth-outer",
+                    name="매머드익스프레스 가상의외부점",
+                    category="cafe",
+                    latitude=37.48186,
+                    longitude=126.79612,
+                ),
+                _restaurant_row(
+                    slug="mammoth-campus",
+                    name="매머드익스프레스 부천가톨릭대학교점",
+                    category="cafe",
+                    latitude=37.48556,
+                    longitude=126.80379,
+                ),
+            ],
+        )
+        items = search_restaurants(conn, query="매머드커피", limit=5)
+
+    assert [item.slug for item in items[:2]] == ["mammoth-campus", "mammoth-outer"]
+    assert all(item.distance_meters is None for item in items[:2])
+    assert all(item.estimated_walk_minutes is None for item in items[:2])
+
+
 def test_search_restaurants_with_origin_returns_distance_fields_on_live_fallback(app_env):
     init_db()
     seed_demo(force=True)

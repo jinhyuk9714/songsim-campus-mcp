@@ -265,6 +265,15 @@ def test_restaurants_search_endpoint_uses_kakao_live_fallback(client, monkeypatc
             assert query == "매머드익스프레스"
             return [
                 services.KakaoPlace(
+                    name="매머드익스프레스 가상의외부점",
+                    category="음식점 > 카페 > 커피전문점",
+                    address="경기 부천시 소사구 경인옛로 37",
+                    latitude=37.48186,
+                    longitude=126.79612,
+                    place_id="201",
+                    place_url="https://place.map.kakao.com/201",
+                ),
+                services.KakaoPlace(
                     name="매머드익스프레스 부천가톨릭대학교점",
                     category="음식점 > 카페 > 커피전문점",
                     address="경기 부천시 원미구 지봉로 43",
@@ -281,7 +290,10 @@ def test_restaurants_search_endpoint_uses_kakao_live_fallback(client, monkeypatc
 
     assert response.status_code == 200
     payload = response.json()
-    assert [item["name"] for item in payload] == ["매머드익스프레스 부천가톨릭대학교점"]
+    assert [item["name"] for item in payload[:2]] == [
+        "매머드익스프레스 부천가톨릭대학교점",
+        "매머드익스프레스 가상의외부점",
+    ]
     assert payload[0]["source_tag"] == "kakao_local"
     assert payload[0]["distance_meters"] is None
     assert payload[0]["estimated_walk_minutes"] is None
@@ -299,6 +311,15 @@ def test_gpt_restaurants_search_endpoint_uses_kakao_live_fallback(client, monkey
             assert query == "이디야커피"
             return [
                 services.KakaoPlace(
+                    name="이디야커피 부천성모병원점",
+                    category="음식점 > 카페 > 커피전문점",
+                    address="경기 부천시 원미구 부흥로 472",
+                    latitude=37.48564,
+                    longitude=126.79093,
+                    place_id="202",
+                    place_url="https://place.map.kakao.com/202",
+                ),
+                services.KakaoPlace(
                     name="이디야커피 가톨릭대점",
                     category="음식점 > 카페 > 커피전문점",
                     address="경기 부천시 원미구 지봉로 48",
@@ -314,7 +335,7 @@ def test_gpt_restaurants_search_endpoint_uses_kakao_live_fallback(client, monkey
     response = client.get("/gpt/restaurants/search", params={"query": "이디야", "limit": 5})
 
     assert response.status_code == 200
-    assert response.json() == [
+    assert response.json()[:2] == [
         {
             "name": "이디야커피 가톨릭대점",
             "category_display": "카페",
@@ -322,6 +343,14 @@ def test_gpt_restaurants_search_endpoint_uses_kakao_live_fallback(client, monkey
             "estimated_walk_minutes": None,
             "price_hint": None,
             "location_hint": "경기 부천시 원미구 지봉로 48",
+        },
+        {
+            "name": "이디야커피 부천성모병원점",
+            "category_display": "카페",
+            "distance_meters": None,
+            "estimated_walk_minutes": None,
+            "price_hint": None,
+            "location_hint": "경기 부천시 원미구 부흥로 472",
         }
     ]
 
