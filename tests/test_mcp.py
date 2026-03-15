@@ -11,6 +11,7 @@ from songsim_campus.repo import (
     replace_courses,
     replace_notices,
     replace_restaurants,
+    replace_transport_guides,
     update_place_opening_hours,
 )
 from songsim_campus.seed import seed_demo
@@ -61,6 +62,56 @@ def test_mcp_transport_tool_and_resource_share_service_data(app_env):
 
     assert tool_payload['title'] == '1호선'
     assert resource_payload[0]['title'] == '1호선'
+
+
+def test_mcp_transport_tool_accepts_query_and_mode_precedence(app_env, monkeypatch):
+    pytest.importorskip('mcp.server.fastmcp')
+    init_db()
+    seed_demo(force=True)
+    with connection() as conn:
+        replace_transport_guides(
+            conn,
+            [
+                {
+                    "mode": "bus",
+                    "title": "마을버스",
+                    "summary": "51번, 51-1번, 51-2번 버스",
+                    "steps": ["[가톨릭대학교, 역곡도서관] 정류장 하차"],
+                    "source_url": "https://www.catholic.ac.kr/ko/about/location_songsim.do",
+                    "source_tag": "cuk_transport",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "mode": "subway",
+                    "title": "1호선",
+                    "summary": "역곡역 2번 출구 또는 소사역 3번 출구에서 도보 10분",
+                    "steps": ["인천역 ↔ 역곡역 : 35분 소요"],
+                    "source_url": "https://www.catholic.ac.kr/ko/about/location_songsim.do",
+                    "source_tag": "cuk_transport",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        subway = await mcp.call_tool("tool_list_transport_guides", {"query": "지하철"})
+        shuttle = await mcp.call_tool("tool_list_transport_guides", {"query": "셔틀"})
+        explicit_bus = await mcp.call_tool(
+            "tool_list_transport_guides",
+            {"mode": "bus", "query": "지하철"},
+        )
+        return subway, shuttle, explicit_bus
+
+    subway_result, shuttle_result, explicit_bus_result = asyncio.run(main())
+
+    assert _tool_payloads(subway_result)[0]["mode"] == "subway"
+    assert _tool_payloads(shuttle_result) == []
+    assert _tool_payloads(explicit_bus_result)[0]["mode"] == "bus"
+
+    clear_settings_cache()
 
 
 def test_mcp_profile_tools_share_timetable_service_data(app_env):
@@ -474,6 +525,10 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
     assert "김수환관" in (
         tools["tool_list_estimated_empty_classrooms"]["inputSchema"]["properties"]["building"]["description"]
     )
+    assert "역곡역" in (
+        tools["tool_list_transport_guides"]["inputSchema"]["properties"]["query"]["description"]
+    )
+    assert "셔틀" in tools["tool_list_transport_guides"]["description"]
 
     clear_settings_cache()
 
@@ -542,6 +597,25 @@ def test_mcp_public_empty_classroom_prompt_explains_estimate_flow(app_env, monke
     assert "query=매머드커피" in message
     assert "campus-nearest matches first" in message
     assert "tool_find_nearby_restaurants" not in message
+
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        prompt = await mcp.get_prompt(
+            "prompt_transport_guide",
+            {"query": "지하철", "mode": "subway"},
+        )
+        return prompt
+
+    prompt = asyncio.run(main())
+    message = prompt.messages[0].content.text
+
+    assert "tool_list_transport_guides" in message
+    assert "query=지하철" in message
+    assert "mode=subway" in message
+    assert "셔틀" in message
+    assert "빈 결과" in message
 
     clear_settings_cache()
 

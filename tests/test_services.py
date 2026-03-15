@@ -2609,6 +2609,127 @@ def test_refresh_transport_guides_replaces_rows(app_env):
     assert guides[0].source_tag == 'cuk_transport'
 
 
+def test_list_transport_guides_infers_mode_from_query_and_normalizes_spacing(app_env):
+    init_db()
+
+    with connection() as conn:
+        repo.replace_transport_guides(
+            conn,
+            [
+                {
+                    "mode": "bus",
+                    "title": "마을버스",
+                    "summary": "51번, 51-1번, 51-2번 버스",
+                    "steps": ["[가톨릭대학교, 역곡도서관] 정류장 하차"],
+                    "source_url": "https://www.catholic.ac.kr/ko/about/location_songsim.do",
+                    "source_tag": "cuk_transport",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "mode": "subway",
+                    "title": "1호선",
+                    "summary": "역곡역 2번 출구 또는 소사역 3번 출구에서 도보 10분",
+                    "steps": ["인천역 ↔ 역곡역 : 35분 소요"],
+                    "source_url": "https://www.catholic.ac.kr/ko/about/location_songsim.do",
+                    "source_tag": "cuk_transport",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+        guides = list_transport_guides(conn, query="지하 철", limit=10)
+
+    assert [guide.mode for guide in guides] == ["subway"]
+    assert guides[0].title == "1호선"
+
+
+def test_list_transport_guides_returns_empty_for_unsupported_shuttle_query(app_env):
+    init_db()
+
+    with connection() as conn:
+        repo.replace_transport_guides(
+            conn,
+            [
+                {
+                    "mode": "bus",
+                    "title": "마을버스",
+                    "summary": "51번, 51-1번, 51-2번 버스",
+                    "steps": ["[가톨릭대학교, 역곡도서관] 정류장 하차"],
+                    "source_url": "https://www.catholic.ac.kr/ko/about/location_songsim.do",
+                    "source_tag": "cuk_transport",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                }
+            ],
+        )
+        guides = list_transport_guides(conn, query="셔틀", limit=10)
+
+    assert guides == []
+
+
+def test_list_transport_guides_explicit_mode_wins_over_query(app_env):
+    init_db()
+
+    with connection() as conn:
+        repo.replace_transport_guides(
+            conn,
+            [
+                {
+                    "mode": "bus",
+                    "title": "시내버스",
+                    "summary": "3번, 5번 버스",
+                    "steps": ["성심교정 정문 앞 정류장 하차"],
+                    "source_url": "https://www.catholic.ac.kr/ko/about/location_songsim.do",
+                    "source_tag": "cuk_transport",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "mode": "subway",
+                    "title": "1호선",
+                    "summary": "역곡역 2번 출구 또는 소사역 3번 출구에서 도보 10분",
+                    "steps": ["인천역 ↔ 역곡역 : 35분 소요"],
+                    "source_url": "https://www.catholic.ac.kr/ko/about/location_songsim.do",
+                    "source_tag": "cuk_transport",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+        guides = list_transport_guides(conn, mode="bus", query="지하철", limit=10)
+
+    assert [guide.mode for guide in guides] == ["bus"]
+    assert guides[0].title == "시내버스"
+
+
+def test_list_transport_guides_neutral_query_reorders_by_text_match(app_env):
+    init_db()
+
+    with connection() as conn:
+        repo.replace_transport_guides(
+            conn,
+            [
+                {
+                    "mode": "bus",
+                    "title": "마을버스",
+                    "summary": "51번, 51-1번, 51-2번 버스",
+                    "steps": ["[가톨릭대학교, 역곡도서관] 정류장 하차"],
+                    "source_url": "https://www.catholic.ac.kr/ko/about/location_songsim.do",
+                    "source_tag": "cuk_transport",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "mode": "subway",
+                    "title": "1호선",
+                    "summary": "역곡역 2번 출구 또는 소사역 3번 출구에서 도보 10분",
+                    "steps": ["인천역 ↔ 역곡역 : 35분 소요"],
+                    "source_url": "https://www.catholic.ac.kr/ko/about/location_songsim.do",
+                    "source_tag": "cuk_transport",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+        guides = list_transport_guides(conn, query="2번 출구", limit=10)
+
+    assert [guide.title for guide in guides] == ["1호선", "마을버스"]
+
+
 def test_sync_official_snapshot_runs_opening_hours_before_courses_and_transport(
     app_env,
     monkeypatch,

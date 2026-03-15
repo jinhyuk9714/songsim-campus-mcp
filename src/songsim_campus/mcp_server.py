@@ -268,6 +268,11 @@ def _public_usage_guide() -> str:
                 "브랜드를 직접 찾을 수 있고, 캠퍼스에 가까운 후보를 먼저 보여줍니다."
             ),
             "7. Use tool_list_latest_notices for latest notices; category is optional.",
+            (
+                "8. Use tool_list_transport_guides for static subway or bus access "
+                "guidance. You can pass query with natural-language cues like 지하철, "
+                "1호선, 역곡역, or 버스. 셔틀은 현재 지원하지 않아 빈 결과가 정상입니다."
+            ),
             "",
             "Example questions:",
             "- 성심교정 중앙도서관 위치 알려줘",
@@ -542,12 +547,24 @@ def build_mcp():
                 str | None,
                 Field(description="optional transport mode like subway or bus"),
             ] = None,
+            query: Annotated[
+                str | None,
+                Field(
+                    description=(
+                        "optional natural-language transport cue like 지하철, "
+                        "1호선, 역곡역, bus"
+                    )
+                ),
+            ] = None,
             limit: Annotated[int, Field(description="가져올 가이드 수")] = 20,
         ):
             return (
                 "Use tool_list_transport_guides for static transit guidance.\n"
-                f"mode={mode or '<optional>'}, limit={limit}.\n"
-                "This tool is for subway and bus access guidance, not live routing."
+                f"mode={mode or '<optional>'}, query={query or '<optional>'}, limit={limit}.\n"
+                "If mode is explicit, it wins over query. query can be natural-language cues "
+                "like 지하철, 1호선, 역곡역, bus, or 버스.\n"
+                "This tool is for subway and bus access guidance, not live routing. "
+                "셔틀 is not currently supported, so an empty result (빈 결과) is normal."
             )
 
     @mcp.tool(
@@ -891,7 +908,9 @@ def build_mcp():
 
     @mcp.tool(
         description=(
-            "성심교정 지하철·버스 접근 안내를 찾을 때 사용합니다. 정적 subway/bus 안내용입니다."
+            "성심교정 지하철·버스 접근 안내를 찾을 때 사용합니다. "
+            "정적 subway/bus 안내용이며, query에 지하철·1호선·역곡역·bus 같은 "
+            "자연어 cue를 넣을 수 있습니다. 셔틀은 현재 지원하지 않아 빈 결과가 정상입니다."
             if public_readonly
             else "성심교정 지하철·버스 접근 안내를 가져오고, 필요하면 교통수단 모드로 좁힙니다."
         ),
@@ -902,10 +921,14 @@ def build_mcp():
             str | None,
             Field(description="교통수단 모드 필터. 예: subway, bus"),
         ] = None,
+        query: Annotated[
+            str | None,
+            Field(description="자연어 교통 cue. 예: 지하철, 1호선, 역곡역, bus, 버스"),
+        ] = None,
         limit: Annotated[int, Field(description="최대 결과 수. 기본값은 20입니다.")] = 20,
     ):
         with connection() as conn:
-            guides = list_transport_guides(conn, mode=mode, limit=limit)
+            guides = list_transport_guides(conn, mode=mode, query=query, limit=limit)
             if public_readonly:
                 return [_serialize_public_transport_guide(item) for item in guides]
             return [item.model_dump() for item in guides]

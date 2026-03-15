@@ -116,6 +116,9 @@ NOTICE_CATEGORY_FILTER_ALIASES = {
     "place": ("general", "place"),
 }
 NOTICE_CANONICAL_LIST_CATEGORIES = {"학사", "장학", "취창업"}
+TRANSPORT_UNSUPPORTED_QUERY_CUES = ("셔틀", "shuttle")
+TRANSPORT_SUBWAY_QUERY_CUES = ("지하철", "전철", "1호선", "subway", "역곡역", "역곡")
+TRANSPORT_BUS_QUERY_CUES = ("버스", "마을버스", "시내버스", "bus")
 
 
 class NotFoundError(ValueError):
@@ -748,6 +751,120 @@ def _matches_partial_text_candidate(
         return False
     compact_text = _compact_text(cleaned).lower()
     return bool(compact_query) and compact_query.lower() in compact_text
+
+
+def _normalize_transport_mode(mode: str | None) -> str | None:
+    cleaned = _normalize_optional_text(mode)
+    if cleaned is None:
+        return None
+    return cleaned.lower()
+
+
+def _contains_transport_query_cue(
+    compact_query: str,
+    cues: tuple[str, ...],
+) -> bool:
+    lowered_query = compact_query.lower()
+    return any(_compact_text(cue).lower() in lowered_query for cue in cues)
+
+
+def _infer_transport_mode_from_query(query: str | None) -> str | None:
+    _, compact_query = _normalized_query_variants(query)
+    if compact_query is None:
+        return None
+
+    lowered_query = compact_query.lower()
+    if _contains_transport_query_cue(compact_query, TRANSPORT_UNSUPPORTED_QUERY_CUES):
+        return "unsupported"
+
+    has_subway = _contains_transport_query_cue(compact_query, TRANSPORT_SUBWAY_QUERY_CUES)
+    has_bus = _contains_transport_query_cue(compact_query, TRANSPORT_BUS_QUERY_CUES)
+    if not has_subway and ("역에서" in lowered_query or lowered_query.endswith("역")):
+        has_subway = True
+
+    if "버스말고" in lowered_query or "버스빼고" in lowered_query:
+        has_bus = False
+    if "지하철말고" in lowered_query or "지하철빼고" in lowered_query:
+        has_subway = False
+
+    if has_subway and not has_bus:
+        return "subway"
+    if has_bus and not has_subway:
+        return "bus"
+    return None
+
+
+def _rank_transport_guide_candidate(
+    guide: TransportGuide,
+    *,
+    collapsed_query: str,
+    compact_query: str | None,
+) -> int | None:
+    if _matches_exact_text_candidate(
+        guide.title,
+        collapsed_query=collapsed_query,
+        compact_query=compact_query,
+    ):
+        return 0
+    if _matches_exact_text_candidate(
+        guide.summary,
+        collapsed_query=collapsed_query,
+        compact_query=compact_query,
+    ):
+        return 1
+    if any(
+        _matches_exact_text_candidate(
+            step,
+            collapsed_query=collapsed_query,
+            compact_query=compact_query,
+        )
+        for step in guide.steps
+    ):
+        return 2
+    if _matches_partial_text_candidate(
+        guide.title,
+        collapsed_query=collapsed_query,
+        compact_query=compact_query,
+    ):
+        return 3
+    if _matches_partial_text_candidate(
+        guide.summary,
+        collapsed_query=collapsed_query,
+        compact_query=compact_query,
+    ):
+        return 4
+    if any(
+        _matches_partial_text_candidate(
+            step,
+            collapsed_query=collapsed_query,
+            compact_query=compact_query,
+        )
+        for step in guide.steps
+    ):
+        return 5
+    return None
+
+
+def _rank_transport_guides(
+    guides: list[TransportGuide],
+    *,
+    query: str,
+    limit: int,
+) -> list[TransportGuide]:
+    collapsed_query, compact_query = _normalized_query_variants(query)
+    if collapsed_query is None:
+        return guides[:limit]
+
+    def sort_key(guide: TransportGuide) -> tuple[int, str, str]:
+        rank = _rank_transport_guide_candidate(
+            guide,
+            collapsed_query=collapsed_query,
+            compact_query=compact_query,
+        )
+        return (99 if rank is None else rank, guide.mode, guide.title)
+
+    ranked = sorted(guides, key=sort_key)
+    return ranked[:limit]
 
 
 def _rank_place_search_candidate(
@@ -2159,12 +2276,22 @@ def list_latest_notices(
 def list_transport_guides(
     conn: sqlite3.Connection,
     mode: str | None = None,
+    query: str | None = None,
     limit: int = 20,
 ) -> list[TransportGuide]:
-    return [
+    normalized_mode = _normalize_transport_mode(mode)
+    inferred_mode = normalized_mode or _infer_transport_mode_from_query(query)
+    if inferred_mode == "unsupported":
+        return []
+
+    guides = [
         TransportGuide.model_validate(item)
-        for item in repo.list_transport_guides(conn, mode=mode, limit=limit)
+        for item in repo.list_transport_guides(conn, mode=inferred_mode, limit=limit)
     ]
+    if query is None:
+        return guides
+
+    return _rank_transport_guides(guides, query=query, limit=limit)
 
 
 def list_sync_runs(conn: sqlite3.Connection, limit: int = 20) -> list[SyncRun]:

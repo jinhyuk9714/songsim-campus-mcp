@@ -10,6 +10,7 @@ from songsim_campus.repo import (
     replace_notices,
     replace_places,
     replace_restaurants,
+    replace_transport_guides,
     update_place_opening_hours,
 )
 from songsim_campus.services import (
@@ -1354,3 +1355,94 @@ def test_transport_endpoint_returns_guides(client):
             'last_synced_at': items[0]['last_synced_at'],
         }
     ]
+
+
+def test_transport_endpoint_infers_subway_mode_from_query(client):
+    with connection() as conn:
+        replace_transport_guides(
+            conn,
+            [
+                {
+                    "mode": "bus",
+                    "title": "마을버스",
+                    "summary": "51번, 51-1번, 51-2번 버스",
+                    "steps": ["[가톨릭대학교, 역곡도서관] 정류장 하차"],
+                    "source_url": "https://www.catholic.ac.kr/ko/about/location_songsim.do",
+                    "source_tag": "cuk_transport",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "mode": "subway",
+                    "title": "1호선",
+                    "summary": "역곡역 2번 출구 또는 소사역 3번 출구에서 도보 10분",
+                    "steps": ["인천역 ↔ 역곡역 : 35분 소요"],
+                    "source_url": "https://www.catholic.ac.kr/ko/about/location_songsim.do",
+                    "source_tag": "cuk_transport",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+
+    response = client.get("/transport", params={"query": "지하 철"})
+
+    assert response.status_code == 200
+    items = response.json()
+    assert [item["mode"] for item in items] == ["subway"]
+    assert items[0]["title"] == "1호선"
+
+
+def test_transport_endpoint_returns_empty_for_unsupported_shuttle_query(client):
+    with connection() as conn:
+        replace_transport_guides(
+            conn,
+            [
+                {
+                    "mode": "bus",
+                    "title": "마을버스",
+                    "summary": "51번, 51-1번, 51-2번 버스",
+                    "steps": ["[가톨릭대학교, 역곡도서관] 정류장 하차"],
+                    "source_url": "https://www.catholic.ac.kr/ko/about/location_songsim.do",
+                    "source_tag": "cuk_transport",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                }
+            ],
+        )
+
+    response = client.get("/transport", params={"query": "셔틀"})
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_transport_endpoint_explicit_mode_wins_over_query(client):
+    with connection() as conn:
+        replace_transport_guides(
+            conn,
+            [
+                {
+                    "mode": "bus",
+                    "title": "시내버스",
+                    "summary": "3번, 5번 버스",
+                    "steps": ["성심교정 정문 앞 정류장 하차"],
+                    "source_url": "https://www.catholic.ac.kr/ko/about/location_songsim.do",
+                    "source_tag": "cuk_transport",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "mode": "subway",
+                    "title": "1호선",
+                    "summary": "역곡역 2번 출구 또는 소사역 3번 출구에서 도보 10분",
+                    "steps": ["인천역 ↔ 역곡역 : 35분 소요"],
+                    "source_url": "https://www.catholic.ac.kr/ko/about/location_songsim.do",
+                    "source_tag": "cuk_transport",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+
+    response = client.get("/transport", params={"mode": "bus", "query": "지하철"})
+
+    assert response.status_code == 200
+    items = response.json()
+    assert [item["mode"] for item in items] == ["bus"]
+    assert items[0]["title"] == "시내버스"

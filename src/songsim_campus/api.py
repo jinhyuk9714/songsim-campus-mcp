@@ -1539,10 +1539,11 @@ def create_app() -> FastAPI:
     @app.get("/transport", response_model=list[TransportGuide])
     def transport(
         mode: str | None = Query(default=None),
+        query: str | None = Query(default=None),
         limit: int = Query(default=20, ge=1, le=50),
     ) -> list[TransportGuide]:
         with connection() as conn:
-            return list_transport_guides(conn, mode=mode, limit=limit)
+            return list_transport_guides(conn, mode=mode, query=query, limit=limit)
 
     if not public_readonly:
         @app.post("/profiles", response_model=Profile)
