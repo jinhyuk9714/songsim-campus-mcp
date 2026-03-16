@@ -1,16 +1,16 @@
 # Public MCP Hidden Risk Audit
 
-`public API`를 2026-03-15 KST 기준으로 실측해, 릴리즈팩 50과 기존 라이브 검증에서 충분히 드러나지 않았던 운영 리스크를 따로 모은 감사 시트입니다. 이번 감사는 **오답 우선순위, timeout, short-query ambiguity, generic 생활어 coverage**를 우선순위로 삼았고, 코드는 수정하지 않았습니다.
+`public API`를 2026-03-16 KST 기준으로 다시 실측해, 최근 성능/검색/transport/brand 보정 이후의 **현재 운영 baseline**을 재작성한 감사 시트입니다. 이번 감사는 새 기능 추가 없이 문서만 갱신했고, 이미 해결된 리스크는 내리고 아직 남은 리스크만 `short-query noise`, `resource/prompt gap`, `brand long-tail`, `course watchlist`, `latency/strict semantics`로 다시 분류했습니다.
 
 ## 실행 기준
 
 - 대상: `https://songsim-public-api.onrender.com`
 - 방식: public API raw endpoint 실측
-- 보조 확인: `gpt/restaurants/search` 1건, course/open_now representative spot check 4건
+- 보조 확인: read-only 정책 2건, generic facility spot check 4건
 - latency 등급
   - `fast`: `<2s`
   - `slow`: `2-10s`
-  - `timeout`: `>10s` 또는 client timeout
+  - `timeout`: `>10s`
 - verdict
   - `pass`
   - `soft_pass`
@@ -22,57 +22,62 @@
 | Metric | Count |
 | --- | ---: |
 | cases | 30 |
-| `pass` | 11 |
-| `soft_pass` | 4 |
-| `soft_fail` | 4 |
-| `fail` | 11 |
-| `fast` | 21 |
-| `slow` | 5 |
-| `timeout` | 4 |
+| `pass` | 19 |
+| `soft_pass` | 10 |
+| `soft_fail` | 1 |
+| `fail` | 0 |
+| `fast` | 19 |
+| `slow` | 10 |
+| `timeout` | 1 |
 
 ## 감사 시트
 
 | ID | User utterance | Surface | Expected behavior | Observed response summary | Latency | Verdict | Risk type | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| TR01 | 지하철로 가는 법 | `GET /transport?query=지하철` | subway 관련 guide가 첫 결과로 와야 한다 | 첫 3건이 `마을버스`, `시내버스`, `성심교정` 순으로 내려온다 | fast | fail | `mode_mismatch` | strong subway cue가 있어도 bus가 먼저 나온다 |
-| TR02 | 1호선 타고 가는 법 | `GET /transport?query=1호선` | 1호선/지하철 guide가 첫 결과로 와야 한다 | 첫 3건이 `마을버스`, `시내버스`, `성심교정` 순이다 | fast | fail | `mode_mismatch` | `1호선` 질의가 mode selection에 반영되지 않는다 |
-| TR03 | 역곡역에서 가는 법 | `GET /transport?query=역곡역` | 역곡역/지하철 접근이 우선 노출돼야 한다 | 첫 3건이 `마을버스`, `시내버스`, `성심교정`이다 | fast | soft_fail | `query_to_mode_gap` | 버스 안내가 완전히 틀린 것은 아니지만 역곡역 intent를 우선 반영하지 못한다 |
-| TR04 | 셔틀 있나 | `GET /transport?query=셔틀` | 셔틀 미지원이면 그 사실을 드러내거나 관련 guide를 좁혀야 한다 | 첫 3건이 `마을버스`, `시내버스`, `성심교정`이다 | fast | fail | `unsupported_scope_handling` | unsupported query를 일반 bus 결과로 흘려보낸다 |
-| TR05 | 버스만 타고 가는 법 | `GET /transport?query=버스만` | bus guide가 첫 결과여야 한다 | 첫 2건이 `마을버스`, `시내버스`다 | fast | pass | `mode_match` | query 해석이 약해도 결과 순서는 의도와 맞는다 |
-| TR06 | 지하철만 타고 가는 법 | `GET /transport?query=지하철만` | subway guide가 첫 결과여야 한다 | 첫 3건이 `마을버스`, `시내버스`, `성심교정`이다 | fast | fail | `mode_mismatch` | `지하철만` 같은 강한 제약을 무시한다 |
-| TR07 | subway로만 가는 경로 줘 | `GET /transport?query=subway` | subway guide가 첫 결과여야 한다 | 첫 3건이 `마을버스`, `시내버스`, `성심교정`이다 | fast | fail | `mode_mismatch` | 영문 cue도 mode로 연결되지 않는다 |
-| TR08 | bus로만 가는 경로 줘 | `GET /transport?query=bus` | bus guide가 첫 결과여야 한다 | 첫 2건이 `마을버스`, `시내버스`다 | fast | pass | `mode_match` | 영문 bus cue는 결과상 문제 없다 |
-| CL01 | 학생미래인재관 빈 강의실 있어 | `GET /classrooms/empty?building=학생미래인재관` | empty+note 또는 정상 결과가 10초 내 나와야 한다 | 12.1초 후 client timeout | timeout | fail | `timeout` | valid building happy path가 timeout난다 |
-| CL02 | 김수환관 지금 빈 강의실 있어 | `GET /classrooms/empty?building=김수환관` | empty+note 또는 정상 결과가 10초 내 나와야 한다 | 12.1초 후 client timeout | timeout | fail | `timeout` | building classification은 맞지만 live 응답이 끝나지 않는다 |
-| CL03 | 니콜스에서 지금 빈 강의실 있어 | `GET /classrooms/empty?building=니콜스` | nicholls-hall 공실 결과가 10초 내 나와야 한다 | 12.1초 후 client timeout | timeout | fail | `timeout` | 가장 대표적인 happy path가 timeout난다 |
-| CL04 | 정문 기준 빈 강의실 보여줘 | `GET /classrooms/empty?building=정문` | 비강의동 거절이 빠르고 구체적이어야 한다 | `400`과 함께 `강의실 기반 건물이 아니다` 설명이 반환된다 | fast | pass | `valid_rejection` | invalid building rejection은 잘 동작한다 |
-| CL05 | N관에서 자습 가능한 빈 강의실 있어 | `GET /classrooms/empty?building=N관` | 니콜스관과 같은 결과가 10초 내 나와야 한다 | 12.1초 후 client timeout | timeout | fail | `timeout` | alias happy path도 timeout으로 무너진다 |
-| CL06 | K관 지금 빈 강의실 있어 | `GET /classrooms/empty?building=K관` | 김수환관으로 clean하게 수렴해야 한다 | `400`과 함께 `김수환관`, `스테파노기숙사` 두 후보가 반환된다 | fast | fail | `alias_collision` | `K관` collision이 classroom resolver에 그대로 남아 있다 |
-| PL01 | 정문 | `GET /places?query=정문` | `main-gate`가 1위고 noise가 작아야 한다 | `정문` 1위, `창업보육센터` 2위 | fast | soft_pass | `ranking_noise` | 정답은 맞지만 gate query noise가 남아 있다 |
-| PL02 | K관 | `GET /places?query=K관` | 김수환관이 1위이고 dormitory noise가 작아야 한다 | `김수환관` 1위, `스테파노기숙사` 2위 | fast | soft_pass | `alias_collision` | place search에서도 `K관` alias가 양쪽에 걸린다 |
-| PL03 | 도서관 | `GET /places?query=도서관` | 중앙도서관이 1위여야 한다 | `central-library` 1건만 반환된다 | fast | pass | `exact_match` | short library noun은 안정적이다 |
-| PL04 | 학생회관 | `GET /places?query=학생회관` | 학생미래인재관이 1위여야 한다 | `sophie-barat-hall` 1건만 반환된다 | fast | pass | `alias_match` | 생활어 alias가 안정적이다 |
-| PL05 | 학생센터 | `GET /places?query=학생센터` | 학생미래인재관이 1위여야 한다 | `sophie-barat-hall` 1건만 반환된다 | fast | pass | `alias_match` | 확장한 facility alias가 잘 먹는다 |
-| PL06 | B관 | `GET /places?query=B관` | 학생미래인재관이 1위여야 한다 | `sophie-barat-hall` 1건만 반환된다 | fast | pass | `alias_match` | building short alias는 안정적이다 |
-| FA01 | 헬스장 어디야 | `GET /places?query=헬스장` | parent building으로라도 수렴해야 한다 | 빈 배열 `[]` | fast | fail | `facility_gap` | `트러스트짐`은 되지만 generic noun `헬스장`은 못 받는다 |
-| FA02 | 편의점 어디 있어 | `GET /places?query=편의점` | parent building 또는 facility 결과가 있어야 한다 | 빈 배열 `[]` | slow | soft_fail | `facility_gap` | 실제 교내 시설 여부와 별개로 생활어 coverage가 비어 있다 |
-| FA03 | 체육관 어디야 | `GET /places?query=체육관` | parent building 또는 facility 결과가 있어야 한다 | 빈 배열 `[]` | slow | soft_fail | `facility_gap` | generic facility noun 처리 정책이 없다 |
-| FA04 | 카페 보나 어디야 | `GET /places?query=카페 보나` | 학생미래인재관으로 수렴해야 한다 | `sophie-barat-hall` 1건이 반환된다 | fast | pass | `facility_alias` | curated facility alias는 정상이다 |
-| FA05 | 부온 프란조 어디야 | `GET /places?query=부온 프란조` | 학생미래인재관으로 수렴해야 한다 | `sophie-barat-hall` 1건이 반환된다 | fast | pass | `facility_alias` | curated facility alias는 정상이다 |
-| FA06 | ATM 어디 있어 | `GET /places?query=ATM` | parent building 또는 facility 결과가 있어야 한다 | 빈 배열 `[]` | fast | soft_fail | `facility_gap` | uppercase generic facility noun을 전혀 받지 못한다 |
-| BR01 | 커피빈 있어? | `GET /restaurants/search?query=커피빈` | 지원되면 campus-near branch가 먼저, 아니면 coverage 한계가 드러나야 한다 | 빈 배열 `[]` | fast | soft_pass | `brand_gap` | 빈 결과 자체는 가능하지만 curated brand coverage가 제한적이다 |
-| BR02 | 스타벅스 있어? | `GET /restaurants/search?query=스타벅스` | campus-near branch 또는 가장 가까운 지점이 먼저 와야 한다 | `스타벅스 역곡역DT점` 1위, `스타벅스 역곡역DT점 주차장` 2위 | slow | soft_pass | `brand_ranking_noise` | 1위는 무난하지만 parking-like noisy entity가 함께 걸린다 |
-| BR03 | 매머드커피 어디 있어? | `GET /restaurants/search?query=매머드커피` | campus-near 매머드 지점이 1위여야 한다 | `매머드익스프레스 부천가톨릭대학교점` 1위, `소사역점` 2위 | slow | pass | `brand_ranking` | no-origin campus-first ordering이 잘 동작한다 |
-| BR04 | 중도 기준 메가커피 어디 있어? | `GET /restaurants/search?query=메가커피&origin=중도` | campus-near mega 지점이 1위이고 거리/도보 시간이 보여야 한다 | `메가MGC커피 부천가톨릭대점` 1위, `458m / 6분`이 채워진다 | slow | pass | `brand_with_origin` | explicit origin direct search는 계약대로 동작한다 |
+| SQ01 | 정문 위치 알려줘 | `GET /places?query=정문&limit=5` | `main-gate`가 1위이고 residual noise가 작아야 한다 | `main-gate` 1위, `business-incubation-center` 2위 | fast | soft_pass | `ranking_noise` | 정답은 맞지만 `정문` query noise가 아직 남아 있다 |
+| SQ02 | K관 어디야 | `GET /places?query=K관&limit=5` | `kim-sou-hwan-hall`이 1위이고 dormitory noise가 작아야 한다 | `kim-sou-hwan-hall` 1위, `dormitory-stephen` 2위 | fast | soft_pass | `alias_collision` | place search 정답 우선화는 됐지만 2차 후보 노이즈가 남아 있다 |
+| SQ03 | 도서관 어디야 | `GET /places?query=도서관&limit=5` | `central-library`가 안정적으로 1위여야 한다 | `central-library` 1건만 반환 | fast | pass | `exact_match` | short noun library query는 안정적이다 |
+| SQ04 | 학생회관 어디야 | `GET /places?query=학생회관&limit=5` | `sophie-barat-hall`로 수렴해야 한다 | `sophie-barat-hall` 1건만 반환 | fast | pass | `alias_match` | 생활어 alias가 정상 동작한다 |
+| SQ05 | 학생센터 어디야 | `GET /places?query=학생센터&limit=5` | `sophie-barat-hall`로 수렴해야 한다 | `sophie-barat-hall` 1건만 반환 | fast | pass | `alias_match` | `학생센터` alias도 안정적이다 |
+| SQ06 | K관 근처 카페 보여줘 | `GET /restaurants/nearby?origin=K관&category=cafe&limit=5` | `kim-sou-hwan-hall` 기준 nearby가 정상 동작하고 일반 API latency 안에 끝나야 한다 | `origin=kim-sou-hwan-hall`로 정상 수렴했고 `매머드익스프레스 부천가톨릭대학교점`이 1위지만 전체 응답이 `12.7s` 걸림 | timeout | soft_fail | `origin_latency` | 정확도는 맞지만 short-query origin 경로가 여전히 느리다 |
+| SQ07 | K관 지금 빈 강의실 있어 | `GET /classrooms/empty?building=K관&limit=5` | ambiguity 없이 `김수환관` 기준 공실 결과가 나와야 한다 | `200`, `K107`, `K236` 등 5건 반환 | slow | pass | `resolver_fixed` | 과거 ambiguity 400은 해소됐다 |
+| SQ08 | 정문 건물로 찾아줘 | `GET /places?query=정문&category=building&limit=5` | gate를 building으로 오인하지 않고 빈 결과를 반환해야 한다 | `[]` | fast | pass | `context_filtering` | building filter가 false positive를 막는다 |
+| RG01 | 지하철 오느 길 알려줘 | `GET /transport?query=지하철 오느 길&limit=3` | subway guide가 1위여야 한다 | `1호선`, `서해선`이 모두 `mode=subway`로 반환 | fast | pass | `transport_inference` | typo 포함 natural-language query가 정상 해석된다 |
+| RG02 | 역곡역에서 성심교정 가는 법 | `GET /transport?query=역곡역에서 성심교정 가는 법&limit=3` | 역곡역/지하철 intent가 subway guide 1위로 연결돼야 한다 | `1호선`, `서해선` 순으로 반환되고 둘 다 `mode=subway` | fast | pass | `transport_inference` | 과거 mode mismatch는 해소됐다 |
+| RG03 | 공지 카테고리 종류부터 알려줘 | `GET /gpt/notices?limit=5` | API-first 경로에서 현재 쓰는 category를 간접 확인할 수 있어야 한다 | `category_display`가 `general`, `scholarship`, `employment` 등으로 노출되지만 전용 category enum endpoint는 없음 | fast | soft_pass | `resource_gap` | 제품 정보는 읽을 수 있지만 categories 자체를 직접 나열하는 API는 없다 |
+| RG04 | 7교시에 시작하는 과목 찾고 싶어 | `GET /periods` + `GET /courses?year=2026&semester=1&limit=10` | API chaining으로 7교시 시작 과목을 찾을 수 있어야 한다 | `/periods`는 1~10교시를 반환하고 `/courses` sample에는 `3D애니메이션1`의 `period_start=7`이 보임 | fast | soft_pass | `resource_chaining` | 단일 endpoint는 아니지만 API-first chain으로는 충분하다 |
+| RG05 | 내 프로필 만들고 저장해줘 | public read-only policy | write/profile persistence 요청은 read-only 범위 밖으로 거절돼야 한다 | usage guide와 공개 문서 기준으로 profile persistence는 미지원 | fast | pass | `policy_guardrail` | 현재 제품 계약과 일치하는 거절 범위다 |
+| RG06 | 관리자 sync 돌려줘 | public read-only policy | admin/sync 실행 요청은 public surface에서 지원하지 않아야 한다 | usage guide와 공개 문서 기준으로 admin sync는 범위 밖 | fast | pass | `policy_guardrail` | public API/MCP의 read-only contract와 일치한다 |
+| BR01 | 스타벅스 있어? | `GET /restaurants/search?query=스타벅스&limit=5` | brand result가 나오고 parking noise는 제거돼야 한다 | `스타벅스 역곡역DT점` 1건만 반환 | slow | pass | `brand_clean` | 과거 `주차장` 노이즈는 사라졌다 |
+| BR02 | 중도 기준 스타벅스 어디 있어? | `GET /restaurants/search?query=스타벅스&origin=중도&limit=5` | origin 기준 거리/도보 시간이 채워져야 한다 | `스타벅스 역곡역DT점` 1위, `914m / 12분` | slow | pass | `brand_with_origin` | explicit origin direct search가 계약대로 동작한다 |
+| BR03 | 커피빈 있어? | `GET /restaurants/search?query=커피빈&limit=5` | 주변 실재 후보가 없으면 empty가 가능하지만 parser failure와는 구분돼야 한다 | `[]` | fast | soft_pass | `brand_gap_or_no_candidate` | 현재는 empty가 정상 범주지만, campus-near 실재 후보 부재인지 watchlist로만 남긴다 |
+| BR04 | 투썸 있어? | `GET /restaurants/search?query=투썸&limit=5` | long-tail alias가 정상 해석돼야 한다 | `투썸플레이스 부천MJ컨벤션점` 1위 | slow | pass | `brand_alias` | alias 확장이 live에서도 동작한다 |
+| BR05 | 빽다방 있어? | `GET /restaurants/search?query=빽다방&limit=5` | 주변 지점이 있으면 direct search 결과가 나와야 한다 | `빽다방 소사역점`, `빽다방 부천소사본점` 등 3건 반환 | slow | pass | `brand_alias` | long-tail brand 검색이 동작한다 |
+| BR06 | 중도 기준 빽다방 어디 있어? | `GET /restaurants/search?query=빽다방&origin=중도&limit=5` | origin 기준 거리/도보 시간이 채워져야 한다 | `빽다방 소사역점` 1위, `552m / 17분`; 2위 `977m / 20분` | slow | pass | `brand_with_origin` | campus-first + origin-aware ranking이 유지된다 |
+| CW01 | 데이터베이스 과목 있어 | `GET /courses?query=데이터베이스&year=2026&semester=1&limit=5` | direct hit가 없으면 source-backed near match 여부를 기록해야 한다 | `데이터베이스활용` 1건만 반환 | fast | soft_pass | `source_gap_watchlist` | release gate가 아닌 watchlist로 계속 추적한다 |
+| CW02 | CSE301 과목 뭐야 | `GET /courses?query=CSE301&year=2026&semester=1&limit=5` | empty면 source-backed 부재 여부를 watchlist로 남겨야 한다 | `[]` | fast | soft_pass | `source_gap_watchlist` | 현재는 source-backed 아님 쪽으로 본다 |
+| CW03 | 김가톨 교수 수업 있어 | `GET /courses?query=김가톨&year=2026&semester=1&limit=5` | empty면 source-backed 부재 여부를 watchlist로 남겨야 한다 | `[]` | fast | soft_pass | `source_gap_watchlist` | release gate 바깥의 교수명 watchlist다 |
+| CW04 | 데이타베이스 과목 있어 | `GET /courses?query=데이타베이스&year=2026&semester=1&limit=5` | typo recovery 미지원이면 watchlist로만 기록해야 한다 | `[]` | fast | soft_pass | `source_gap_watchlist` | 현재는 deterministic canary가 아니다 |
+| CW05 | CSE 420 과목 뭐야 | `GET /courses?query=CSE%20420&year=2026&semester=1&limit=5` | spacing code query가 empty면 watchlist로만 남겨야 한다 | `[]` | fast | soft_pass | `source_gap_watchlist` | 검색 버그로 단정하지 않고 source-gap watchlist 유지 |
+| LS01 | 니콜스에서 지금 빈 강의실 있어 | `GET /classrooms/empty?building=니콜스&limit=5` | valid building happy-path가 10초 안에 응답해야 한다 | `200`, 5건 반환 | slow | pass | `latency_ok` | 과거 timeout은 해소됐다 |
+| LS02 | 김수환관 지금 빈 강의실 있어 | `GET /classrooms/empty?building=김수환관&limit=5` | valid building happy-path가 10초 안에 응답해야 한다 | `200`, 5건 반환 | slow | pass | `latency_ok` | resolver와 응답 시간이 모두 정상 범위다 |
+| LS03 | 학생미래인재관 빈 강의실 있어 | `GET /classrooms/empty?building=학생미래인재관&limit=5` | room data가 있으면 결과를, 없으면 empty+note를 10초 안에 반환해야 한다 | `200`, 4건 반환 | slow | pass | `latency_ok` | 과거 timeout/empty note baseline은 더 이상 유효하지 않다 |
+| LS04 | 정문 기준 빈 강의실 보여줘 | `GET /classrooms/empty?building=정문&limit=5` | 비강의동은 빠른 `400`이 정답이다 | `400`과 함께 non-building rejection 반환 | fast | pass | `valid_rejection` | invalid building contract가 안정적이다 |
+| LS05 | 학생식당 기준 지금 여는 카페만 3개 | `GET /restaurants/nearby?origin=학생식당&open_now=true&category=cafe&limit=3` | strict filter 결과가 empty여도 되지만 `open_now=null` item이 섞이면 안 된다 | `[]`, `5.87s` | slow | pass | `strict_semantics` | strict `open_now=true` 계약은 현재 운영에서 지켜진다 |
 
-## 보조 spot check
+## 보조 generic facility spot check
 
-이 감사의 30건 범위에는 넣지 않았지만, 현재 운영 리스크를 읽는 데 도움이 되는 보조 확인입니다.
+이 4건은 main 30에 포함하지 않았지만, 기존 hidden-risk 문서에서 크게 보였던 `generic facility gap`이 얼마나 해소됐는지 읽는 데 도움이 됩니다.
 
 | ID | User utterance | Surface | Observed response summary | Takeaway |
 | --- | --- | --- | --- | --- |
-| SP01 | 데이터베이스 과목 있어 | `GET /courses?query=데이터베이스&year=2026&semester=1` | `데이터베이스활용` 1건만 반환 | search bug보다 `source/snapshot coverage gap` 가능성이 더 크다 |
-| SP02 | 데이타베이스 과목 있어 | `GET /courses?query=데이타베이스&year=2026&semester=1` | 빈 배열 `[]` | typo recovery는 아직 증명되지 않았다 |
-| SP03 | CSE 420 과목 뭐야 | `GET /courses?query=CSE 420&year=2026&semester=1` | 빈 배열 `[]` | code spacing 질의는 아직 약하다 |
-| SP04 | 학생식당 기준 지금 여는 카페만 3개 | `GET /restaurants/nearby?origin=학생식당&open_now=true&category=cafe&limit=3` | 12.1초 후 client timeout | `open_now` strict semantics는 구현돼도 representative live query는 성능 리스크가 남아 있다 |
-| SP05 | 매머드커피 어디 있어? (GPT compact) | `GET /gpt/restaurants/search?query=매머드커피&limit=5` | `부천가톨릭대학교점` 1위, `소사역점` 2위 | compact GPT route도 campus-first ordering을 그대로 따른다 |
+| GF01 | 헬스장 어디야 | `GET /places?query=헬스장&limit=5` | `dormitory-stephen` 1위, `sophie-barat-hall` 2위 | 더 이상 `[]`는 아니고 관련 건물 후보를 반환한다. 다만 랭킹은 더 다듬을 여지가 있다 |
+| GF02 | 편의점 어디 있어 | `GET /places?query=편의점&limit=5` | `dormitory-stephen` 1건 반환 | generic facility noun gap은 크게 줄었다 |
+| GF03 | 복사실 어디야 | `GET /places?query=복사실&limit=5` | `dormitory-stephen` 1건 반환 | parent building 후보형 응답으로는 정상 범위다 |
+| GF04 | ATM 어디 있어 | `GET /places?query=ATM&limit=5` | `dormitory-stephen` 1건 반환 | uppercase generic noun도 이제 빈 결과가 아니다 |
+
+## 보조 메모
+
+- `classrooms timeout`, `transport mode mismatch`, `generic facility noun -> []`, `스타벅스 주차장 노이즈`는 더 이상 현재 운영 baseline의 핵심 리스크가 아니다.
+- 현재 남아 있는 눈에 띄는 리스크는 `정문/K관` residual noise와 `origin=K관` nearby 경로의 느린 응답이다.
+- `course`는 release gate가 아니라 watchlist라는 현재 정책을 유지한다. `데이터베이스`, `CSE301`, `김가톨`, `데이타베이스`, `CSE 420`는 계속 source-backed 여부 중심으로만 추적한다.
