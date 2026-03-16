@@ -1,6 +1,6 @@
 # Public MCP Course Watchlist
 
-`release gate`에서 분리한 course source-gap 질의를 2026-03-16 KST 기준 공개 배포에서 다시 확인한 기록입니다. 이 문서는 제품 fail 목록이 아니라 **source-backed 여부 관찰용 watchlist**입니다.
+`release gate`에서 분리한 course source-gap 질의를 2026-03-16 KST 기준 공개 배포에서 다시 확인한 기록입니다. 이 문서는 제품 fail 목록이 아니라 **source-backed 여부 관찰용 watchlist**입니다. 같은 날짜의 post-rollout cleanup 재점검에서도 이 5건의 verdict는 바뀌지 않았습니다.
 
 ## 판정 기준
 
@@ -26,6 +26,7 @@
 - 현재 5건 중 `recovered`는 없습니다.
 - `데이터베이스`는 완전 빈 결과가 아니라 `데이터베이스활용` near match가 있어, source truth 변화가 생기면 가장 먼저 다시 볼 후보입니다.
 - 나머지 4건은 아직도 `no_source_backed_hit`이며, 현재는 코드 수정보다 source truth 변화 모니터링이 우선입니다.
+- 최근 brand long-tail 정리나 metadata parity 반영과는 별개로, course watchlist 상태 자체는 변하지 않았습니다.
 
 ## 관련 문서
 

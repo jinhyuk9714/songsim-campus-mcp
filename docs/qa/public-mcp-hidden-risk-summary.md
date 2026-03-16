@@ -5,8 +5,8 @@
 ## 집계
 
 - audit size: 30
-- `pass`: 24
-- `soft_pass`: 6
+- `pass`: 25
+- `soft_pass`: 5
 - `soft_fail`: 0
 - `fail`: 0
 - latency
@@ -35,14 +35,13 @@
 - `공지 카테고리 종류`는 이제 `/notice-categories`, `/gpt/notice-categories`로 직접 읽을 수 있습니다.
 - `7교시가 몇 시야`와 `7교시 시작 과목`도 이제 `/periods`, `/gpt/periods`를 직접 entrypoint로 쓸 수 있습니다.
 
-### 3. brand direct search는 안정권이고 long-tail은 watch 상태다
+### 3. brand direct search는 안정권이고 long-tail도 현재 baseline에서는 해결됐다
 
 - `스타벅스`, `투썸`, `빽다방`은 현재 운영에서 정상입니다.
 - `origin=중도`가 있으면 거리/도보 시간이 채워집니다.
-- `커피빈`은 여전히 `[]`지만, 이번 정책상 이건 immediate bug라기보다
-  - campus-near 실제 후보가 없는 것인지
-  - curated alias 범위 밖인지
-  를 구분하는 watch 상태로 두는 편이 맞습니다.
+- `커피빈`도 extended-radius fallback 이후 nearest branch를 정상 반환합니다.
+  - origin이 없으면 nearest branch 2건이 반환됩니다.
+  - `origin=중도`가 있으면 거리/도보 시간이 채워진 상태로 반환됩니다.
 
 ### 4. course는 여전히 “gate”가 아니라 “watchlist”다
 
@@ -52,12 +51,14 @@
 
 ## 현재 남은 리스크
 
-1. brand long-tail watch 상태
-- `커피빈`은 여전히 `[]`지만 현재 정책상 immediate bug라기보다 “campus-near 실재 후보 없음 또는 curated alias 범위 밖”으로 보는 편이 맞습니다.
-
-2. course source-gap watchlist
+1. course source-gap watchlist
 - `데이터베이스`는 `near_match_only`, `CSE301/김가톨/데이타베이스/CSE 420`는 `no_source_backed_hit` 상태로 유지됩니다.
 - release gate에서 빠졌기 때문에 지금 당장 구현 우선순위는 아니지만, source truth 변화가 생기면 다시 확인해야 합니다.
+
+2. Shared GPT 실제 UI 샘플 확인
+- `/gpt/notice-categories`, `/gpt/periods`, OpenAPI proxy 기준 direct metadata path는 이미 확인됐습니다.
+- 다만 이번 턴에는 로컬 Chrome 기존 세션 충돌 때문에 Playwright로 실제 ChatGPT UI 자동 점검을 완료하지 못했습니다.
+- 따라서 이 항목은 제품 리스크라기보다 **운영 검증 gap**으로 남깁니다.
 
 ## 지금은 주요 리스크가 아닌 것
 
@@ -70,17 +71,18 @@
 - `open_now=true`에 `null` item 섞임
 - `공지 카테고리 종류` direct metadata gap
 - `7교시` direct metadata gap
+- `커피빈` long-tail empty semantics
 
-이 일곱 가지는 이번 baseline에서는 더 이상 핵심 리스크로 분류하지 않습니다.
+이 항목들은 이번 baseline에서는 더 이상 핵심 리스크로 분류하지 않습니다.
 
-## 다음 구현 1순위
+## 다음 우선순위
 
-`brand long-tail watch 유지`
+`Shared GPT 실제 UI 샘플 확인`
 
 이유:
 - release-pack은 이미 안정적이고 hard fail이 없습니다.
 - GPT metadata spot check까지 끝나면서 `공지 카테고리`, `7교시` 축도 현재 운영에서 direct path로 확인됐습니다.
-- 지금 남은 이슈는 `커피빈` long-tail과 course source-gap watchlist인데, 그중 사용자 체감이 더 큰 쪽은 brand long-tail 관찰입니다.
+- 지금 남은 일은 제품 버그라기보다 `course source-gap watchlist` 유지와 실제 ChatGPT UI에서의 마지막 샘플 확인입니다.
 
 ## 관련 문서
 

@@ -1,6 +1,6 @@
 # Public MCP Hidden Risk Audit
 
-`public API`를 2026-03-16 KST 기준으로 다시 실측해, 최근 성능/검색/transport/brand 보정과 metadata parity 반영 이후의 **현재 운영 baseline**을 재작성한 감사 시트입니다. 이번 감사는 새 기능 추가 없이 문서만 갱신했고, 이미 해결된 리스크는 내리고 아직 남은 리스크만 `short-query`, `metadata parity`, `brand long-tail`, `course watchlist`, `latency/strict semantics` 기준으로 다시 분류했습니다.
+`public API`를 2026-03-16 KST 기준으로 다시 실측해, 최근 성능/검색/transport/brand 보정과 metadata parity 반영 이후의 **현재 운영 baseline**을 재작성한 감사 시트입니다. 이번 감사는 새 기능 추가 없이 문서만 갱신했고, 이미 해결된 리스크는 내리고 아직 남은 리스크만 `short-query`, `metadata parity`, `course watchlist`, `latency/strict semantics` 기준으로 다시 분류했습니다.
 
 ## 실행 기준
 
@@ -22,8 +22,8 @@
 | Metric | Count |
 | --- | ---: |
 | cases | 30 |
-| `pass` | 24 |
-| `soft_pass` | 6 |
+| `pass` | 25 |
+| `soft_pass` | 5 |
 | `soft_fail` | 0 |
 | `fail` | 0 |
 | `fast` | 19 |
@@ -50,7 +50,7 @@
 | RG06 | 관리자 sync 돌려줘 | public read-only policy | admin/sync 실행 요청은 public surface에서 지원하지 않아야 한다 | usage guide와 공개 문서 기준으로 admin sync는 범위 밖 | fast | pass | `policy_guardrail` | public API/MCP의 read-only contract와 일치한다 |
 | BR01 | 스타벅스 있어? | `GET /restaurants/search?query=스타벅스&limit=5` | brand result가 나오고 parking noise는 제거돼야 한다 | `스타벅스 역곡역DT점` 1건만 반환 | slow | pass | `brand_clean` | 과거 `주차장` 노이즈는 사라졌다 |
 | BR02 | 중도 기준 스타벅스 어디 있어? | `GET /restaurants/search?query=스타벅스&origin=중도&limit=5` | origin 기준 거리/도보 시간이 채워져야 한다 | `스타벅스 역곡역DT점` 1위, `914m / 12분` | slow | pass | `brand_with_origin` | explicit origin direct search가 계약대로 동작한다 |
-| BR03 | 커피빈 있어? | `GET /restaurants/search?query=커피빈&limit=5` | 주변 실재 후보가 없으면 empty가 가능하지만 parser failure와는 구분돼야 한다 | `[]` | fast | soft_pass | `brand_gap_or_no_candidate` | 현재는 empty가 정상 범주지만, campus-near 실재 후보 부재인지 watchlist로만 남긴다 |
+| BR03 | 커피빈 있어? | `GET /restaurants/search?query=커피빈&limit=5` | 15분 반경에 없으면 확장 반경에서 nearest branch를 반환해야 한다 | `커피빈 부천북부역사거리점`, `커피빈 부천스타필드시티점` 2건 반환 | slow | pass | `brand_extended_radius` | extended-radius fallback 이후 long-tail empty baseline은 더 이상 유효하지 않다 |
 | BR04 | 투썸 있어? | `GET /restaurants/search?query=투썸&limit=5` | long-tail alias가 정상 해석돼야 한다 | `투썸플레이스 부천MJ컨벤션점` 1위 | slow | pass | `brand_alias` | alias 확장이 live에서도 동작한다 |
 | BR05 | 빽다방 있어? | `GET /restaurants/search?query=빽다방&limit=5` | 주변 지점이 있으면 direct search 결과가 나와야 한다 | `빽다방 소사역점`, `빽다방 부천소사본점` 등 3건 반환 | slow | pass | `brand_alias` | long-tail brand 검색이 동작한다 |
 | BR06 | 중도 기준 빽다방 어디 있어? | `GET /restaurants/search?query=빽다방&origin=중도&limit=5` | origin 기준 거리/도보 시간이 채워져야 한다 | `빽다방 소사역점` 1위, `552m / 17분`; 2위 `977m / 20분` | slow | pass | `brand_with_origin` | campus-first + origin-aware ranking이 유지된다 |
@@ -79,5 +79,5 @@
 ## 보조 메모
 
 - `classrooms timeout`, `transport mode mismatch`, `generic facility noun -> []`, `스타벅스 주차장 노이즈`, `정문/K관` residual noise는 더 이상 현재 운영 baseline의 핵심 리스크가 아니다.
-- 현재 남아 있는 눈에 띄는 리스크는 `공지/교시 API-first chaining`, `커피빈 empty semantics`, `course source-gap watchlist` 쪽이다.
+- 현재 남아 있는 눈에 띄는 리스크는 `course source-gap watchlist` 쪽이다.
 - `course`는 release gate가 아니라 watchlist라는 현재 정책을 유지한다. `데이터베이스`, `CSE301`, `김가톨`, `데이타베이스`, `CSE 420`는 계속 source-backed 여부 중심으로만 추적한다.

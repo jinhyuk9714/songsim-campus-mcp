@@ -44,6 +44,9 @@
 
 - `중도`, `학생식당`, `니콜스`, `정문`, `중앙 도서관` origin alias와 spacing recovery는 정상입니다.
 - `K관` origin도 `kim-sou-hwan-hall`로 안정적으로 canonicalize되고, cached nearby 결과가 `10s` 안에 반환됩니다.
+- `커피빈`은 extended-radius fallback 이후 nearest branch를 정상 반환합니다.
+  - origin이 없으면 `커피빈 부천북부역사거리점`, `커피빈 부천스타필드시티점`이 반환됩니다.
+  - `origin=중도`가 있으면 `1482m / 30분`, `3109m / 43분`으로 거리/도보 시간이 채워집니다.
 - `budget_max` strict filtering은 기대대로 동작해 가격 근거가 없는 후보를 제거합니다.
 - `open_now=true`는 이제 영업중이 확인된 후보만 남기도록 strict filtering으로 고정했습니다.
 - representative query인 `학생식당 기준 지금 여는 카페만 3개`는 현재 빈 배열을 반환했고, `open_now=null` item이 섞이지 않았습니다.
@@ -93,15 +96,13 @@
    - `데이터베이스`, `CSE301`, `김가톨`, `데이타베이스`, `CSE 420`는 source-backed가 아니므로 gate가 아니라 watchlist로 계속 추적합니다.
 2. release-pack course watchlist 모니터링
    - gate 밖으로 뺀 source-gap 질의가 실제 source 변화로 회복되는지 주기적으로 다시 확인하면 됩니다.
-3. brand long-tail watch 유지
-   - `커피빈`은 현재 campus-near 실재 후보가 없는 쪽에 가까워서, 코드 수정보다 관찰 유지가 우선입니다.
-4. Shared GPT 핵심 샘플 점검
+3. Shared GPT 핵심 샘플 점검
    - `HTTP/OpenAPI proxy` 기준 spot check 결과 `공지 카테고리`, `7교시` 계열 metadata path는 정상입니다.
-   - 이후 실제 ChatGPT UI 샘플 검증은 별도 UX 확인 작업으로 남길 수 있습니다.
+   - 다만 이번 턴에는 로컬 Chrome 기존 세션 충돌 때문에 Playwright 자동 점검이 막혀, 실제 ChatGPT UI 샘플 검증은 별도 UX 확인 작업으로 남깁니다.
 
 ## 다음 우선순위
 
-- `brand long-tail watch 유지 -> course source-gap watchlist 모니터링 -> Shared GPT UI 샘플 확인` 순서가 가장 자연스럽습니다.
+- `Shared GPT UI 샘플 확인 -> course source-gap watchlist 모니터링` 순서가 가장 자연스럽습니다.
 - 그다음에 Shared GPT 핵심 10~15문장 샘플 검증으로 넘어가면 됩니다.
 
 ## 관련 문서

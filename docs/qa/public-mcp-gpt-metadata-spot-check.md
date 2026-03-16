@@ -34,6 +34,12 @@
 - `공지 카테고리`와 `7교시` 계열 질문은 이제 간접 추론이 아니라 **direct metadata path**로 설명 가능합니다.
 - 이 축은 더 이상 hidden-risk의 핵심 soft item으로 두지 않아도 됩니다.
 
+## Actual UI Note
+
+- 2026-03-16 KST에 Playwright로 실제 ChatGPT UI 샘플 자동 점검을 시도했지만, 로컬 Chrome 기존 세션 충돌로 브라우저 컨텍스트를 띄우지 못했습니다.
+- 따라서 이번 문서는 여전히 `HTTP/OpenAPI proxy` 기준 spot check 결과를 canonical evidence로 사용합니다.
+- 실제 ChatGPT UI 샘플 확인은 별도 수동 UX 점검 항목으로 남깁니다.
+
 ## 관련 문서
 
 - [Public MCP Hidden Risk Summary](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-hidden-risk-summary.md)
