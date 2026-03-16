@@ -1,6 +1,6 @@
 # Public MCP Hidden Risk Audit
 
-`public API`를 2026-03-16 KST 기준으로 다시 실측해, 최근 성능/검색/transport/brand 보정 이후의 **현재 운영 baseline**을 재작성한 감사 시트입니다. 이번 감사는 새 기능 추가 없이 문서만 갱신했고, 이미 해결된 리스크는 내리고 아직 남은 리스크만 `short-query noise`, `resource/prompt gap`, `brand long-tail`, `course watchlist`, `latency/strict semantics`로 다시 분류했습니다.
+`public API`를 2026-03-16 KST 기준으로 다시 실측해, 최근 성능/검색/transport/brand 보정과 metadata parity 반영 이후의 **현재 운영 baseline**을 재작성한 감사 시트입니다. 이번 감사는 새 기능 추가 없이 문서만 갱신했고, 이미 해결된 리스크는 내리고 아직 남은 리스크만 `short-query`, `metadata parity`, `brand long-tail`, `course watchlist`, `latency/strict semantics` 기준으로 다시 분류했습니다.
 
 ## 실행 기준
 
@@ -22,8 +22,8 @@
 | Metric | Count |
 | --- | ---: |
 | cases | 30 |
-| `pass` | 22 |
-| `soft_pass` | 8 |
+| `pass` | 24 |
+| `soft_pass` | 6 |
 | `soft_fail` | 0 |
 | `fail` | 0 |
 | `fast` | 19 |
@@ -44,8 +44,8 @@
 | SQ08 | 정문 건물로 찾아줘 | `GET /places?query=정문&category=building&limit=5` | gate를 building으로 오인하지 않고 빈 결과를 반환해야 한다 | `[]` | fast | pass | `context_filtering` | building filter가 false positive를 막는다 |
 | RG01 | 지하철 오느 길 알려줘 | `GET /transport?query=지하철 오느 길&limit=3` | subway guide가 1위여야 한다 | `1호선`, `서해선`이 모두 `mode=subway`로 반환 | fast | pass | `transport_inference` | typo 포함 natural-language query가 정상 해석된다 |
 | RG02 | 역곡역에서 성심교정 가는 법 | `GET /transport?query=역곡역에서 성심교정 가는 법&limit=3` | 역곡역/지하철 intent가 subway guide 1위로 연결돼야 한다 | `1호선`, `서해선` 순으로 반환되고 둘 다 `mode=subway` | fast | pass | `transport_inference` | 과거 mode mismatch는 해소됐다 |
-| RG03 | 공지 카테고리 종류부터 알려줘 | `GET /gpt/notices?limit=5` | API-first 경로에서 현재 쓰는 category를 간접 확인할 수 있어야 한다 | `category_display`가 `general`, `scholarship`, `employment` 등으로 노출되지만 전용 category enum endpoint는 없음 | fast | soft_pass | `resource_gap` | 제품 정보는 읽을 수 있지만 categories 자체를 직접 나열하는 API는 없다 |
-| RG04 | 7교시에 시작하는 과목 찾고 싶어 | `GET /periods` + `GET /courses?year=2026&semester=1&limit=10` | API chaining으로 7교시 시작 과목을 찾을 수 있어야 한다 | `/periods`는 1~10교시를 반환하고 `/courses` sample에는 `3D애니메이션1`의 `period_start=7`이 보임 | fast | soft_pass | `resource_chaining` | 단일 endpoint는 아니지만 API-first chain으로는 충분하다 |
+| RG03 | 공지 카테고리 종류부터 알려줘 | `GET /notice-categories` | API-first 경로에서 canonical category list를 직접 읽을 수 있어야 한다 | `academic`, `scholarship`, `employment`, `general`이 직접 반환되고 compatibility alias로 `career`, `place`가 함께 노출된다 | fast | pass | `metadata_parity` | `/gpt/notice-categories`도 같은 truth를 concise shape로 반환한다 |
+| RG04 | 7교시에 시작하는 과목 찾고 싶어 | `GET /gpt/periods` + `GET /courses?year=2026&semester=1&limit=10` | period metadata를 직접 읽고 course search와 체인해서 7교시 시작 과목을 찾을 수 있어야 한다 | `/gpt/periods`가 1~10교시를 직접 반환하고 `/courses` sample에는 `3D애니메이션1`의 `period_start=7`이 보인다 | fast | pass | `metadata_parity` | `/periods`도 같은 truth를 반환해 HTTP/MCP/GPT parity가 맞는다 |
 | RG05 | 내 프로필 만들고 저장해줘 | public read-only policy | write/profile persistence 요청은 read-only 범위 밖으로 거절돼야 한다 | usage guide와 공개 문서 기준으로 profile persistence는 미지원 | fast | pass | `policy_guardrail` | 현재 제품 계약과 일치하는 거절 범위다 |
 | RG06 | 관리자 sync 돌려줘 | public read-only policy | admin/sync 실행 요청은 public surface에서 지원하지 않아야 한다 | usage guide와 공개 문서 기준으로 admin sync는 범위 밖 | fast | pass | `policy_guardrail` | public API/MCP의 read-only contract와 일치한다 |
 | BR01 | 스타벅스 있어? | `GET /restaurants/search?query=스타벅스&limit=5` | brand result가 나오고 parking noise는 제거돼야 한다 | `스타벅스 역곡역DT점` 1건만 반환 | slow | pass | `brand_clean` | 과거 `주차장` 노이즈는 사라졌다 |

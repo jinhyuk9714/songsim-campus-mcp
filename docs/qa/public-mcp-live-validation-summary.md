@@ -38,6 +38,7 @@
 - `employment/career` 정규화와 `취 업` spacing recovery는 정상입니다.
 - `latest`, `scholarship`, `employment`, `academic` 흐름이 현재 공개 snapshot에서 모두 재현됩니다.
 - `Major Discovery Week` 같은 대표 학사 공지도 `academic`으로 정상 보입니다.
+- metadata parity 후에는 `/notice-categories`, `/gpt/notice-categories`로 category enum과 compatibility alias를 직접 읽을 수 있습니다.
 
 ### restaurants
 
@@ -57,6 +58,12 @@
 - `니콜스관`, `N관`, `니콜스`는 모두 정상이고, `availability_mode=estimated` + fallback note도 정확합니다.
 - `김수환관`은 더 이상 비강의동으로 막히지 않습니다.
 - 다만 현재 공개 snapshot에는 `김수환관` room timetable data가 없어 빈 결과 + 안내 note로 끝납니다.
+
+### metadata parity
+
+- `/notice-categories`, `/gpt/notice-categories`가 추가되어 `공지 카테고리 종류`, `employment랑 career 차이` 같은 질문을 direct metadata path로 처리할 수 있습니다.
+- `/gpt/periods`가 추가되어 `/periods`와 같은 교시표 truth를 GPT surface에서도 바로 읽을 수 있습니다.
+- 따라서 `7교시가 몇 시야`, `7교시에 시작하는 과목`은 이제 metadata + course chaining을 직접 안내할 수 있습니다.
 
 ### out_of_scope
 
@@ -84,16 +91,16 @@
 
 1. course source-gap watchlist 유지
    - `데이터베이스`, `CSE301`, `김가톨`, `데이타베이스`, `CSE 420`는 source-backed가 아니므로 gate가 아니라 watchlist로 계속 추적합니다.
-2. MCP resource/prompt spot check
-   - 이번 게이트는 API-first라 `songsim://notice-categories`, 자연어 transport/typo recovery를 간접 검증만 했습니다.
-3. release-pack course watchlist 모니터링
+2. release-pack course watchlist 모니터링
    - gate 밖으로 뺀 source-gap 질의가 실제 source 변화로 회복되는지 주기적으로 다시 확인하면 됩니다.
-4. brand long-tail watch 유지
+3. brand long-tail watch 유지
    - `커피빈`은 현재 campus-near 실재 후보가 없는 쪽에 가까워서, 코드 수정보다 관찰 유지가 우선입니다.
+4. Shared GPT 핵심 샘플 점검
+   - metadata endpoint가 추가됐으니 `공지 카테고리`, `7교시` 계열 질문을 GPT surface에서 한 번 더 짧게 확인하면 충분합니다.
 
 ## 다음 우선순위
 
-- `MCP resource/prompt spot check 강화 -> course source-gap watchlist 모니터링 -> brand long-tail watch 유지` 순서가 가장 효과적입니다.
+- `course source-gap watchlist 모니터링 -> brand long-tail watch 유지 -> Shared GPT metadata spot check` 순서가 가장 자연스럽습니다.
 - 그다음에 Shared GPT 핵심 10~15문장 샘플 검증으로 넘어가면 됩니다.
 
 ## 관련 문서
