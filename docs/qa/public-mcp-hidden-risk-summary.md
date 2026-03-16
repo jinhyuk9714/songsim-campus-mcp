@@ -55,10 +55,10 @@
 - `데이터베이스`는 `near_match_only`, `CSE301/김가톨/데이타베이스/CSE 420`는 `no_source_backed_hit` 상태로 유지됩니다.
 - release gate에서 빠졌기 때문에 지금 당장 구현 우선순위는 아니지만, source truth 변화가 생기면 다시 확인해야 합니다.
 
-2. Shared GPT 실제 UI 샘플 확인
-- `/gpt/notice-categories`, `/gpt/periods`, OpenAPI proxy 기준 direct metadata path는 이미 확인됐습니다.
-- 다만 이번 턴에는 로컬 Chrome 기존 세션 충돌 때문에 Playwright로 실제 ChatGPT UI 자동 점검을 완료하지 못했습니다.
-- 따라서 이 항목은 제품 리스크라기보다 **운영 검증 gap**으로 남깁니다.
+2. Shared GPT period-to-course chaining soft item
+- 실제 Shared GPT UI 샘플 4문장 점검은 완료됐습니다.
+- `공지 카테고리`, `employment/career`, `7교시 시각`은 모두 정상입니다.
+- 다만 `7교시에 시작하는 과목`은 metadata + course chaining 즉답형이 아니라 추가 조건 요청형으로 나와 `soft_pass`로 남깁니다.
 
 ## 지금은 주요 리스크가 아닌 것
 
@@ -77,12 +77,12 @@
 
 ## 다음 우선순위
 
-`Shared GPT 실제 UI 샘플 확인`
+`Shared GPT period-to-course chaining polish`
 
 이유:
 - release-pack은 이미 안정적이고 hard fail이 없습니다.
-- GPT metadata spot check까지 끝나면서 `공지 카테고리`, `7교시` 축도 현재 운영에서 direct path로 확인됐습니다.
-- 지금 남은 일은 제품 버그라기보다 `course source-gap watchlist` 유지와 실제 ChatGPT UI에서의 마지막 샘플 확인입니다.
+- Shared GPT 실제 UI 샘플도 확인되면서 `공지 카테고리`, `employment/career`, `7교시 시각`은 실제 UX에서도 문제가 없다고 볼 수 있습니다.
+- 지금 남은 눈에 띄는 soft item은 `7교시 시작 과목` 질문에서 period -> course chaining이 다소 간접적이라는 점과 `course source-gap watchlist` 유지입니다.
 
 ## 관련 문서
 
@@ -91,3 +91,4 @@
 - [Public MCP Live Validation Summary](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-live-validation-summary.md)
 - [Public MCP Course Watchlist](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-course-watchlist.md)
 - [Public MCP GPT Metadata Spot Check](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-gpt-metadata-spot-check.md)
+- [Public MCP Shared GPT UI Sample Check](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-shared-gpt-ui-sample-check.md)

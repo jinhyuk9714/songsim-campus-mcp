@@ -1,6 +1,6 @@
 # Public MCP GPT Metadata Spot Check
 
-`HTTP/OpenAPI proxy` 기준으로 Shared GPT metadata entrypoint를 2026-03-16 KST 공개 배포에서 다시 확인한 기록입니다. 실제 ChatGPT UI가 아니라 GPT-facing HTTP surface가 질문을 직접 설명할 수 있는지 보는 용도입니다.
+`HTTP/OpenAPI proxy` 기준으로 Shared GPT metadata entrypoint를 2026-03-16 KST 공개 배포에서 다시 확인한 기록입니다. 이후 같은 날짜에 실제 Shared GPT UI 샘플 4문장도 별도로 점검했습니다.
 
 ## 점검 대상
 
@@ -36,11 +36,12 @@
 
 ## Actual UI Note
 
-- 2026-03-16 KST에 Playwright로 실제 ChatGPT UI 샘플 자동 점검을 시도했지만, 로컬 Chrome 기존 세션 충돌로 브라우저 컨텍스트를 띄우지 못했습니다.
-- 따라서 이번 문서는 여전히 `HTTP/OpenAPI proxy` 기준 spot check 결과를 canonical evidence로 사용합니다.
-- 실제 ChatGPT UI 샘플 확인은 별도 수동 UX 점검 항목으로 남깁니다.
+- 실제 Shared GPT UI 수동 샘플 확인은 별도 문서로 기록했습니다.
+- 결과는 `pass 3 / soft_pass 1 / fail 0`입니다.
+- soft item은 `7교시에 시작하는 과목` 질문에서 metadata + course chaining이 즉답형이 아니라 추가 조건 요청형으로 나온다는 점입니다.
 
 ## 관련 문서
 
 - [Public MCP Hidden Risk Summary](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-hidden-risk-summary.md)
 - [Public MCP Live Validation Summary](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-live-validation-summary.md)
+- [Public MCP Shared GPT UI Sample Check](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-shared-gpt-ui-sample-check.md)

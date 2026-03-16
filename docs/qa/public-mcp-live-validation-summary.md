@@ -97,12 +97,12 @@
 2. release-pack course watchlist 모니터링
    - gate 밖으로 뺀 source-gap 질의가 실제 source 변화로 회복되는지 주기적으로 다시 확인하면 됩니다.
 3. Shared GPT 핵심 샘플 점검
-   - `HTTP/OpenAPI proxy` 기준 spot check 결과 `공지 카테고리`, `7교시` 계열 metadata path는 정상입니다.
-   - 다만 이번 턴에는 로컬 Chrome 기존 세션 충돌 때문에 Playwright 자동 점검이 막혀, 실제 ChatGPT UI 샘플 검증은 별도 UX 확인 작업으로 남깁니다.
+   - 실제 Shared GPT UI 샘플 4문장 점검 결과 `공지 카테고리`, `employment/career`, `7교시 시각`은 정상입니다.
+   - 다만 `7교시에 시작하는 과목`은 metadata + course chaining 즉답형이 아니라 추가 조건 요청형으로 나와 `soft_pass`로 남깁니다.
 
 ## 다음 우선순위
 
-- `Shared GPT UI 샘플 확인 -> course source-gap watchlist 모니터링` 순서가 가장 자연스럽습니다.
+- `Shared GPT period-to-course chaining polish -> course source-gap watchlist 모니터링` 순서가 가장 자연스럽습니다.
 - 그다음에 Shared GPT 핵심 10~15문장 샘플 검증으로 넘어가면 됩니다.
 
 ## 관련 문서
@@ -113,3 +113,4 @@
 - [기존 20문장 실측 리포트](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-live-validation-20.md)
 - [공개 MCP Course Watchlist](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-course-watchlist.md)
 - [공개 MCP GPT Metadata Spot Check](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-gpt-metadata-spot-check.md)
+- [공개 MCP Shared GPT UI 샘플 점검](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-shared-gpt-ui-sample-check.md)
