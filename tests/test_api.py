@@ -1251,7 +1251,7 @@ def test_places_endpoint_prioritizes_exact_short_match_over_partial_noise(client
     response = client.get("/places", params={"query": "정문", "limit": 10})
 
     assert response.status_code == 200
-    assert [item["slug"] for item in response.json()] == ["main-gate", "startup-incubator"]
+    assert [item["slug"] for item in response.json()] == ["main-gate"]
 
 
 def test_places_endpoint_prefers_short_query_place_preference_for_k_hall(client):
@@ -1289,10 +1289,7 @@ def test_places_endpoint_prefers_short_query_place_preference_for_k_hall(client)
     response = client.get("/places", params={"query": "K관", "limit": 10})
 
     assert response.status_code == 200
-    assert [item["slug"] for item in response.json()[:2]] == [
-        "kim-sou-hwan-hall",
-        "dormitory-stephen",
-    ]
+    assert [item["slug"] for item in response.json()] == ["kim-sou-hwan-hall"]
 
 
 def test_places_endpoint_normalizes_spacing_variants(client):

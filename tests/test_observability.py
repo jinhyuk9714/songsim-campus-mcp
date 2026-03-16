@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
-import httpx
 import pytest
 
 from songsim_campus import repo
@@ -76,16 +75,16 @@ def test_observability_counts_fresh_cache_hits(app_env, monkeypatch, caplog):
     assert "event=restaurant_cache_decision" in caplog.text
 
 
-def test_observability_uses_stale_cache_when_live_fetch_fails(app_env, monkeypatch, caplog):
+def test_observability_prefers_stale_cache_without_live_refetch(app_env, monkeypatch, caplog):
     caplog.set_level(logging.INFO)
     init_db()
     seed_demo(force=True)
     now = datetime.fromisoformat("2026-03-14T12:00:00+09:00")
     monkeypatch.setattr("songsim_campus.services._now", lambda: now)
 
-    class BrokenKakaoClient:
+    class ShouldNotBeCalledKakaoClient:
         def search_sync(self, query: str, *, x=None, y=None, radius: int = 1000):
-            raise httpx.HTTPError("kakao unavailable")
+            raise AssertionError("stale cache should be returned before live refetch")
 
     with connection() as conn:
         repo.replace_restaurant_cache_snapshot(
@@ -103,12 +102,12 @@ def test_observability_uses_stale_cache_when_live_fetch_fails(app_env, monkeypat
             category="korean",
             walk_minutes=15,
             limit=5,
-            kakao_client=BrokenKakaoClient(),
+            kakao_client=ShouldNotBeCalledKakaoClient(),
         )
         snapshot = get_observability_snapshot(conn)
 
     assert results
-    assert snapshot.cache.live_fetch_error == 1
+    assert snapshot.cache.live_fetch_error == 0
     assert snapshot.cache.stale_hit == 1
     assert any(event["decision"] == "stale_hit" for event in snapshot.cache.recent_events)
     assert "event=restaurant_cache_decision" in caplog.text

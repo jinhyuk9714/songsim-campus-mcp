@@ -148,7 +148,7 @@ def test_search_places_prioritizes_exact_short_match_over_partial_noise(app_env)
         )
         places = search_places(conn, query="정문", limit=10)
 
-    assert [place.slug for place in places] == ["main-gate", "startup-incubator"]
+    assert [place.slug for place in places] == ["main-gate"]
 
 
 def test_load_place_short_query_preferences_supports_context_specific_slugs(app_env):
@@ -186,7 +186,34 @@ def test_search_places_prefers_short_query_place_preference_for_k_hall(app_env):
         )
         places = search_places(conn, query="K관", limit=10)
 
-    assert [place.slug for place in places[:2]] == ["kim-sou-hwan-hall", "dormitory-stephen"]
+    assert [place.slug for place in places] == ["kim-sou-hwan-hall"]
+
+
+def test_search_places_keeps_category_filter_before_short_query_canonicalization(app_env):
+    init_db()
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                _place_row(
+                    slug="main-gate",
+                    name="정문",
+                    category="gate",
+                    aliases=["학교 정문"],
+                    description="성심교정의 정문",
+                ),
+                _place_row(
+                    slug="startup-incubator",
+                    name="창업보육센터",
+                    category="building",
+                    aliases=[],
+                    description="정문 옆 창업 지원 공간",
+                ),
+            ],
+        )
+        places = search_places(conn, query="정문", category="building", limit=10)
+
+    assert places == []
 
 
 @pytest.mark.parametrize(
@@ -1646,12 +1673,16 @@ def test_find_nearby_restaurants_reuses_fresh_kakao_cache_without_refetch(app_en
     assert all(item.source_tag == 'kakao_local_cache' for item in second)
 
 
-def test_find_nearby_restaurants_uses_stale_cache_when_live_fetch_fails(app_env, monkeypatch):
+def test_find_nearby_restaurants_prefers_stale_cache_without_live_refetch(app_env, monkeypatch):
     init_db()
     seed_demo(force=True)
     old_now = datetime.fromisoformat('2026-03-14T12:00:00+09:00')
     stale_now = datetime.fromisoformat('2026-03-14T20:30:00+09:00')
     client = FakeKakaoClient()
+
+    class ShouldNotBeCalledKakaoClient:
+        def search_sync(self, query: str, *, x=None, y=None, radius: int = 1000):
+            raise AssertionError("stale cache should be returned before live Kakao refetch")
 
     monkeypatch.setattr('songsim_campus.services._now', lambda: old_now)
     with connection() as conn:
@@ -1670,7 +1701,7 @@ def test_find_nearby_restaurants_uses_stale_cache_when_live_fetch_fails(app_env,
             origin='central-library',
             category='korean',
             walk_minutes=15,
-            kakao_client=ExplodingKakaoClient(),
+            kakao_client=ShouldNotBeCalledKakaoClient(),
         )
 
     assert client.calls == 1

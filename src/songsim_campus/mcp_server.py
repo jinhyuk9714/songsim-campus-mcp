@@ -399,8 +399,8 @@ def build_mcp():
             return (
                 "Use songsim://usage-guide first if you need the public MCP rules.\n"
                 f"Then call tool_search_places with query={query}.\n"
-                "Short campus queries like K관 or 정문 are okay; the canonical campus "
-                "place should be ranked first.\n"
+                "Short campus queries like K관 or 정문 are okay; exact short queries "
+                "should resolve to the canonical campus place directly.\n"
                 "If the result narrows to one clear candidate, call tool_get_place with the "
                 "slug from tool_search_places.\n"
                 "Use songsim://place-categories if you need to explain category labels."
@@ -473,7 +473,9 @@ def build_mcp():
                 f"Then call tool_find_nearby_restaurants with origin={origin}, "
                 f"category={category or '<optional>'}, budget_max={budget_max}, "
                 f"open_now={open_now}, walk_minutes={walk_minutes}.\n"
-                "A clear alias such as 중도 or 학생식당 can be used directly.\n"
+                "A clear alias such as 중도, 학생식당, or K관 can be used directly.\n"
+                "If cached nearby results exist, the API may return them immediately for a "
+                "faster response.\n"
                 "Use tool_search_places first only if the origin is ambiguous."
             )
 

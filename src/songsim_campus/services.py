@@ -2086,7 +2086,8 @@ def search_places(
         return [Place.model_validate(item) for item in places[:limit]]
 
     facility_index = _build_place_search_facility_index(places)
-    preferred_slugs = set(_preferred_place_slugs_for_query(query, context="place_search"))
+    preferred_slugs = _preferred_place_slugs_for_query(query, context="place_search")
+    preferred_slug_set = set(preferred_slugs)
     ranked: list[tuple[int, int, int, dict[str, Any]]] = []
     for index, item in enumerate(places):
         rank = _rank_place_search_candidate(
@@ -2098,9 +2099,15 @@ def search_places(
         )
         if rank is None:
             continue
-        preference_rank = 0 if str(item.get("slug") or "").strip() in preferred_slugs else 1
+        preference_rank = 0 if str(item.get("slug") or "").strip() in preferred_slug_set else 1
         ranked.append((rank, preference_rank, index, item))
     ranked.sort(key=lambda item: (item[0], item[1], item[2]))
+    if preferred_slugs:
+        ranked = [
+            item
+            for item in ranked
+            if str(item[3].get("slug") or "").strip() in preferred_slug_set
+        ]
     return [Place.model_validate(item) for _, _, _, item in ranked[:limit]]
 
 
@@ -3829,6 +3836,14 @@ def find_nearby_restaurants(
             kakao_query=kakao_query,
             radius_meters=radius_meters,
         )
+    elif snapshot is not None and cache_state == "stale":
+        raw_restaurants = cached_rows
+        _record_cache_decision(
+            decision="stale_hit",
+            origin_slug=origin_slug,
+            kakao_query=kakao_query,
+            radius_meters=radius_meters,
+        )
     else:
         if kakao_client is None and settings.kakao_rest_api_key:
             kakao_client = KakaoLocalClient(settings.kakao_rest_api_key)
@@ -3872,32 +3887,14 @@ def find_nearby_restaurants(
                     radius_meters=radius_meters,
                     error_text="kakao_fetch_failed",
                 )
-                if snapshot is not None and cache_state == "stale":
-                    raw_restaurants = cached_rows
-                    _record_cache_decision(
-                        decision="stale_hit",
-                        origin_slug=origin_slug,
-                        kakao_query=kakao_query,
-                        radius_meters=radius_meters,
-                    )
-                else:
-                    raw_restaurants = repo.list_restaurants_nearby(
-                        conn,
-                        latitude=place["latitude"],
-                        longitude=place["longitude"],
-                        radius_meters=radius_meters,
-                    )
-                    _record_cache_decision(
-                        decision="local_fallback",
-                        origin_slug=origin_slug,
-                        kakao_query=kakao_query,
-                        radius_meters=radius_meters,
-                    )
-        elif snapshot is not None and cache_state in {"fresh", "stale"}:
-            raw_restaurants = cached_rows
-            if cache_state == "stale":
+                raw_restaurants = repo.list_restaurants_nearby(
+                    conn,
+                    latitude=place["latitude"],
+                    longitude=place["longitude"],
+                    radius_meters=radius_meters,
+                )
                 _record_cache_decision(
-                    decision="stale_hit",
+                    decision="local_fallback",
                     origin_slug=origin_slug,
                     kakao_query=kakao_query,
                     radius_meters=radius_meters,

@@ -829,10 +829,7 @@ def test_mcp_public_search_places_prefers_short_query_place_preference_for_k_hal
 
     payloads = asyncio.run(main())
 
-    assert [item["slug"] for item in payloads[:2]] == [
-        "kim-sou-hwan-hall",
-        "dormitory-stephen",
-    ]
+    assert [item["slug"] for item in payloads] == ["kim-sou-hwan-hall"]
 
     clear_settings_cache()
 
