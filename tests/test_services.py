@@ -24,6 +24,7 @@ from songsim_campus.services import (
     _parse_campus_walk_graph,
     find_nearby_restaurants,
     get_class_periods,
+    get_library_seat_status,
     get_notice_categories,
     get_place,
     investigate_course_query_coverage,
@@ -146,6 +147,129 @@ def test_get_notice_categories_returns_public_canonical_metadata(app_env):
     ]
     assert categories[2].aliases == ["career"]
     assert categories[3].aliases == ["place"]
+
+
+class FakeLibrarySeatStatusSource:
+    def fetch(self):
+        return "<seat-status></seat-status>"
+
+    def parse(self, html: str, *, fetched_at: str):
+        assert html == "<seat-status></seat-status>"
+        return [
+            {
+                "room_name": "제1자유열람실",
+                "remaining_seats": 28,
+                "occupied_seats": 72,
+                "total_seats": 100,
+                "source_url": "http://203.229.203.240/8080/Domian5.asp",
+                "source_tag": "cuk_library_seat_status",
+                "last_synced_at": fetched_at,
+            },
+            {
+                "room_name": "제2자유열람실",
+                "remaining_seats": 25,
+                "occupied_seats": 55,
+                "total_seats": 80,
+                "source_url": "http://203.229.203.240/8080/Domian5.asp",
+                "source_tag": "cuk_library_seat_status",
+                "last_synced_at": fetched_at,
+            },
+        ]
+
+
+class FailingLibrarySeatStatusSource:
+    def fetch(self):
+        raise httpx.ConnectTimeout("timed out")
+
+
+def test_get_library_seat_status_uses_fresh_cache_without_live_fetch(app_env):
+    init_db()
+    with connection() as conn:
+        repo.replace_library_seat_status_cache(
+            conn,
+            [
+                {
+                    "room_name": "제1자유열람실",
+                    "remaining_seats": 12,
+                    "occupied_seats": 88,
+                    "total_seats": 100,
+                    "source_url": "http://203.229.203.240/8080/Domian5.asp",
+                    "source_tag": "cuk_library_seat_status",
+                    "last_synced_at": "2026-03-16T08:59:00+09:00",
+                }
+            ],
+        )
+
+        response = get_library_seat_status(
+            conn,
+            source=FailingLibrarySeatStatusSource(),
+            now=datetime.fromisoformat("2026-03-16T09:00:00+09:00"),
+        )
+
+    assert response.availability_mode == "live"
+    assert response.checked_at == "2026-03-16T08:59:00+09:00"
+    assert response.rooms[0].remaining_seats == 12
+
+
+def test_get_library_seat_status_fetches_live_rows_and_filters_room_query(app_env):
+    init_db()
+    with connection() as conn:
+        response = get_library_seat_status(
+            conn,
+            query="제1자유열람실 남은 좌석",
+            source=FakeLibrarySeatStatusSource(),
+            now=datetime.fromisoformat("2026-03-16T09:00:00+09:00"),
+        )
+
+    assert response.availability_mode == "live"
+    assert response.source_url == "http://203.229.203.240/8080/Domian5.asp"
+    assert [room.room_name for room in response.rooms] == ["제1자유열람실"]
+    assert response.rooms[0].remaining_seats == 28
+
+
+def test_get_library_seat_status_falls_back_to_stale_cache_on_live_failure(app_env):
+    init_db()
+    with connection() as conn:
+        repo.replace_library_seat_status_cache(
+            conn,
+            [
+                {
+                    "room_name": "제1자유열람실",
+                    "remaining_seats": 10,
+                    "occupied_seats": 90,
+                    "total_seats": 100,
+                    "source_url": "http://203.229.203.240/8080/Domian5.asp",
+                    "source_tag": "cuk_library_seat_status",
+                    "last_synced_at": "2026-03-16T08:50:00+09:00",
+                }
+            ],
+        )
+
+        response = get_library_seat_status(
+            conn,
+            source=FailingLibrarySeatStatusSource(),
+            now=datetime.fromisoformat("2026-03-16T09:00:00+09:00"),
+        )
+
+    assert response.availability_mode == "stale_cache"
+    assert response.checked_at == "2026-03-16T08:50:00+09:00"
+    assert response.rooms[0].remaining_seats == 10
+    assert response.note
+
+
+def test_get_library_seat_status_returns_unavailable_when_live_and_cache_are_missing(app_env):
+    init_db()
+    with connection() as conn:
+        response = get_library_seat_status(
+            conn,
+            query="제1자유열람실",
+            source=FailingLibrarySeatStatusSource(),
+            now=datetime.fromisoformat("2026-03-16T09:00:00+09:00"),
+        )
+
+    assert response.availability_mode == "unavailable"
+    assert response.rooms == []
+    assert response.note
 
 
 def test_search_places_matches_alias(app_env):

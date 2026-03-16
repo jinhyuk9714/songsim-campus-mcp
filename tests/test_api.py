@@ -108,6 +108,7 @@ def test_public_readonly_mode_exposes_gpt_actions_openapi(app_env, monkeypatch):
         "/notices",
         "/notice-categories",
         "/periods",
+        "/library-seats",
         "/dining-menus",
         "/restaurants/search",
         "/restaurants/nearby",
@@ -123,6 +124,7 @@ def test_public_readonly_mode_exposes_gpt_actions_openapi(app_env, monkeypatch):
         == "listNoticeCategories"
     )
     assert payload["paths"]["/periods"]["get"]["operationId"] == "listClassPeriods"
+    assert payload["paths"]["/library-seats"]["get"]["operationId"] == "getLibrarySeatStatus"
     assert payload["paths"]["/dining-menus"]["get"]["operationId"] == "listDiningMenus"
     assert (
         payload["paths"]["/restaurants/nearby"]["get"]["operationId"]
@@ -152,6 +154,7 @@ def test_public_readonly_mode_exposes_gpt_actions_openapi_v2(app_env, monkeypatc
         "/gpt/notices",
         "/gpt/notice-categories",
         "/gpt/periods",
+        "/gpt/library-seats",
         "/gpt/dining-menus",
         "/gpt/restaurants/search",
         "/gpt/restaurants/nearby",
@@ -164,6 +167,10 @@ def test_public_readonly_mode_exposes_gpt_actions_openapi_v2(app_env, monkeypatc
         == "listNoticeCategoriesForGpt"
     )
     assert payload["paths"]["/gpt/periods"]["get"]["operationId"] == "listPeriodsForGpt"
+    assert (
+        payload["paths"]["/gpt/library-seats"]["get"]["operationId"]
+        == "getLibrarySeatStatusForGpt"
+    )
     assert (
         payload["paths"]["/gpt/dining-menus"]["get"]["operationId"]
         == "listDiningMenusForGpt"
@@ -1835,6 +1842,55 @@ def test_dining_menus_endpoint_supports_generic_and_specific_queries(client):
     assert gpt_response.status_code == 200
     assert gpt_response.json()[0]['menu_preview']
     assert gpt_response.json()[0]['source_url']
+
+
+class ApiLibrarySeatStatusSource:
+    def fetch(self):
+        return "<seat-status></seat-status>"
+
+    def parse(self, html: str, *, fetched_at: str):
+        assert html == "<seat-status></seat-status>"
+        return [
+            {
+                "room_name": "제1자유열람실",
+                "remaining_seats": 28,
+                "occupied_seats": 72,
+                "total_seats": 100,
+                "source_url": "http://203.229.203.240/8080/Domian5.asp",
+                "source_tag": "cuk_library_seat_status",
+                "last_synced_at": fetched_at,
+            },
+            {
+                "room_name": "제2자유열람실",
+                "remaining_seats": 25,
+                "occupied_seats": 55,
+                "total_seats": 80,
+                "source_url": "http://203.229.203.240/8080/Domian5.asp",
+                "source_tag": "cuk_library_seat_status",
+                "last_synced_at": fetched_at,
+            },
+        ]
+
+
+def test_library_seats_endpoints_return_live_or_filtered_rows(client, monkeypatch):
+    monkeypatch.setattr(services, "LibrarySeatStatusSource", ApiLibrarySeatStatusSource)
+
+    response = client.get("/library-seats")
+    filtered = client.get("/library-seats", params={"query": "제1자유열람실"})
+    gpt_response = client.get("/gpt/library-seats", params={"query": "열람실 남은 좌석"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["availability_mode"] == "live"
+    assert payload["source_url"] == "http://203.229.203.240/8080/Domian5.asp"
+    assert [item["room_name"] for item in payload["rooms"]] == [
+        "제1자유열람실",
+        "제2자유열람실",
+    ]
+    assert filtered.status_code == 200
+    assert [item["room_name"] for item in filtered.json()["rooms"]] == ["제1자유열람실"]
+    assert gpt_response.status_code == 200
+    assert gpt_response.json()["rooms"][0]["remaining_seats"] == 28
 
 
 def test_transport_endpoint_returns_guides(client):

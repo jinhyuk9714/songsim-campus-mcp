@@ -76,6 +76,20 @@ def test_init_db_creates_postgis_schema(app_env):
             WHERE table_name = 'restaurant_cache_items' AND column_name = 'kakao_place_id'
             """
         ).fetchone()
+        library_seat_remaining = conn.execute(
+            """
+            SELECT data_type
+            FROM information_schema.columns
+            WHERE table_name = 'library_seat_status_cache' AND column_name = 'remaining_seats'
+            """
+        ).fetchone()
+        library_seat_synced = conn.execute(
+            """
+            SELECT data_type
+            FROM information_schema.columns
+            WHERE table_name = 'library_seat_status_cache' AND column_name = 'last_synced_at'
+            """
+        ).fetchone()
         geom_index = conn.execute(
             """
             SELECT indexname
@@ -100,5 +114,7 @@ def test_init_db_creates_postgis_schema(app_env):
     assert profile_interests["data_type"] == "jsonb"
     assert restaurant_hours["data_type"] == "jsonb"
     assert restaurant_cache_place_id["data_type"] == "text"
+    assert library_seat_remaining["data_type"] == "integer"
+    assert library_seat_synced["data_type"] == "timestamp with time zone"
     assert geom_index["indexname"] == "idx_restaurants_geom"
     assert course_room_index["indexname"] == "idx_courses_year_semester_room"

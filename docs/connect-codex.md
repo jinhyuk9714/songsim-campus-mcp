@@ -17,6 +17,7 @@
 - 출발 장소 기준 주변 식당 조회
 - 브랜드 상호 직접 식당 검색
 - 공식 학식 3곳의 이번 주 메뉴 조회
+- 중앙도서관 열람실 좌석 현황 조회
 - 지하철/버스 교통 안내 조회
 
 Codex에서는 이 MCP가 공개 제품의 기준 표면입니다. HTTP API나 Shared GPT보다 먼저 연결해 두면, 같은 검증 가능한 데이터 도구를 가장 직접적으로 쓸 수 있습니다.
@@ -24,7 +25,7 @@ Codex에서는 이 MCP가 공개 제품의 기준 표면입니다. HTTP API나 S
 ## 추천 사용 흐름
 
 1. `songsim://usage-guide` resource로 공개 범위를 확인
-2. prompt_find_place / prompt_search_courses / prompt_class_periods / prompt_notice_categories / prompt_latest_notices / prompt_find_empty_classrooms / prompt_find_nearby_restaurants / prompt_search_restaurants / prompt_search_dining_menus / prompt_transport_guide 중 하나를 먼저 사용
+2. prompt_find_place / prompt_search_courses / prompt_class_periods / prompt_library_seat_status / prompt_notice_categories / prompt_latest_notices / prompt_find_empty_classrooms / prompt_find_nearby_restaurants / prompt_search_restaurants / prompt_search_dining_menus / prompt_transport_guide 중 하나를 먼저 사용
 3. prompt가 가리키는 tool로 실제 조회
 
 강의실 공실은 공식 실시간 source가 있으면 그 결과를 우선 쓰고, 없으면 시간표 기준 예상 공실로 자동 폴백합니다.
@@ -60,6 +61,8 @@ Codex에서는 이 MCP가 공개 제품의 기준 표면입니다. HTTP API나 S
 - `최신 취업 공지 3개 보여줘`
 - `학생식당 메뉴 보여줘`
 - `카페 멘사 메뉴 있어?`
+- `중앙도서관 열람실 남은 좌석 알려줘`
+- `제1자유열람실 남은 좌석 알려줘`
 - `매머드커피 어디 있어?`
 - `이디야 있나?`
 - `스타벅스 있어?`
@@ -71,6 +74,7 @@ Codex에서는 이 MCP가 공개 제품의 기준 표면입니다. HTTP API나 S
 식당 조회에서 `budget_max`를 주면 가격 정보가 확인된 후보만 남고, 가격 정보가 없는 후보는 제외됩니다.
 브랜드 direct search는 `origin`이 없어도 캠퍼스에 가까운 후보를 먼저 찾고, 근처에 없으면 더 가까운 외부 지점을 보여줄 수 있습니다. `스타벅스`, `커피빈`, `투썸`, `빽다방` 같은 브랜드도 같은 흐름으로 검색할 수 있습니다.
 교내 공식 학식 메뉴는 `prompt_search_dining_menus`와 `tool_search_dining_menus`로 조회하고, HTTP에서는 `/dining-menus`, `/gpt/dining-menus`를 씁니다. 현재는 current-week 메뉴 텍스트와 원본 PDF 링크를 함께 반환합니다.
+중앙도서관 열람실 좌석은 `prompt_library_seat_status`와 `tool_get_library_seat_status`로 조회하고, HTTP에서는 `/library-seats`, `/gpt/library-seats`를 씁니다. 이 기능은 best-effort live fetch이며 stale cache 또는 unavailable note로 폴백할 수 있습니다.
 카테고리 설명은 `songsim://notice-categories` 또는 `/notice-categories`, 교시표는 `songsim://class-periods`, `/periods`, `/gpt/periods`로 바로 확인할 수 있습니다. 교시 기반 과목 조회는 `tool_search_courses(period_start=7, year=2026, semester=1)` 또는 `/courses?year=2026&semester=1&period_start=7`처럼 direct filter를 쓰면 됩니다.
 
 ## 공개 서버 제한

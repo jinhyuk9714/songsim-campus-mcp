@@ -44,6 +44,7 @@ from .services import (
     create_profile,
     find_nearby_restaurants,
     get_class_periods,
+    get_library_seat_status,
     get_notice_categories,
     get_place,
     get_profile_course_recommendations,
@@ -289,14 +290,19 @@ def _public_usage_guide() -> str:
                 "학생식당 메뉴, 카페 보나 메뉴, 카페 멘사 메뉴, or 부온 프란조 이번 주 메뉴. "
                 "Returns extracted weekly menu text plus the original PDF link when available."
             ),
-            "8. Use tool_list_latest_notices for latest notices; category is optional.",
             (
-                "9. Use tool_list_transport_guides for static subway or bus access "
+                "8. Use tool_get_library_seat_status for 중앙도서관 열람실 남은 좌석, "
+                "중앙도서관 좌석 현황, or 제1자유열람실 남은 좌석 questions. "
+                "This is a best-effort live lookup with stale fallback."
+            ),
+            "9. Use tool_list_latest_notices for latest notices; category is optional.",
+            (
+                "10. Use tool_list_transport_guides for static subway or bus access "
                 "guidance. You can pass query with natural-language cues like 지하철, "
                 "1호선, 역곡역, or 버스. 셔틀은 현재 지원하지 않아 빈 결과가 정상입니다."
             ),
             (
-                "10. Use songsim://notice-categories or /notice-categories when a user asks "
+                "11. Use songsim://notice-categories or /notice-categories when a user asks "
                 "which notice categories exist. Use songsim://class-periods, /periods, or "
                 "/gpt/periods when a user asks what a period number means."
             ),
@@ -316,6 +322,7 @@ def _public_usage_guide() -> str:
             "- 중도 근처 밥집 추천해줘",
             "- 학생식당 메뉴 보여줘",
             "- 카페 보나 이번 주 메뉴 알려줘",
+            "- 중앙도서관 열람실 남은 좌석 알려줘",
         ]
     )
 
@@ -497,6 +504,29 @@ def build_mcp():
                 "class period table.\n"
                 "The HTTP metadata paths are /periods and /gpt/periods.\n"
                 "Use this first for questions like 7교시가 몇 시야 or 3교시가 몇 시야."
+            )
+
+        @mcp.prompt(
+            name="prompt_library_seat_status",
+            description="Explain how to check central-library reading-room seat status.",
+        )
+        def prompt_library_seat_status(
+            query: Annotated[
+                str | None,
+                Field(
+                    description=(
+                        "optional room query like 열람실 남은 좌석, 중앙도서관 좌석 현황, "
+                        "or 제1자유열람실 남은 좌석"
+                    )
+                ),
+            ] = None,
+        ):
+            return (
+                "Use tool_get_library_seat_status for 중앙도서관 열람실 좌석 현황.\n"
+                f"query={query or '<optional>'}.\n"
+                "The HTTP paths are /library-seats and /gpt/library-seats.\n"
+                "This is a best-effort live lookup with fresh cache and stale fallback, "
+                "so availability_mode may be live, stale_cache, or unavailable."
             )
 
         @mcp.prompt(
@@ -781,6 +811,33 @@ def build_mcp():
     )
     def tool_get_class_periods():
         return [item.model_dump() for item in get_class_periods()]
+
+    @mcp.tool(
+        description=(
+            (
+                "중앙도서관 열람실 남은 좌석을 best-effort 실시간으로 확인할 때 사용합니다. "
+                "열람실 남은 좌석, 중앙도서관 좌석 현황, 제1자유열람실 남은 좌석처럼 "
+                "질문할 수 있고, 실시간 조회 실패 시 stale cache 또는 unavailable note로 "
+                "안전하게 응답합니다."
+            )
+            if public_readonly
+            else "중앙도서관 열람실 좌석 현황을 best-effort 실시간으로 조회합니다."
+        ),
+        meta=tool_meta,
+    )
+    def tool_get_library_seat_status(
+        query: Annotated[
+            str | None,
+            Field(
+                description=(
+                    "열람실 또는 좌석 관련 검색어. 예: 열람실 남은 좌석, 중앙도서관 좌석 현황, "
+                    "제1자유열람실 남은 좌석"
+                )
+            ),
+        ] = None,
+    ):
+        with connection() as conn:
+            return get_library_seat_status(conn, query=query).model_dump(exclude_none=True)
 
     @mcp.tool(
         description=(

@@ -408,6 +408,7 @@ def test_mcp_public_readonly_mode_registers_only_read_only_tools(app_env, monkey
         "tool_get_place",
         "tool_search_courses",
         "tool_get_class_periods",
+        "tool_get_library_seat_status",
         "tool_list_estimated_empty_classrooms",
         "tool_search_dining_menus",
         "tool_search_restaurants",
@@ -442,6 +443,7 @@ def test_mcp_public_readonly_mode_registers_prompts_and_extended_resources(app_e
         "prompt_notice_categories",
         "prompt_latest_notices",
         "prompt_class_periods",
+        "prompt_library_seat_status",
         "prompt_find_empty_classrooms",
         "prompt_search_dining_menus",
         "prompt_search_restaurants",
@@ -500,6 +502,8 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
     assert "매머드커피" in tools["tool_search_restaurants"]["description"]
     assert "학생식당 메뉴" in tools["tool_search_dining_menus"]["description"]
     assert "카페 보나" in tools["tool_search_dining_menus"]["description"]
+    assert "열람실" in tools["tool_get_library_seat_status"]["description"]
+    assert "남은 좌석" in tools["tool_get_library_seat_status"]["description"]
     assert "실시간" in tools["tool_list_estimated_empty_classrooms"]["description"]
     assert "예상 공실" in tools["tool_list_estimated_empty_classrooms"]["description"]
     assert "니콜스관" in tools["tool_list_estimated_empty_classrooms"]["description"]
@@ -533,6 +537,9 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
     )
     assert "부온 프란조" in (
         tools["tool_search_dining_menus"]["inputSchema"]["properties"]["query"]["description"]
+    )
+    assert "제1자유열람실" in (
+        tools["tool_get_library_seat_status"]["inputSchema"]["properties"]["query"]["description"]
     )
     assert "출발 장소" in (
         tools["tool_find_nearby_restaurants"]["inputSchema"]["properties"]["origin"]["description"]
@@ -720,6 +727,7 @@ def test_mcp_public_metadata_prompts_explain_direct_metadata_flow(app_env, monke
         mcp = build_mcp()
         categories_prompt = await mcp.get_prompt("prompt_notice_categories", {})
         periods_prompt = await mcp.get_prompt("prompt_class_periods", {})
+        seats_prompt = await mcp.get_prompt("prompt_library_seat_status", {})
         notices_prompt = await mcp.get_prompt(
             "prompt_latest_notices",
             {"limit": 5},
@@ -735,6 +743,7 @@ def test_mcp_public_metadata_prompts_explain_direct_metadata_flow(app_env, monke
         return (
             categories_prompt.messages[0].content.text,
             periods_prompt.messages[0].content.text,
+            seats_prompt.messages[0].content.text,
             notices_prompt.messages[0].content.text,
             courses_prompt.messages[0].content.text,
             dining_prompt.messages[0].content.text,
@@ -743,6 +752,7 @@ def test_mcp_public_metadata_prompts_explain_direct_metadata_flow(app_env, monke
     (
         categories_message,
         periods_message,
+        seats_message,
         notices_message,
         courses_message,
         dining_message,
@@ -756,6 +766,9 @@ def test_mcp_public_metadata_prompts_explain_direct_metadata_flow(app_env, monke
     assert "tool_get_class_periods" in periods_message
     assert "/periods" in periods_message
     assert "/gpt/periods" in periods_message
+    assert "tool_get_library_seat_status" in seats_message
+    assert "/library-seats" in seats_message
+    assert "/gpt/library-seats" in seats_message
     assert "songsim://notice-categories" in notices_message
     assert "/notice-categories" in notices_message
     assert "songsim://class-periods" in courses_message
@@ -815,6 +828,52 @@ def test_mcp_public_search_courses_tool_accepts_period_start(app_env, monkeypatc
 
     assert [item["code"] for item in payload] == ["CSE401"]
     assert all(item["period_start"] == 7 for item in payload)
+
+    clear_settings_cache()
+
+
+def test_mcp_public_library_seat_tool_returns_live_room_payload(app_env, monkeypatch):
+    pytest.importorskip('mcp.server.fastmcp')
+    init_db()
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    class McpLibrarySeatStatusSource:
+        def fetch(self):
+            return "<seat-status></seat-status>"
+
+        def parse(self, html: str, *, fetched_at: str):
+            assert html == "<seat-status></seat-status>"
+            return [
+                {
+                    "room_name": "제1자유열람실",
+                    "remaining_seats": 28,
+                    "occupied_seats": 72,
+                    "total_seats": 100,
+                    "source_url": "http://203.229.203.240/8080/Domian5.asp",
+                    "source_tag": "cuk_library_seat_status",
+                    "last_synced_at": fetched_at,
+                }
+            ]
+
+    monkeypatch.setattr(
+        "songsim_campus.services.LibrarySeatStatusSource",
+        McpLibrarySeatStatusSource,
+    )
+
+    async def main():
+        mcp = build_mcp()
+        result = await mcp.call_tool(
+            "tool_get_library_seat_status",
+            {"query": "제1자유열람실 남은 좌석"},
+        )
+        return _tool_payloads(result)[0]
+
+    payload = asyncio.run(main())
+
+    assert payload["availability_mode"] == "live"
+    assert payload["rooms"][0]["room_name"] == "제1자유열람실"
+    assert payload["rooms"][0]["remaining_seats"] == 28
 
     clear_settings_cache()
 

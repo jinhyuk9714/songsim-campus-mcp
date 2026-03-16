@@ -13,6 +13,7 @@ SCHEDULE_PATTERN = re.compile(
     r"^(?P<day>[월화수목금토일])\s*(?P<start>\d+)(?:\s*[~-]\s*(?P<end>\d+))?(?:\((?P<room>[^)]+)\))?$"
 )
 WHITESPACE_PATTERN = re.compile(r"\s+")
+SEAT_STATUS_INTEGER_PATTERN = re.compile(r"(\d[\d,]*)")
 
 
 def _clean_text(value: str | None) -> str:
@@ -20,6 +21,10 @@ def _clean_text(value: str | None) -> str:
         return ""
     text = BeautifulSoup(unescape(value), "html.parser").get_text(" ", strip=True)
     return WHITESPACE_PATTERN.sub(" ", text).strip()
+
+
+def _compact_text(value: str | None) -> str:
+    return re.sub(r"\s+", "", value or "").strip()
 
 
 def _slugify(value: str) -> str:
@@ -428,6 +433,125 @@ class LibraryHoursSource:
                 "last_synced_at": fetched_at,
             }
         ]
+
+
+class LibrarySeatStatusSource:
+    """Best-effort central-library reading-room seat-status parser."""
+
+    def __init__(self, url: str):
+        self.url = url
+
+    def fetch(self) -> str:
+        response = httpx.get(self.url, timeout=8)
+        response.raise_for_status()
+        return response.text
+
+    def parse(self, html: str, *, fetched_at: str) -> list[dict]:
+        soup = BeautifulSoup(html, "html.parser")
+        rows: list[dict] = []
+        seen_rooms: set[str] = set()
+
+        for table in soup.select("table"):
+            grid = _extract_table_grid(table)
+            if not grid:
+                continue
+            header_map = self._detect_header_map(grid)
+            if header_map is None:
+                continue
+            header_row_index = int(header_map["_row_index"])
+            room_index = int(header_map["room_name"])
+            remaining_index = header_map.get("remaining_seats")
+            occupied_index = header_map.get("occupied_seats")
+            total_index = header_map.get("total_seats")
+
+            for row in grid[header_row_index + 1 :]:
+                if len(row) <= room_index:
+                    continue
+                room_name = _clean_text(row[room_index])
+                if not room_name or room_name in seen_rooms or "합계" in room_name:
+                    continue
+                remaining_seats = self._parse_int_cell(row, remaining_index)
+                occupied_seats = self._parse_int_cell(row, occupied_index)
+                total_seats = self._parse_int_cell(row, total_index)
+                if (
+                    remaining_seats is None
+                    and occupied_seats is None
+                    and total_seats is None
+                ):
+                    continue
+                rows.append(
+                    {
+                        "room_name": room_name,
+                        "remaining_seats": remaining_seats,
+                        "occupied_seats": occupied_seats,
+                        "total_seats": total_seats,
+                        "source_url": self.url,
+                        "source_tag": "cuk_library_seat_status",
+                        "last_synced_at": fetched_at,
+                    }
+                )
+                seen_rooms.add(room_name)
+        return rows
+
+    @staticmethod
+    def _parse_int_cell(row: list[str], index: int | None) -> int | None:
+        if index is None or index >= len(row):
+            return None
+        match = SEAT_STATUS_INTEGER_PATTERN.search(row[index] or "")
+        if match is None:
+            return None
+        return int(match.group(1).replace(",", ""))
+
+    @staticmethod
+    def _detect_header_map(grid: list[list[str]]) -> dict[str, int] | None:
+        for row_index, row in enumerate(grid[:5]):
+            normalized = [_compact_text(_clean_text(cell)).lower() for cell in row]
+            room_index = next(
+                (
+                    index
+                    for index, cell in enumerate(normalized)
+                    if any(keyword in cell for keyword in ("열람실", "실명", "room"))
+                ),
+                None,
+            )
+            total_index = next(
+                (
+                    index
+                    for index, cell in enumerate(normalized)
+                    if any(keyword in cell for keyword in ("전체", "총", "합계"))
+                    and "잔여" not in cell
+                    and "사용" not in cell
+                ),
+                None,
+            )
+            occupied_index = next(
+                (
+                    index
+                    for index, cell in enumerate(normalized)
+                    if any(keyword in cell for keyword in ("사용", "이용", "점유"))
+                ),
+                None,
+            )
+            remaining_index = next(
+                (
+                    index
+                    for index, cell in enumerate(normalized)
+                    if any(keyword in cell for keyword in ("잔여", "여석", "남은", "빈"))
+                ),
+                None,
+            )
+            if room_index is None:
+                continue
+            if total_index is None and occupied_index is None and remaining_index is None:
+                continue
+            return {
+                "_row_index": row_index,
+                "room_name": room_index,
+                "total_seats": total_index,
+                "occupied_seats": occupied_index,
+                "remaining_seats": remaining_index,
+            }
+        return None
 
 
 class CampusFacilitiesSource:

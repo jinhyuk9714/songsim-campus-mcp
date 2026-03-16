@@ -69,6 +69,17 @@ def test_settings_parse_restaurant_cache_ttls(monkeypatch):
     assert settings.restaurant_cache_stale_ttl_minutes == 1440
 
 
+def test_settings_parse_library_seat_cache_ttls(monkeypatch):
+    monkeypatch.setenv("SONGSIM_LIBRARY_SEAT_CACHE_TTL_MINUTES", "2")
+    monkeypatch.setenv("SONGSIM_LIBRARY_SEAT_CACHE_STALE_TTL_MINUTES", "15")
+    clear_settings_cache()
+
+    settings = Settings()
+
+    assert settings.library_seat_cache_ttl_minutes == 2
+    assert settings.library_seat_cache_stale_ttl_minutes == 15
+
+
 def test_settings_parse_admin_enabled(monkeypatch):
     monkeypatch.setenv("SONGSIM_ADMIN_ENABLED", "true")
     clear_settings_cache()
@@ -143,6 +154,8 @@ def test_env_example_documents_2026_first_semester_defaults():
     assert "SONGSIM_AUTOMATION_CACHE_CLEANUP_INTERVAL_MINUTES=720" in text
     assert "SONGSIM_RESTAURANT_CACHE_TTL_MINUTES=360" in text
     assert "SONGSIM_RESTAURANT_CACHE_STALE_TTL_MINUTES=1440" in text
+    assert "SONGSIM_LIBRARY_SEAT_CACHE_TTL_MINUTES=2" in text
+    assert "SONGSIM_LIBRARY_SEAT_CACHE_STALE_TTL_MINUTES=15" in text
     assert "SONGSIM_OFFICIAL_NOTICE_PAGES=3" in text
     assert "SONGSIM_OFFICIAL_COURSE_YEAR=2026" in text
     assert "SONGSIM_OFFICIAL_COURSE_SEMESTER=1" in text

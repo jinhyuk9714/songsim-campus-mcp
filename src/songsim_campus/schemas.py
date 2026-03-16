@@ -207,6 +207,37 @@ class GptCampusDiningMenuResult(BaseModel):
     source_url: str | None = None
 
 
+class LibrarySeatStatus(BaseModel):
+    room_name: str
+    remaining_seats: int | None = None
+    occupied_seats: int | None = None
+    total_seats: int | None = None
+
+
+class LibrarySeatStatusResponse(BaseModel):
+    availability_mode: Literal["live", "stale_cache", "unavailable"] = "unavailable"
+    checked_at: str
+    note: str | None = None
+    source_url: str | None = None
+    rooms: list[LibrarySeatStatus] = Field(default_factory=list)
+
+
+class GptLibrarySeatStatusResult(BaseModel):
+    room_name: str
+    remaining_seats: int | None = None
+    total_seats: int | None = None
+    availability_mode: Literal["live", "stale_cache", "unavailable"] = "unavailable"
+    checked_at: str
+
+
+class GptLibrarySeatStatusResponse(BaseModel):
+    availability_mode: Literal["live", "stale_cache", "unavailable"] = "unavailable"
+    checked_at: str
+    note: str | None = None
+    source_url: str | None = None
+    rooms: list[GptLibrarySeatStatusResult] = Field(default_factory=list)
+
+
 class EmptyClassroomBuilding(BaseModel):
     slug: str
     name: str

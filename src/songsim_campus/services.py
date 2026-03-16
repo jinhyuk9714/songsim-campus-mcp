@@ -32,6 +32,7 @@ from .ingest.official_sources import (
     CampusMapSource,
     CourseCatalogSource,
     LibraryHoursSource,
+    LibrarySeatStatusSource,
     NoticeSource,
     TransportGuideSource,
     classify_notice_category,
@@ -45,6 +46,8 @@ from .schemas import (
     EmptyClassroomBuilding,
     EstimatedEmptyClassroom,
     EstimatedEmptyClassroomResponse,
+    LibrarySeatStatus,
+    LibrarySeatStatusResponse,
     MatchedCourse,
     MatchedNotice,
     MealRecommendation,
@@ -73,6 +76,7 @@ COURSE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/subject.do"
 NOTICE_SOURCE_URL = "https://www.catholic.ac.kr/ko/campuslife/notice.do"
 CAMPUS_MAP_SOURCE_URL = "https://www.catholic.ac.kr/ko/about/campus-map.do"
 LIBRARY_HOURS_SOURCE_URL = "https://library.catholic.ac.kr/webcontent/info/45"
+LIBRARY_SEAT_STATUS_SOURCE_URL = "http://203.229.203.240/8080/Domian5.asp"
 FACILITIES_SOURCE_URL = "https://www.catholic.ac.kr/ko/campuslife/restaurant.do"
 TRANSPORT_SOURCE_URL = "https://www.catholic.ac.kr/ko/about/location_songsim.do"
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
@@ -132,6 +136,18 @@ PUBLIC_NOTICE_CATEGORY_METADATA = (
     {"category": "employment", "category_display": "취업", "aliases": ["career"]},
     {"category": "general", "category_display": "일반", "aliases": ["place"]},
 )
+LIBRARY_SEAT_GENERIC_QUERY_CUES = (
+    "열람실",
+    "좌석",
+    "남은좌석",
+    "좌석현황",
+    "자리",
+    "중앙도서관",
+)
+LIBRARY_SEAT_ROOM_QUERY_ALIASES = {
+    "제1자유열람실": ("제1자유열람실", "1자유열람실", "1열람실"),
+    "제2자유열람실": ("제2자유열람실", "2자유열람실", "2열람실"),
+}
 NOTICE_CANONICAL_LIST_CATEGORIES = {"학사", "장학", "취창업"}
 TRANSPORT_UNSUPPORTED_QUERY_CUES = ("셔틀", "shuttle")
 TRANSPORT_SUBWAY_QUERY_CUES = ("지하철", "전철", "1호선", "subway", "역곡역", "역곡")
@@ -1713,6 +1729,75 @@ def _hours_cache_status(fetched_at: str, now: datetime) -> str:
     return "expired"
 
 
+def _library_seat_cache_status(last_synced_at: str, now: datetime) -> str:
+    try:
+        synced_at = datetime.fromisoformat(last_synced_at)
+    except ValueError:
+        return "expired"
+    if synced_at.tzinfo is None:
+        synced_at = synced_at.astimezone()
+    age_minutes = (now - synced_at).total_seconds() / 60
+    settings = get_settings()
+    if age_minutes <= settings.library_seat_cache_ttl_minutes:
+        return "fresh"
+    if age_minutes <= settings.library_seat_cache_stale_ttl_minutes:
+        return "stale"
+    return "expired"
+
+
+def _filter_library_seat_rows(
+    rows: list[dict[str, Any]],
+    query: str | None,
+) -> list[dict[str, Any]]:
+    collapsed_query, compact_query = _normalized_query_variants(query)
+    if collapsed_query is None:
+        return rows
+
+    compact_lower = (compact_query or collapsed_query).lower()
+    matched_room_names = {
+        canonical_name
+        for canonical_name, aliases in LIBRARY_SEAT_ROOM_QUERY_ALIASES.items()
+        if any(_compact_text(alias).lower() in compact_lower for alias in aliases)
+    }
+    if matched_room_names:
+        return [item for item in rows if item.get("room_name") in matched_room_names]
+
+    if any(_compact_text(cue).lower() in compact_lower for cue in LIBRARY_SEAT_GENERIC_QUERY_CUES):
+        return rows
+
+    filtered: list[dict[str, Any]] = []
+    for item in rows:
+        room_name = str(item.get("room_name") or "")
+        if _matches_exact_text_candidate(
+            room_name,
+            collapsed_query=collapsed_query,
+            compact_query=compact_query,
+        ) or _matches_partial_text_candidate(
+            room_name,
+            collapsed_query=collapsed_query,
+            compact_query=compact_query,
+        ):
+            filtered.append(item)
+    return filtered
+
+
+def _build_library_seat_status_response(
+    rows: list[dict[str, Any]],
+    *,
+    availability_mode: str,
+    checked_at: str,
+    note: str | None,
+    source_url: str | None,
+) -> LibrarySeatStatusResponse:
+    return LibrarySeatStatusResponse(
+        availability_mode=availability_mode,
+        checked_at=checked_at,
+        note=note,
+        source_url=source_url,
+        rooms=[LibrarySeatStatus.model_validate(item) for item in rows],
+    )
+
+
 def _evaluate_open_now_from_map(opening_hours: dict[str, str], at: datetime) -> bool | None:
     if not opening_hours:
         return None
@@ -2257,6 +2342,68 @@ def get_class_periods() -> list[Period]:
 
 def get_notice_categories() -> list[NoticeCategoryInfo]:
     return [NoticeCategoryInfo.model_validate(item) for item in PUBLIC_NOTICE_CATEGORY_METADATA]
+
+
+def get_library_seat_status(
+    conn: sqlite3.Connection,
+    query: str | None = None,
+    *,
+    source: LibrarySeatStatusSource | Any | None = None,
+    now: datetime | None = None,
+) -> LibrarySeatStatusResponse:
+    current = now or _now()
+    if source is None:
+        try:
+            source = LibrarySeatStatusSource(LIBRARY_SEAT_STATUS_SOURCE_URL)
+        except TypeError:
+            source = LibrarySeatStatusSource()
+    cached_rows = repo.list_library_seat_status_cache(conn)
+    cache_state = (
+        _library_seat_cache_status(str(cached_rows[0]["last_synced_at"]), current)
+        if cached_rows
+        else "expired"
+    )
+    if cached_rows and cache_state == "fresh":
+        return _build_library_seat_status_response(
+            _filter_library_seat_rows(cached_rows, query),
+            availability_mode="live",
+            checked_at=str(cached_rows[0]["last_synced_at"]),
+            note=None,
+            source_url=str(cached_rows[0].get("source_url") or LIBRARY_SEAT_STATUS_SOURCE_URL),
+        )
+
+    checked_at = current.isoformat(timespec="seconds")
+    try:
+        payload = source.fetch()
+        live_rows = source.parse(payload, fetched_at=checked_at)
+        if not live_rows:
+            raise ValueError("library seat source returned no room rows")
+        repo.replace_library_seat_status_cache(conn, live_rows)
+        return _build_library_seat_status_response(
+            _filter_library_seat_rows(live_rows, query),
+            availability_mode="live",
+            checked_at=checked_at,
+            note=None,
+            source_url=str(live_rows[0].get("source_url") or LIBRARY_SEAT_STATUS_SOURCE_URL),
+        )
+    except (httpx.HTTPError, ValueError):
+        if cached_rows and cache_state == "stale":
+            return _build_library_seat_status_response(
+                _filter_library_seat_rows(cached_rows, query),
+                availability_mode="stale_cache",
+                checked_at=str(cached_rows[0]["last_synced_at"]),
+                note="실시간 열람실 좌석 현황 조회에 실패해 최근 캐시를 대신 보여줍니다.",
+                source_url=str(
+                    cached_rows[0].get("source_url") or LIBRARY_SEAT_STATUS_SOURCE_URL
+                ),
+            )
+        return _build_library_seat_status_response(
+            [],
+            availability_mode="unavailable",
+            checked_at=checked_at,
+            note="실시간 열람실 좌석 현황을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+            source_url=LIBRARY_SEAT_STATUS_SOURCE_URL,
+        )
 
 
 def search_campus_dining_menus(

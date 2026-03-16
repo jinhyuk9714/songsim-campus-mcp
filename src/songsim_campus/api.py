@@ -19,11 +19,14 @@ from .schemas import (
     Course,
     EstimatedEmptyClassroomResponse,
     GptCampusDiningMenuResult,
+    GptLibrarySeatStatusResponse,
+    GptLibrarySeatStatusResult,
     GptNearbyRestaurantResult,
     GptNoticeCategoryInfo,
     GptNoticeResult,
     GptPlaceResult,
     GptRestaurantSearchResult,
+    LibrarySeatStatusResponse,
     MatchedCourse,
     MatchedNotice,
     McpCoordinates,
@@ -51,6 +54,7 @@ from .services import (
     create_profile,
     find_nearby_restaurants,
     get_class_periods,
+    get_library_seat_status,
     get_notice_categories,
     get_observability_snapshot,
     get_place,
@@ -119,6 +123,14 @@ GPT_ACTION_PATHS: dict[str, dict[str, str]] = {
         "summary": "List class periods",
         "description": "List the fixed Songsim class period table.",
     },
+    "/library-seats": {
+        "operationId": "getLibrarySeatStatus",
+        "summary": "Get central-library reading-room seat status",
+        "description": (
+            "Best-effort realtime central-library reading-room seat status with fresh cache "
+            "and stale fallback."
+        ),
+    },
     "/dining-menus": {
         "operationId": "listDiningMenus",
         "summary": "List current official campus dining menus",
@@ -181,6 +193,14 @@ GPT_ACTION_V2_PATHS: dict[str, dict[str, str]] = {
         "description": (
             "Use when the user asks what a period number means or needs the class "
             "period table before searching courses."
+        ),
+    },
+    "/gpt/library-seats": {
+        "operationId": "getLibrarySeatStatusForGpt",
+        "summary": "Get concise central-library reading-room seat status",
+        "description": (
+            "Use when the user asks whether central-library reading rooms have seats "
+            "available. Returns live, stale_cache, or unavailable status."
         ),
     },
     "/gpt/dining-menus": {
@@ -407,6 +427,26 @@ def create_app() -> FastAPI:
             week_label=menu.week_label,
             menu_preview=_campus_dining_menu_preview(menu.menu_text),
             source_url=menu.source_url,
+        ).model_dump(exclude_none=True)
+
+    def _serialize_gpt_library_seat_status(
+        response: LibrarySeatStatusResponse,
+    ) -> dict[str, object]:
+        return GptLibrarySeatStatusResponse(
+            availability_mode=response.availability_mode,
+            checked_at=response.checked_at,
+            note=response.note,
+            source_url=response.source_url,
+            rooms=[
+                GptLibrarySeatStatusResult(
+                    room_name=item.room_name,
+                    remaining_seats=item.remaining_seats,
+                    total_seats=item.total_seats,
+                    availability_mode=response.availability_mode,
+                    checked_at=response.checked_at,
+                )
+                for item in response.rooms
+            ],
         ).model_dump(exclude_none=True)
 
     def _build_filtered_openapi(
@@ -1381,6 +1421,13 @@ def create_app() -> FastAPI:
     def periods() -> list[Period]:
         return get_class_periods()
 
+    @app.get("/library-seats", response_model=LibrarySeatStatusResponse)
+    def library_seats(
+        query: str | None = Query(default=None, description="열람실 또는 좌석 관련 검색어"),
+    ) -> LibrarySeatStatusResponse:
+        with connection() as conn:
+            return get_library_seat_status(conn, query=query)
+
     @app.get("/notice-categories", response_model=list[NoticeCategoryInfo])
     def notice_categories() -> list[NoticeCategoryInfo]:
         return get_notice_categories()
@@ -1392,6 +1439,16 @@ def create_app() -> FastAPI:
     @app.get("/gpt/periods", response_model=list[Period])
     def gpt_periods() -> list[Period]:
         return get_class_periods()
+
+    @app.get("/gpt/library-seats", response_model=GptLibrarySeatStatusResponse)
+    def gpt_library_seats(
+        query: str | None = Query(default=None, description="열람실 또는 좌석 관련 검색어"),
+    ) -> GptLibrarySeatStatusResponse:
+        with connection() as conn:
+            response = get_library_seat_status(conn, query=query)
+        return GptLibrarySeatStatusResponse.model_validate(
+            _serialize_gpt_library_seat_status(response)
+        )
 
     @app.get("/gpt/dining-menus", response_model=list[GptCampusDiningMenuResult])
     def gpt_dining_menus(

@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     restaurant_cache_stale_ttl_minutes: int = 1440
     restaurant_hours_cache_ttl_minutes: int = 1440
     restaurant_hours_cache_stale_ttl_minutes: int = 10080
+    library_seat_cache_ttl_minutes: int = 2
+    library_seat_cache_stale_ttl_minutes: int = 15
     official_campus_id: str = "1"
     official_notice_pages: int = 3
     official_course_year: int | None = None

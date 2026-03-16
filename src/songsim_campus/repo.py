@@ -704,6 +704,45 @@ def list_campus_dining_menus(
     return [_normalize_record(dict(row)) for row in rows]
 
 
+def replace_library_seat_status_cache(
+    conn: psycopg.Connection,
+    rows: list[dict[str, Any]],
+) -> None:
+    conn.execute("TRUNCATE TABLE library_seat_status_cache")
+    _executemany(
+        conn,
+        """
+        INSERT INTO library_seat_status_cache (
+            room_name, remaining_seats, occupied_seats, total_seats,
+            source_url, source_tag, last_synced_at
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """,
+        [
+            (
+                row["room_name"],
+                row.get("remaining_seats"),
+                row.get("occupied_seats"),
+                row.get("total_seats"),
+                row.get("source_url"),
+                row.get("source_tag", "demo"),
+                row["last_synced_at"],
+            )
+            for row in rows
+        ],
+    )
+
+
+def list_library_seat_status_cache(conn: psycopg.Connection) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT *
+        FROM library_seat_status_cache
+        ORDER BY room_name
+        """
+    ).fetchall()
+    return [_normalize_record(dict(row)) for row in rows]
+
+
 def list_transport_guides(
     conn: psycopg.Connection,
     mode: str | None = None,

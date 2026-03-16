@@ -8,6 +8,7 @@
 | cuk_subject_search | 공식 | https://www.catholic.ac.kr/ko/support/subject.do | 높음 | implemented | 개설과목조회 HTML 테이블 + 팝업 상세 파싱 |
 | cuk_campus_notices | 공식 | https://www.catholic.ac.kr/ko/campuslife/notice.do | 높음 | implemented | 목록 HTML + 상세 HTML 조합으로 최신 공지 동기화 |
 | cuk_library_hours | 공식 | https://library.catholic.ac.kr/webcontent/info/45 | 중간 | implemented | 중앙도서관 개관시간 표를 `중앙도서관` place의 `opening_hours`로 병합 |
+| cuk_library_seat_status | 공식 외부 링크 | http://203.229.203.240/8080/Domian5.asp | 높음 | implemented | 중앙도서관 열람실 좌석 현황을 query-time live fetch로 best-effort 조회하고, `library_seat_status_cache`에 짧은 TTL current snapshot을 유지해 stale fallback에 사용 |
 | cuk_facilities | 공식 | https://www.catholic.ac.kr/ko/campuslife/restaurant.do | 중간 | implemented | 식당/편의시설 운영시간을 위치 기준으로 기존 place의 `opening_hours`에 병합하고, 공식 학식 3곳의 주간 메뉴 PDF 링크와 추출 텍스트를 `campus_dining_menus` current snapshot으로 동기화 |
 | cuk_transport | 공식 | https://www.catholic.ac.kr/ko/about/location_songsim.do | 중간 | implemented | 성심교정 정적 교통 안내를 `transport_guides`로 정규화 |
 | kakao_local | 외부 API | https://developers.kakao.com/docs/latest/ko/local/common | 높음 | implemented | API 키가 있으면 `/restaurants/nearby`와 개인화 식사 추천에서 lazy cache 기반 실시간 장소 검색 사용 |

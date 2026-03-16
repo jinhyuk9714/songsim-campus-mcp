@@ -92,6 +92,7 @@ def test_mcp_oauth_metadata_and_initialize_flow(app_env, monkeypatch):
         "tool_get_place",
         "tool_search_courses",
         "tool_get_class_periods",
+        "tool_get_library_seat_status",
         "tool_list_estimated_empty_classrooms",
         "tool_find_nearby_restaurants",
         "tool_search_restaurants",

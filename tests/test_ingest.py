@@ -9,6 +9,7 @@ from songsim_campus.ingest.official_sources import (
     CampusMapSource,
     CourseCatalogSource,
     LibraryHoursSource,
+    LibrarySeatStatusSource,
     NoticeSource,
     TransportGuideSource,
     classify_notice_category,
@@ -217,6 +218,47 @@ def test_library_hours_parser_extracts_room_labels_and_schedules():
             "last_synced_at": "2026-03-13T09:00:00+09:00",
         }
     ]
+
+
+def test_library_seat_status_parser_extracts_room_counts():
+    source = LibrarySeatStatusSource("http://203.229.203.240/8080/Domian5.asp")
+
+    rows = source.parse(
+        _fixture("library_seat_status.html"),
+        fetched_at="2026-03-16T09:00:00+09:00",
+    )
+
+    assert rows == [
+        {
+            "room_name": "제1자유열람실",
+            "remaining_seats": 28,
+            "occupied_seats": 72,
+            "total_seats": 100,
+            "source_url": "http://203.229.203.240/8080/Domian5.asp",
+            "source_tag": "cuk_library_seat_status",
+            "last_synced_at": "2026-03-16T09:00:00+09:00",
+        },
+        {
+            "room_name": "제2자유열람실",
+            "remaining_seats": 25,
+            "occupied_seats": 55,
+            "total_seats": 80,
+            "source_url": "http://203.229.203.240/8080/Domian5.asp",
+            "source_tag": "cuk_library_seat_status",
+            "last_synced_at": "2026-03-16T09:00:00+09:00",
+        },
+    ]
+
+
+def test_library_seat_status_parser_returns_empty_when_table_shape_is_unknown():
+    source = LibrarySeatStatusSource("http://203.229.203.240/8080/Domian5.asp")
+
+    rows = source.parse(
+        "<html><body><table><tr><td>broken</td></tr></table></body></html>",
+        fetched_at="2026-03-16T09:00:00+09:00",
+    )
+
+    assert rows == []
 
 
 def test_facility_hours_parser_extracts_cards_and_table_rows():

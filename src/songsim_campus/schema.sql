@@ -104,6 +104,16 @@ CREATE TABLE IF NOT EXISTS restaurant_hours_cache (
     source_tag TEXT NOT NULL DEFAULT 'kakao_place_detail_cache'
 );
 
+CREATE TABLE IF NOT EXISTS library_seat_status_cache (
+    room_name TEXT PRIMARY KEY,
+    remaining_seats INTEGER,
+    occupied_seats INTEGER,
+    total_seats INTEGER,
+    source_url TEXT,
+    source_tag TEXT NOT NULL DEFAULT 'demo',
+    last_synced_at TIMESTAMPTZ NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS notices (
     id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     title TEXT NOT NULL,
@@ -211,6 +221,8 @@ CREATE INDEX IF NOT EXISTS idx_restaurant_cache_items_geom
 ON restaurant_cache_items USING GIST (geom);
 CREATE INDEX IF NOT EXISTS idx_restaurant_hours_cache_fetched_at
 ON restaurant_hours_cache(fetched_at DESC);
+CREATE INDEX IF NOT EXISTS idx_library_seat_status_cache_last_synced_at
+ON library_seat_status_cache(last_synced_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notices_published_at ON notices(published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_transport_guides_mode ON transport_guides(mode);
 CREATE INDEX IF NOT EXISTS idx_campus_dining_menus_place_slug
