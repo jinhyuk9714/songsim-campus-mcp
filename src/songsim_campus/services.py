@@ -112,6 +112,8 @@ EMPTY_CLASSROOM_ESTIMATE_NOTE = (
     "공식 시간표 기준 예상 공실입니다. 실시간 점유는 반영되지 않습니다."
 )
 DEFAULT_RESTAURANT_SEARCH_ORIGIN = "central-library"
+DEFAULT_RESTAURANT_SEARCH_RADIUS_METERS = 15 * WALKING_METERS_PER_MINUTE
+EXTENDED_RESTAURANT_SEARCH_RADIUS_METERS = 5000
 CLASSROOM_BUILDING_CATEGORIES = {"building", "library"}
 NOTICE_CATEGORY_FILTER_ALIASES = {
     "employment": ("employment", "career"),
@@ -2187,92 +2189,16 @@ def search_restaurants(
         conn,
         collapsed_query=collapsed_query,
     )
-    ranked: list[
-        tuple[
-            int,
-            int,
-            int,
-            int,
-            int,
-            str,
-            dict[str, Any],
-            int | None,
-            int | None,
-        ]
-    ] = []
-    for item in restaurants:
-        if _is_restaurant_search_noise_candidate(item):
-            continue
-        if collapsed_query is None:
-            rank = 0
-        else:
-            rank = _rank_restaurant_search_candidate(
-                item,
-                collapsed_query=collapsed_query,
-                compact_query=compact_query,
-            )
-            if rank is None:
-                continue
-        brand_exactness = _restaurant_brand_exactness(
-            item,
-            canonical_query=canonical_brand_query,
-        )
-
-        hidden_distance_meters: int | None = None
-        hidden_walk_minutes: int | None = None
-        distance_meters: int | None = None
-        estimated_walk_minutes: int | None = None
-        if (
-            ranking_origin_place is not None
-            and item.get("latitude") is not None
-            and item.get("longitude") is not None
-        ):
-            hidden_distance_meters = _haversine_meters(
-                ranking_origin_place["latitude"],
-                ranking_origin_place["longitude"],
-                item["latitude"],
-                item["longitude"],
-            )
-            hidden_walk_minutes = _estimate_place_to_restaurant_walk_minutes(
-                conn,
-                origin_place=ranking_origin_place,
-                restaurant_row=item,
-            )
-            if origin_place is not None:
-                distance_meters = hidden_distance_meters
-                estimated_walk_minutes = hidden_walk_minutes
-
-        campus_bucket = 0
-        if origin_place is None:
-            campus_bucket = (
-                0 if hidden_walk_minutes is not None and hidden_walk_minutes <= 15 else 1
-            )
-
-        ranked.append(
-            (
-                rank,
-                brand_exactness,
-                campus_bucket,
-                hidden_walk_minutes if hidden_walk_minutes is not None else 999,
-                hidden_distance_meters if hidden_distance_meters is not None else 999999,
-                str(item.get("name") or ""),
-                item,
-                distance_meters,
-                estimated_walk_minutes,
-            )
-        )
-
-    ranked.sort(key=lambda item: (item[0], item[1], item[2], item[3], item[4], item[5]))
-    snapshot_results = [
-        RestaurantSearchResult.model_validate(
-            {
-                **item,
-                "distance_meters": distance_meters,
-                "estimated_walk_minutes": estimated_walk_minutes,
-            }
-        )
-        for _, _, _, _, _, _, item, distance_meters, estimated_walk_minutes in ranked[:limit]
-    ]
+    snapshot_results = _rank_restaurant_search_results(
+        conn,
+        restaurants,
+        collapsed_query=collapsed_query,
+        compact_query=compact_query,
+        canonical_brand_query=canonical_brand_query,
+        ranking_origin_place=ranking_origin_place,
+        origin_place=origin_place,
+        limit=limit,
+    )
     if snapshot_results or collapsed_query is None:
         return snapshot_results
 
@@ -2287,35 +2213,38 @@ def search_restaurants(
                 f"Origin place has no coordinates: {DEFAULT_RESTAURANT_SEARCH_ORIGIN}"
             )
 
-    radius_meters = 15 * WALKING_METERS_PER_MINUTE
     canonical_query = _resolve_restaurant_brand_query_token(query)
-    origin_slug, cache_query, _ = _restaurant_brand_cache_key(
-        internal_origin_place["slug"],
-        canonical_query,
-        radius_meters,
-    )
-    snapshot, cached_rows = _cache_rows_for_key(
-        conn,
-        origin_slug=origin_slug,
-        kakao_query=cache_query,
-        radius_meters=radius_meters,
-        latitude=internal_origin_place["latitude"],
-        longitude=internal_origin_place["longitude"],
-    )
-    cache_state = (
-        _cache_status(snapshot["fetched_at"], _now())
-        if snapshot is not None
-        else "expired"
-    )
+    settings = get_settings()
+    if kakao_client is None and settings.kakao_rest_api_key:
+        kakao_client = KakaoLocalClient(settings.kakao_rest_api_key)
 
-    raw_restaurants: list[dict[str, Any]]
-    if snapshot is not None and cache_state == "fresh":
-        raw_restaurants = cached_rows
-    else:
-        settings = get_settings()
-        if kakao_client is None and settings.kakao_rest_api_key:
-            kakao_client = KakaoLocalClient(settings.kakao_rest_api_key)
-        if kakao_client is not None:
+    for radius_meters in (
+        DEFAULT_RESTAURANT_SEARCH_RADIUS_METERS,
+        EXTENDED_RESTAURANT_SEARCH_RADIUS_METERS,
+    ):
+        origin_slug, cache_query, _ = _restaurant_brand_cache_key(
+            internal_origin_place["slug"],
+            canonical_query,
+            radius_meters,
+        )
+        snapshot, cached_rows = _cache_rows_for_key(
+            conn,
+            origin_slug=origin_slug,
+            kakao_query=cache_query,
+            radius_meters=radius_meters,
+            latitude=internal_origin_place["latitude"],
+            longitude=internal_origin_place["longitude"],
+        )
+        cache_state = (
+            _cache_status(snapshot["fetched_at"], _now())
+            if snapshot is not None
+            else "expired"
+        )
+
+        raw_restaurants: list[dict[str, Any]]
+        if snapshot is not None and cache_state in {"fresh", "stale"}:
+            raw_restaurants = cached_rows
+        elif kakao_client is not None:
             try:
                 raw_restaurants = _live_restaurant_rows(
                     place=internal_origin_place,
@@ -2336,101 +2265,27 @@ def search_restaurants(
                     rows=_cached_kakao_restaurant_rows(raw_restaurants),
                 )
             except httpx.HTTPError:
-                if snapshot is not None and cache_state == "stale":
-                    raw_restaurants = cached_rows
-                else:
-                    raw_restaurants = []
-        elif snapshot is not None and cache_state in {"fresh", "stale"}:
-            raw_restaurants = cached_rows
+                raw_restaurants = []
         else:
             raw_restaurants = []
 
-    if category is not None:
-        raw_restaurants = [item for item in raw_restaurants if item["category"] == category]
+        if category is not None:
+            raw_restaurants = [item for item in raw_restaurants if item["category"] == category]
 
-    live_ranked: list[
-        tuple[
-            int,
-            int,
-            int,
-            int,
-            int,
-            str,
-            dict[str, Any],
-            int | None,
-            int | None,
-        ]
-    ] = []
-    for item in raw_restaurants:
-        if _is_restaurant_search_noise_candidate(item):
-            continue
-        rank = _rank_restaurant_search_candidate(
-            item,
+        results = _rank_restaurant_search_results(
+            conn,
+            raw_restaurants,
             collapsed_query=collapsed_query,
             compact_query=compact_query,
+            canonical_brand_query=canonical_brand_query,
+            ranking_origin_place=internal_origin_place,
+            origin_place=origin_place,
+            limit=limit,
         )
-        if rank is None:
-            continue
-        brand_exactness = _restaurant_brand_exactness(
-            item,
-            canonical_query=canonical_brand_query,
-        )
+        if results:
+            return results
 
-        hidden_distance_meters: int | None = None
-        hidden_walk_minutes: int | None = None
-        distance_meters: int | None = None
-        estimated_walk_minutes: int | None = None
-        if (
-            internal_origin_place is not None
-            and item.get("latitude") is not None
-            and item.get("longitude") is not None
-        ):
-            hidden_distance_meters = _haversine_meters(
-                internal_origin_place["latitude"],
-                internal_origin_place["longitude"],
-                item["latitude"],
-                item["longitude"],
-            )
-            hidden_walk_minutes = _estimate_place_to_restaurant_walk_minutes(
-                conn,
-                origin_place=internal_origin_place,
-                restaurant_row=item,
-            )
-            if origin_place is not None:
-                distance_meters = hidden_distance_meters
-                estimated_walk_minutes = hidden_walk_minutes
-
-        campus_bucket = 0
-        if origin_place is None:
-            campus_bucket = (
-                0 if hidden_walk_minutes is not None and hidden_walk_minutes <= 15 else 1
-            )
-
-        live_ranked.append(
-            (
-                rank,
-                brand_exactness,
-                campus_bucket,
-                hidden_walk_minutes if hidden_walk_minutes is not None else 999,
-                hidden_distance_meters if hidden_distance_meters is not None else 999999,
-                str(item.get("name") or ""),
-                item,
-                distance_meters,
-                estimated_walk_minutes,
-            )
-        )
-
-    live_ranked.sort(key=lambda item: (item[0], item[1], item[2], item[3], item[4], item[5]))
-    return [
-        RestaurantSearchResult.model_validate(
-            {
-                **item,
-                "distance_meters": distance_meters,
-                "estimated_walk_minutes": estimated_walk_minutes,
-            }
-        )
-        for _, _, _, _, _, _, item, distance_meters, estimated_walk_minutes in live_ranked[:limit]
-    ]
+    return []
 
 
 def _collect_course_snapshot_rows(
@@ -3457,6 +3312,107 @@ def _restaurant_brand_cache_key(
 ) -> tuple[str, str, int]:
     normalized_query = _normalize_facility_name(canonical_query) or canonical_query.strip()
     return (origin_slug, f"brand:{normalized_query}", radius_meters)
+
+
+def _rank_restaurant_search_results(
+    conn: sqlite3.Connection,
+    rows: list[dict[str, Any]],
+    *,
+    collapsed_query: str | None,
+    compact_query: str | None,
+    canonical_brand_query: str | None,
+    ranking_origin_place: dict[str, Any] | None,
+    origin_place: dict[str, Any] | None,
+    limit: int,
+) -> list[RestaurantSearchResult]:
+    ranked: list[
+        tuple[
+            int,
+            int,
+            int,
+            int,
+            int,
+            str,
+            dict[str, Any],
+            int | None,
+            int | None,
+        ]
+    ] = []
+    for item in rows:
+        if _is_restaurant_search_noise_candidate(item):
+            continue
+        if collapsed_query is None:
+            rank = 0
+        else:
+            rank = _rank_restaurant_search_candidate(
+                item,
+                collapsed_query=collapsed_query,
+                compact_query=compact_query,
+            )
+            if rank is None:
+                continue
+        brand_exactness = _restaurant_brand_exactness(
+            item,
+            canonical_query=canonical_brand_query,
+        )
+
+        hidden_distance_meters: int | None = None
+        hidden_walk_minutes: int | None = None
+        distance_meters: int | None = None
+        estimated_walk_minutes: int | None = None
+        if (
+            ranking_origin_place is not None
+            and item.get("latitude") is not None
+            and item.get("longitude") is not None
+        ):
+            hidden_distance_meters = _haversine_meters(
+                ranking_origin_place["latitude"],
+                ranking_origin_place["longitude"],
+                item["latitude"],
+                item["longitude"],
+            )
+            hidden_walk_minutes = _estimate_place_to_restaurant_walk_minutes(
+                conn,
+                origin_place=ranking_origin_place,
+                restaurant_row=item,
+            )
+            if origin_place is not None:
+                distance_meters = hidden_distance_meters
+                estimated_walk_minutes = hidden_walk_minutes
+
+        campus_bucket = 0
+        if origin_place is None:
+            campus_bucket = (
+                0
+                if hidden_walk_minutes is not None and hidden_walk_minutes <= 15
+                else 1
+            )
+
+        ranked.append(
+            (
+                rank,
+                brand_exactness,
+                campus_bucket,
+                hidden_walk_minutes if hidden_walk_minutes is not None else 999,
+                hidden_distance_meters if hidden_distance_meters is not None else 999999,
+                str(item.get("name") or ""),
+                item,
+                distance_meters,
+                estimated_walk_minutes,
+            )
+        )
+
+    ranked.sort(key=lambda item: (item[0], item[1], item[2], item[3], item[4], item[5]))
+    return [
+        RestaurantSearchResult.model_validate(
+            {
+                **item,
+                "distance_meters": distance_meters,
+                "estimated_walk_minutes": estimated_walk_minutes,
+            }
+        )
+        for _, _, _, _, _, _, item, distance_meters, estimated_walk_minutes in ranked[:limit]
+    ]
 
 
 def _format_ambiguous_place_error(

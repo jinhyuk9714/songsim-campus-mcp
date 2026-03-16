@@ -263,7 +263,7 @@ SONGSIM_ADMIN_ENABLED=true uv run songsim-api
 ```
 
 `budget_max`는 엄격 필터입니다. 가격 정보가 없는 식당은 결과에서 제외됩니다.
-브랜드 direct search는 `origin`이 없어도 동작하고, 캠퍼스에 가까운 후보를 먼저 보여줍니다. `스타벅스`, `커피빈`, `투썸`, `빽다방`처럼 long-tail 브랜드도 direct search로 먼저 확인합니다.
+브랜드 direct search는 `origin`이 없어도 동작하고, 먼저 캠퍼스에 가까운 후보를 찾습니다. 근처에 없으면 더 가까운 외부 지점을 보여줄 수 있습니다. `스타벅스`, `커피빈`, `투썸`, `빽다방`처럼 long-tail 브랜드도 direct search로 먼저 확인합니다.
 공지 카테고리 설명은 `/notice-categories` 또는 `songsim://notice-categories`로 바로 읽을 수 있고, 교시표는 `/periods`, `/gpt/periods`, `songsim://class-periods`로 바로 확인할 수 있습니다.
 
 ## 대표 MCP 테스트 질문

@@ -503,6 +503,52 @@ def test_gpt_restaurants_search_endpoint_supports_long_tail_brand_alias(client, 
     ]
 
 
+def test_restaurants_search_endpoint_expands_radius_for_long_tail_brand_with_origin(
+    client,
+    monkeypatch,
+):
+    monkeypatch.setenv("SONGSIM_KAKAO_REST_API_KEY", "test-key")
+    clear_settings_cache()
+    calls: list[int] = []
+
+    class ApiBrandKakaoClient:
+        def __init__(self, api_key: str):
+            assert api_key == "test-key"
+
+        def search_sync(self, query: str, *, x=None, y=None, radius: int = 1000):
+            assert query == "커피빈"
+            assert x is not None and y is not None
+            calls.append(radius)
+            if radius == 15 * 75:
+                return []
+            assert radius == 5000
+            return [
+                services.KakaoPlace(
+                    name="커피빈 역곡점",
+                    category="음식점 > 카페 > 커피전문점",
+                    address="경기 부천시 원미구 지봉로 70",
+                    latitude=37.48621,
+                    longitude=126.80491,
+                    place_id="904",
+                    place_url="https://place.map.kakao.com/904",
+                )
+            ]
+
+    monkeypatch.setattr("songsim_campus.services.KakaoLocalClient", ApiBrandKakaoClient)
+
+    response = client.get(
+        "/restaurants/search",
+        params={"query": "커피빈", "origin": "중도", "limit": 5},
+    )
+
+    assert response.status_code == 200
+    assert calls == [15 * 75, 5000]
+    payload = response.json()
+    assert [item["name"] for item in payload] == ["커피빈 역곡점"]
+    assert payload[0]["distance_meters"] is not None
+    assert payload[0]["estimated_walk_minutes"] is not None
+
+
 def test_restaurants_search_endpoint_returns_404_for_unknown_origin(client):
     response = client.get(
         "/restaurants/search",

@@ -566,6 +566,151 @@ def test_search_restaurants_resolves_long_tail_brand_aliases_via_live_fallback(
     assert [item.name for item in items] == [result_name]
 
 
+def test_search_restaurants_expands_radius_when_initial_brand_search_is_empty_without_origin(
+    app_env,
+):
+    init_db()
+    seed_demo(force=True)
+
+    class TwoStageBrandClient:
+        def __init__(self):
+            self.calls: list[tuple[str, int]] = []
+
+        def search_sync(self, query: str, *, x=None, y=None, radius: int = 1000):
+            self.calls.append((query, radius))
+            assert x is not None and y is not None
+            if radius == 15 * 75:
+                return []
+            assert radius == 5000
+            return [
+                KakaoPlace(
+                    name="커피빈 역곡점",
+                    category="음식점 > 카페 > 커피전문점",
+                    address="경기 부천시 원미구 지봉로 70",
+                    latitude=37.48621,
+                    longitude=126.80491,
+                    place_id="904",
+                    place_url="https://place.map.kakao.com/904",
+                )
+            ]
+
+    client = TwoStageBrandClient()
+    with connection() as conn:
+        items = search_restaurants(
+            conn,
+            query="커피빈",
+            limit=5,
+            kakao_client=client,
+        )
+
+    assert client.calls == [("커피빈", 15 * 75), ("커피빈", 5000)]
+    assert [item.name for item in items] == ["커피빈 역곡점"]
+    assert items[0].distance_meters is None
+    assert items[0].estimated_walk_minutes is None
+
+
+def test_search_restaurants_expands_radius_when_initial_brand_search_is_empty_with_origin(
+    app_env,
+):
+    init_db()
+    seed_demo(force=True)
+
+    class TwoStageBrandClient:
+        def __init__(self):
+            self.calls: list[tuple[str, int]] = []
+
+        def search_sync(self, query: str, *, x=None, y=None, radius: int = 1000):
+            self.calls.append((query, radius))
+            assert x is not None and y is not None
+            if radius == 15 * 75:
+                return []
+            assert radius == 5000
+            return [
+                KakaoPlace(
+                    name="커피빈 역곡점",
+                    category="음식점 > 카페 > 커피전문점",
+                    address="경기 부천시 원미구 지봉로 70",
+                    latitude=37.48621,
+                    longitude=126.80491,
+                    place_id="904",
+                    place_url="https://place.map.kakao.com/904",
+                )
+            ]
+
+    client = TwoStageBrandClient()
+    with connection() as conn:
+        items = search_restaurants(
+            conn,
+            query="커피빈",
+            origin="중도",
+            limit=5,
+            kakao_client=client,
+        )
+
+    assert client.calls == [("커피빈", 15 * 75), ("커피빈", 5000)]
+    assert [item.name for item in items] == ["커피빈 역곡점"]
+    assert items[0].distance_meters is not None
+    assert items[0].estimated_walk_minutes is not None
+
+
+def test_search_restaurants_uses_stale_extended_radius_cache_without_live_refetch(
+    app_env,
+    monkeypatch,
+):
+    init_db()
+    seed_demo(force=True)
+    stale_now = datetime.fromisoformat("2026-03-14T20:30:00+09:00")
+    monkeypatch.setattr("songsim_campus.services._now", lambda: stale_now)
+
+    class TwoStageBrandClient:
+        def __init__(self):
+            self.calls: list[tuple[str, int]] = []
+
+        def search_sync(self, query: str, *, x=None, y=None, radius: int = 1000):
+            self.calls.append((query, radius))
+            if radius == 15 * 75:
+                return []
+            raise AssertionError("stale extended-radius cache should be used before live refetch")
+
+    with connection() as conn:
+        repo.replace_restaurant_cache_snapshot(
+            conn,
+            origin_slug="central-library",
+            kakao_query="brand:커피빈",
+            radius_meters=5000,
+            fetched_at="2026-03-14T12:00:00+09:00",
+            rows=[
+                {
+                    "id": -1,
+                    "slug": "coffee-bean-yeokgok",
+                    "name": "커피빈 역곡점",
+                    "category": "cafe",
+                    "min_price": None,
+                    "max_price": None,
+                    "latitude": 37.48621,
+                    "longitude": 126.80491,
+                    "tags": ["커피전문점", "커피빈"],
+                    "description": "경기 부천시 원미구 지봉로 70",
+                    "source_tag": "kakao_local_cache",
+                    "last_synced_at": "2026-03-14T12:00:00+09:00",
+                    "kakao_place_id": "904",
+                    "source_url": "https://place.map.kakao.com/904",
+                }
+            ],
+        )
+        items = search_restaurants(
+            conn,
+            query="커피빈",
+            limit=5,
+            kakao_client=TwoStageBrandClient(),
+        )
+
+    assert [item.name for item in items] == ["커피빈 역곡점"]
+    assert items[0].source_tag == "kakao_local_cache"
+    assert items[0].distance_meters is None
+    assert items[0].estimated_walk_minutes is None
+
+
 def test_search_restaurants_filters_non_restaurant_noise_from_live_fallback(app_env):
     init_db()
     seed_demo(force=True)

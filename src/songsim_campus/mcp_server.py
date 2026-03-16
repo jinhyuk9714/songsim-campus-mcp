@@ -272,7 +272,8 @@ def _public_usage_guide() -> str:
                 "6. Use tool_search_restaurants for direct brand-name searches such as "
                 "매머드커피, 메가커피, 이디야, 스타벅스, 커피빈, 투썸, or 빽다방. "
                 "origin이 없어도 캠퍼스 주변에서 브랜드를 직접 찾을 수 있고, "
-                "캠퍼스에 가까운 후보를 먼저 보여줍니다."
+                "캠퍼스에 가까운 후보를 먼저 찾은 뒤 필요하면 더 가까운 외부 "
+                "지점까지 보여줄 수 있습니다."
             ),
             "7. Use tool_list_latest_notices for latest notices; category is optional.",
             (
@@ -552,7 +553,8 @@ def build_mcp():
                 "Use this for direct brand searches like 매머드커피, 메가커피, "
                 "이디야, 스타벅스, or 커피빈.\n"
                 "If origin is omitted, search around the campus center first and show "
-                "campus-nearest matches first.\n"
+                "campus-nearest matches first. If nothing is nearby, return the nearest "
+                "outside branch that still matches.\n"
                 "For recommendation-style questions from a campus origin, use the nearby "
                 "restaurant flow instead."
             )
@@ -891,8 +893,8 @@ def build_mcp():
             str,
             Field(
                 description=(
-                    "브랜드 상호 또는 직접 검색어. "
-                    "예: 매머드커피, 메가커피, 이디야, 스타벅스, 커피빈"
+                "브랜드 상호 또는 직접 검색어. "
+                "예: 매머드커피, 메가커피, 이디야, 스타벅스, 커피빈"
                 )
             ),
         ] = "",

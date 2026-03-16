@@ -1015,6 +1015,67 @@ def test_mcp_public_search_restaurants_uses_live_fallback(app_env, monkeypatch):
     clear_settings_cache()
 
 
+def test_mcp_public_search_restaurants_expands_radius_for_long_tail_brand(
+    app_env,
+    monkeypatch,
+):
+    pytest.importorskip("mcp.server.fastmcp")
+    init_db()
+    seed_demo(force=True)
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    monkeypatch.setenv("SONGSIM_KAKAO_REST_API_KEY", "test-key")
+    clear_settings_cache()
+    calls: list[int] = []
+
+    class McpBrandKakaoClient:
+        def __init__(self, api_key: str):
+            assert api_key == "test-key"
+
+        def search_sync(self, query: str, *, x=None, y=None, radius: int = 1000):
+            assert query == "커피빈"
+            assert x is not None and y is not None
+            calls.append(radius)
+            from songsim_campus.services import KakaoPlace
+
+            if radius == 15 * 75:
+                return []
+            assert radius == 5000
+            return [
+                KakaoPlace(
+                    name="커피빈 역곡점",
+                    category="음식점 > 카페 > 커피전문점",
+                    address="경기 부천시 원미구 지봉로 70",
+                    latitude=37.48621,
+                    longitude=126.80491,
+                    place_id="904",
+                    place_url="https://place.map.kakao.com/904",
+                )
+            ]
+
+    monkeypatch.setattr("songsim_campus.services.KakaoLocalClient", McpBrandKakaoClient)
+
+    async def main():
+        mcp = build_mcp()
+        result = await mcp.call_tool("tool_search_restaurants", {"query": "커피빈", "limit": 5})
+        return _tool_payloads(result)
+
+    payload = asyncio.run(main())
+
+    assert calls == [15 * 75, 5000]
+    assert payload == [
+        {
+            "name": "커피빈 역곡점",
+            "category_display": "카페",
+            "distance_meters": None,
+            "estimated_walk_minutes": None,
+            "price_hint": None,
+            "location_hint": "경기 부천시 원미구 지봉로 70",
+        }
+    ]
+
+    clear_settings_cache()
+
+
 def test_mcp_public_search_restaurants_filters_brand_noise_candidates(app_env, monkeypatch):
     pytest.importorskip("mcp.server.fastmcp")
     init_db()
