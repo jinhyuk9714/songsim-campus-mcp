@@ -1,6 +1,6 @@
 # Public MCP Course Watchlist
 
-`release gate`에서 분리한 course source-gap 질의를 2026-03-16 KST 기준 공개 배포에서 다시 확인한 기록입니다. 이 문서는 제품 fail 목록이 아니라 **source-backed 여부 관찰용 watchlist**입니다. 같은 날짜의 post-rollout cleanup 재점검에서도 이 5건의 verdict는 바뀌지 않았습니다.
+`release gate`에서 분리한 course source-gap 질의를 2026-03-16 KST 기준 공개 배포에서 다시 확인한 기록입니다. 이 문서는 제품 fail 목록이 아니라 **source-backed 여부 관찰용 watchlist**입니다. 같은 날짜의 post-rollout cleanup 재점검과 final Shared GPT recheck 시점에도 이 5건의 verdict는 바뀌지 않았습니다.
 
 ## 판정 기준
 

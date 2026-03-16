@@ -55,10 +55,10 @@
 - `데이터베이스`는 `near_match_only`, `CSE301/김가톨/데이타베이스/CSE 420`는 `no_source_backed_hit` 상태로 유지됩니다.
 - release gate에서 빠졌기 때문에 지금 당장 구현 우선순위는 아니지만, source truth 변화가 생기면 다시 확인해야 합니다.
 
-2. Shared GPT actual UI 재확인 필요
-- 실제 Shared GPT UI 샘플 4문장 점검은 이미 한 번 완료됐습니다.
-- 다만 `7교시에 시작하는 과목` 샘플은 이번 `period_start` direct filter rollout 이전 결과입니다.
-- 현재 public API/MCP direct path는 해결됐고, 남은 일은 UI 샘플을 한 번 짧게 다시 보는 정도입니다.
+2. Shared GPT `7교시 시작 과목` assistant behavior watch
+- 실제 Shared GPT UI 샘플은 post-rollout으로 다시 확인했습니다.
+- `7교시에 시작하는 과목` 답변은 여전히 `7교시 = 15:00~15:50`를 먼저 설명한 뒤, 학기/연도와 함께 학과/전공, 요일까지 더 요구하는 보수적 흐름입니다.
+- 현재 public API/MCP direct path는 이미 해결됐으므로, 이 축은 제품 schema gap이 아니라 actual UI assistant behavior watch로만 남겨둡니다.
 
 ## 지금은 주요 리스크가 아닌 것
 
@@ -81,8 +81,8 @@
 
 이유:
 - release-pack은 이미 안정적이고 hard fail이 없습니다.
-- `7교시 시작 과목`은 이제 public API/MCP 기준 direct filter로 해결됐습니다.
-- 남은 핵심 관찰 항목은 `course source-gap watchlist`뿐이고, Shared GPT UI는 짧은 재확인만 하면 됩니다.
+- `7교시 시작 과목`은 public API/MCP 기준 direct filter로 해결됐고, actual UI는 soft watch만 남아 있습니다.
+- 따라서 제품 관점의 핵심 관찰 항목은 여전히 `course source-gap watchlist`가 1순위입니다.
 
 ## 관련 문서
 

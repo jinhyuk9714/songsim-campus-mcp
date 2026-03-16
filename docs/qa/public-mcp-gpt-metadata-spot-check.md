@@ -37,7 +37,8 @@
 ## Actual UI Note
 
 - 실제 Shared GPT UI 수동 샘플 확인은 별도 문서로 기록했습니다.
-- 기존 UI 샘플은 이번 `period_start` direct filter rollout 이전 결과라서, UI 쪽은 별도 재확인이 필요합니다.
+- post-rollout 재확인 결과, category/period truth는 actual UI에서도 유지됩니다.
+- 다만 `7교시 시작 과목` actual UI는 아직 `/courses?period_start=7` direct filter를 바로 쓰기보다 추가 조건을 더 넓게 요구해 `soft_pass`로 남아 있습니다.
 
 ## 관련 문서
 

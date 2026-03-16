@@ -97,14 +97,15 @@
    - `데이터베이스`, `CSE301`, `김가톨`, `데이타베이스`, `CSE 420`는 source-backed가 아니므로 gate가 아니라 watchlist로 계속 추적합니다.
 2. release-pack course watchlist 모니터링
    - gate 밖으로 뺀 source-gap 질의가 실제 source 변화로 회복되는지 주기적으로 다시 확인하면 됩니다.
-3. Shared GPT 핵심 샘플 재확인
-   - 실제 Shared GPT UI 샘플 4문장 점검 결과 중 `7교시에 시작하는 과목`은 이번 `period_start` rollout 이전 응답입니다.
-   - HTTP/MCP direct path는 현재 해결됐으므로, 다음에는 UI 샘플만 짧게 다시 확인하면 됩니다.
+3. Shared GPT actual UI soft watch
+   - 실제 Shared GPT UI에서 `7교시에 시작하는 과목`을 post-rollout으로 다시 확인했습니다.
+   - 현재도 `7교시 = 15:00~15:50`는 정확히 설명하지만, `/courses?period_start=7` direct filter를 바로 쓰기보다 학기/연도 외에 학과/전공, 요일까지 더 요구하는 보수적 답변이 나옵니다.
+   - public API/MCP capability gap은 아니므로, 제품 fail이 아니라 actual UI behavior watch로만 유지합니다.
 
 ## 다음 우선순위
 
-- `course source-gap watchlist 모니터링 -> Shared GPT 핵심 샘플 재확인` 순서가 가장 자연스럽습니다.
-- 현재 public API/MCP 기준으로는 `7교시 시작 과목` soft item이 해소됐습니다.
+- `course source-gap watchlist 모니터링`이 여전히 1순위입니다.
+- `7교시 시작 과목`은 public API/MCP 기준으로는 해소됐고, actual UI 쪽만 soft watch가 남아 있습니다.
 
 ## 관련 문서
 

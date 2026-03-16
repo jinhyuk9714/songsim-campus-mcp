@@ -19,13 +19,13 @@
 | SG01 | 공지 카테고리 종류 알려줘 | Shared GPT actual UI | `/gpt/notice-categories` | `academic`, `scholarship`, `employment (career)`, `general (place)` 4개를 직접 설명했다 | `pass` | category alias를 함께 노출해 proxy truth와 모순이 없다 |
 | SG02 | employment랑 career 차이 설명해줘 | Shared GPT actual UI | `/gpt/notice-categories` | `차이 없다`, `employment`는 공식 이름이고 `career`는 alias라고 설명했다 | `pass` | `employment.aliases=[career]` truth와 일치한다 |
 | SG03 | 7교시가 몇 시야 | Shared GPT actual UI | `/gpt/periods` | `7교시 = 15:00~15:50`로 정확히 답했고 6교시, 8교시도 함께 보여줬다 | `pass` | `/gpt/periods` truth와 일치한다 |
-| SG04 | 7교시에 시작하는 과목 찾고 싶어 | Shared GPT actual UI | `/gpt/periods + /courses` | 7교시 시간을 바로 체인하지 않고, 학과/학년/학기 같은 추가 조건을 먼저 요청했다 | `soft_pass` | 사실 오류는 없지만 metadata + course chaining이 다소 간접적이다 |
+| SG04 | 7교시에 시작하는 과목 찾고 싶어 | Shared GPT actual UI | `/gpt/periods + /courses(period_start=7)` | `7교시 = 15:00~15:50`를 먼저 설명한 뒤, 어떤 과목인지 찾으려면 `학기/연도`, `학과/전공`, `요일`이 더 필요하다고 안내했다 | `soft_pass` | period truth는 맞지만 `/courses?year=2026&semester=1&period_start=7` direct filter를 쓰기보다 추가 조건을 더 넓게 요구했다 |
 
 ## 결론
 
 - Shared GPT 실제 UI에서도 metadata 질문 4개 중 3개는 direct path와 거의 동일하게 동작했습니다.
-- `7교시 시작 과목`의 `soft_pass` 결과는 이번 `period_start` direct filter rollout 이전 샘플입니다.
-- 따라서 이 문서는 historical sample record로 유지하고, 현재 운영 truth 기준 follow-up은 UI 재확인 한 번이면 충분합니다.
+- `7교시 시작 과목`은 `period_start` rollout 이후 재확인에서도 여전히 `soft_pass`입니다.
+- 즉 public API/MCP direct path는 충분히 열려 있지만, actual UI 답변은 아직 direct filter chaining보다 보수적인 안내를 우선하는 경향이 있습니다.
 
 ## 관련 문서
 
