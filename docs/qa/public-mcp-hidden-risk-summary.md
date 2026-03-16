@@ -33,7 +33,7 @@
   - `K관` -> `김수환관` 1건
 - `K관`을 origin으로 쓴 nearby 검색도 stale-first cache 정책 이후 `5.9s` 수준으로 내려와 timeout baseline에서 벗어났습니다.
 - `공지 카테고리 종류`는 이제 `/notice-categories`, `/gpt/notice-categories`로 직접 읽을 수 있습니다.
-- `7교시가 몇 시야`와 `7교시 시작 과목`도 이제 `/periods`, `/gpt/periods`를 직접 entrypoint로 쓸 수 있습니다.
+- `7교시가 몇 시야`는 `/periods`, `/gpt/periods`로 직접 읽을 수 있고, `7교시 시작 과목`은 `/courses?year=2026&semester=1&period_start=7` 같은 direct filter로 바로 이어집니다.
 
 ### 3. brand direct search는 안정권이고 long-tail도 현재 baseline에서는 해결됐다
 
@@ -55,10 +55,10 @@
 - `데이터베이스`는 `near_match_only`, `CSE301/김가톨/데이타베이스/CSE 420`는 `no_source_backed_hit` 상태로 유지됩니다.
 - release gate에서 빠졌기 때문에 지금 당장 구현 우선순위는 아니지만, source truth 변화가 생기면 다시 확인해야 합니다.
 
-2. Shared GPT period-to-course chaining soft item
-- 실제 Shared GPT UI 샘플 4문장 점검은 완료됐습니다.
-- `공지 카테고리`, `employment/career`, `7교시 시각`은 모두 정상입니다.
-- 다만 `7교시에 시작하는 과목`은 metadata + course chaining 즉답형이 아니라 추가 조건 요청형으로 나와 `soft_pass`로 남깁니다.
+2. Shared GPT actual UI 재확인 필요
+- 실제 Shared GPT UI 샘플 4문장 점검은 이미 한 번 완료됐습니다.
+- 다만 `7교시에 시작하는 과목` 샘플은 이번 `period_start` direct filter rollout 이전 결과입니다.
+- 현재 public API/MCP direct path는 해결됐고, 남은 일은 UI 샘플을 한 번 짧게 다시 보는 정도입니다.
 
 ## 지금은 주요 리스크가 아닌 것
 
@@ -77,12 +77,12 @@
 
 ## 다음 우선순위
 
-`Shared GPT period-to-course chaining polish`
+`course source-gap watchlist 유지`
 
 이유:
 - release-pack은 이미 안정적이고 hard fail이 없습니다.
-- Shared GPT 실제 UI 샘플도 확인되면서 `공지 카테고리`, `employment/career`, `7교시 시각`은 실제 UX에서도 문제가 없다고 볼 수 있습니다.
-- 지금 남은 눈에 띄는 soft item은 `7교시 시작 과목` 질문에서 period -> course chaining이 다소 간접적이라는 점과 `course source-gap watchlist` 유지입니다.
+- `7교시 시작 과목`은 이제 public API/MCP 기준 direct filter로 해결됐습니다.
+- 남은 핵심 관찰 항목은 `course source-gap watchlist`뿐이고, Shared GPT UI는 짧은 재확인만 하면 됩니다.
 
 ## 관련 문서
 

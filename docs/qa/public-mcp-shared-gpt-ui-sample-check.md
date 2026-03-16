@@ -24,8 +24,8 @@
 ## 결론
 
 - Shared GPT 실제 UI에서도 metadata 질문 4개 중 3개는 direct path와 거의 동일하게 동작했습니다.
-- 남은 soft item은 `7교시 시작 과목` 질문에서 metadata + course chaining이 즉답형이 아니라 추가 조건 요청형으로 나온다는 점입니다.
-- 따라서 Shared GPT는 현재 운영 기준으로 metadata 설명용으로는 충분히 안정적이고, 남은 개선점은 `period -> course` chaining UX polish 쪽입니다.
+- `7교시 시작 과목`의 `soft_pass` 결과는 이번 `period_start` direct filter rollout 이전 샘플입니다.
+- 따라서 이 문서는 historical sample record로 유지하고, 현재 운영 truth 기준 follow-up은 UI 재확인 한 번이면 충분합니다.
 
 ## 관련 문서
 

@@ -7,8 +7,8 @@
 - release pack size: 50
 - executed: 50 / 50
 - current status: completed
-- `pass`: 42
-- `soft_pass`: 8
+- `pass`: 43
+- `soft_pass`: 7
 - `soft_fail`: 0
 - `fail`: 0
 
@@ -24,7 +24,7 @@
 
 - 릴리즈 게이트는 현재 공개 source truth에 맞춰 **source-backed canary 10문장**으로 다시 잠갔습니다.
 - gate canary는 `자료구조`, `객체지향`, `객체 지향`, `03149`, `전혜경`, `자료구조 교수가 누구야`, `객체지향 과목 2개만`, `자료 구조`, `C0 106`, `7교시 시작 과목`입니다.
-- 이 10문장 중 9개는 `pass`, 1개(`7교시 시작 과목`)는 resource chaining 전제 때문에 `soft_pass`입니다.
+- 이 10문장은 현재 모두 `pass`입니다.
 - source-gap 질의는 릴리즈 게이트에서 빼고 watchlist로 분리했습니다.
   - `데이터베이스`
   - `CSE301`
@@ -66,7 +66,7 @@
 
 - `/notice-categories`, `/gpt/notice-categories`가 추가되어 `공지 카테고리 종류`, `employment랑 career 차이` 같은 질문을 direct metadata path로 처리할 수 있습니다.
 - `/gpt/periods`가 추가되어 `/periods`와 같은 교시표 truth를 GPT surface에서도 바로 읽을 수 있습니다.
-- 따라서 `7교시가 몇 시야`, `7교시에 시작하는 과목`은 이제 metadata + course chaining을 직접 안내할 수 있습니다.
+- `/courses`에는 optional `period_start`가 추가되어 `7교시에 시작하는 과목`도 `/courses?year=2026&semester=1&period_start=7` 같은 direct filter로 처리할 수 있습니다.
 
 ### out_of_scope
 
@@ -80,6 +80,7 @@
   - `/courses?query=자료구조&year=2026&semester=1`은 이제 `자료구조`, `자료구조기초`를 정상 반환합니다.
   - `/courses?query=객체지향&year=2026&semester=1`은 이제 `객체지향패러다임`, `객체지향프로그래밍`, `객체지향프로그래밍설계`를 정상 반환합니다.
   - `/courses?query=03149&year=2026&semester=1`, `/courses?query=전혜경&year=2026&semester=1`, `/courses?query=C0%20106&year=2026&semester=1`도 정상 응답합니다.
+  - `/courses?year=2026&semester=1&period_start=7&limit=5`는 `3D애니메이션1`을 포함한 7교시 시작 과목만 직접 반환합니다.
   - 다만 `데이터베이스`, `CSE301`, `김가톨`, `데이타베이스`, `CSE 420`는 여전히 watchlist로 남습니다.
 - 공지:
   - `/notices?category=academic&limit=10`과 `/gpt/notices?category=academic&limit=5`는 이제 `academic` 공지를 정상 반환합니다.
@@ -96,14 +97,14 @@
    - `데이터베이스`, `CSE301`, `김가톨`, `데이타베이스`, `CSE 420`는 source-backed가 아니므로 gate가 아니라 watchlist로 계속 추적합니다.
 2. release-pack course watchlist 모니터링
    - gate 밖으로 뺀 source-gap 질의가 실제 source 변화로 회복되는지 주기적으로 다시 확인하면 됩니다.
-3. Shared GPT 핵심 샘플 점검
-   - 실제 Shared GPT UI 샘플 4문장 점검 결과 `공지 카테고리`, `employment/career`, `7교시 시각`은 정상입니다.
-   - 다만 `7교시에 시작하는 과목`은 metadata + course chaining 즉답형이 아니라 추가 조건 요청형으로 나와 `soft_pass`로 남깁니다.
+3. Shared GPT 핵심 샘플 재확인
+   - 실제 Shared GPT UI 샘플 4문장 점검 결과 중 `7교시에 시작하는 과목`은 이번 `period_start` rollout 이전 응답입니다.
+   - HTTP/MCP direct path는 현재 해결됐으므로, 다음에는 UI 샘플만 짧게 다시 확인하면 됩니다.
 
 ## 다음 우선순위
 
-- `Shared GPT period-to-course chaining polish -> course source-gap watchlist 모니터링` 순서가 가장 자연스럽습니다.
-- 그다음에 Shared GPT 핵심 10~15문장 샘플 검증으로 넘어가면 됩니다.
+- `course source-gap watchlist 모니터링 -> Shared GPT 핵심 샘플 재확인` 순서가 가장 자연스럽습니다.
+- 현재 public API/MCP 기준으로는 `7교시 시작 과목` soft item이 해소됐습니다.
 
 ## 관련 문서
 
