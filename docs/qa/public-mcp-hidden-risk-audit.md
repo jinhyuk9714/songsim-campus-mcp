@@ -22,24 +22,24 @@
 | Metric | Count |
 | --- | ---: |
 | cases | 30 |
-| `pass` | 19 |
-| `soft_pass` | 10 |
-| `soft_fail` | 1 |
+| `pass` | 22 |
+| `soft_pass` | 8 |
+| `soft_fail` | 0 |
 | `fail` | 0 |
 | `fast` | 19 |
-| `slow` | 10 |
-| `timeout` | 1 |
+| `slow` | 11 |
+| `timeout` | 0 |
 
 ## 감사 시트
 
 | ID | User utterance | Surface | Expected behavior | Observed response summary | Latency | Verdict | Risk type | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| SQ01 | 정문 위치 알려줘 | `GET /places?query=정문&limit=5` | `main-gate`가 1위이고 residual noise가 작아야 한다 | `main-gate` 1위, `business-incubation-center` 2위 | fast | soft_pass | `ranking_noise` | 정답은 맞지만 `정문` query noise가 아직 남아 있다 |
-| SQ02 | K관 어디야 | `GET /places?query=K관&limit=5` | `kim-sou-hwan-hall`이 1위이고 dormitory noise가 작아야 한다 | `kim-sou-hwan-hall` 1위, `dormitory-stephen` 2위 | fast | soft_pass | `alias_collision` | place search 정답 우선화는 됐지만 2차 후보 노이즈가 남아 있다 |
+| SQ01 | 정문 위치 알려줘 | `GET /places?query=정문&limit=5` | `main-gate`가 canonical result 하나로 반환돼야 한다 | `main-gate` 1건만 반환 | fast | pass | `canonicalized` | exact short-query canonicalization이 live에 반영됐다 |
+| SQ02 | K관 어디야 | `GET /places?query=K관&limit=5` | `kim-sou-hwan-hall`이 canonical result 하나로 반환돼야 한다 | `kim-sou-hwan-hall` 1건만 반환 | fast | pass | `canonicalized` | `K관` exact short-query가 dormitory 후보 없이 단일 수렴한다 |
 | SQ03 | 도서관 어디야 | `GET /places?query=도서관&limit=5` | `central-library`가 안정적으로 1위여야 한다 | `central-library` 1건만 반환 | fast | pass | `exact_match` | short noun library query는 안정적이다 |
 | SQ04 | 학생회관 어디야 | `GET /places?query=학생회관&limit=5` | `sophie-barat-hall`로 수렴해야 한다 | `sophie-barat-hall` 1건만 반환 | fast | pass | `alias_match` | 생활어 alias가 정상 동작한다 |
 | SQ05 | 학생센터 어디야 | `GET /places?query=학생센터&limit=5` | `sophie-barat-hall`로 수렴해야 한다 | `sophie-barat-hall` 1건만 반환 | fast | pass | `alias_match` | `학생센터` alias도 안정적이다 |
-| SQ06 | K관 근처 카페 보여줘 | `GET /restaurants/nearby?origin=K관&category=cafe&limit=5` | `kim-sou-hwan-hall` 기준 nearby가 정상 동작하고 일반 API latency 안에 끝나야 한다 | `origin=kim-sou-hwan-hall`로 정상 수렴했고 `매머드익스프레스 부천가톨릭대학교점`이 1위지만 전체 응답이 `12.7s` 걸림 | timeout | soft_fail | `origin_latency` | 정확도는 맞지만 short-query origin 경로가 여전히 느리다 |
+| SQ06 | K관 근처 카페 보여줘 | `GET /restaurants/nearby?origin=K관&category=cafe&limit=5` | `kim-sou-hwan-hall` 기준 nearby가 정상 동작하고 stale/fresh cache로 `10s` 안에 끝나야 한다 | `origin=kim-sou-hwan-hall`로 정상 수렴했고 `매머드익스프레스 부천가톨릭대학교점`이 1위, 전체 응답은 `5.9s` | slow | pass | `cached_origin_ok` | stale-first 정책 이후 반복 요청 경로는 timeout 없이 응답한다 |
 | SQ07 | K관 지금 빈 강의실 있어 | `GET /classrooms/empty?building=K관&limit=5` | ambiguity 없이 `김수환관` 기준 공실 결과가 나와야 한다 | `200`, `K107`, `K236` 등 5건 반환 | slow | pass | `resolver_fixed` | 과거 ambiguity 400은 해소됐다 |
 | SQ08 | 정문 건물로 찾아줘 | `GET /places?query=정문&category=building&limit=5` | gate를 building으로 오인하지 않고 빈 결과를 반환해야 한다 | `[]` | fast | pass | `context_filtering` | building filter가 false positive를 막는다 |
 | RG01 | 지하철 오느 길 알려줘 | `GET /transport?query=지하철 오느 길&limit=3` | subway guide가 1위여야 한다 | `1호선`, `서해선`이 모두 `mode=subway`로 반환 | fast | pass | `transport_inference` | typo 포함 natural-language query가 정상 해석된다 |
@@ -78,6 +78,6 @@
 
 ## 보조 메모
 
-- `classrooms timeout`, `transport mode mismatch`, `generic facility noun -> []`, `스타벅스 주차장 노이즈`는 더 이상 현재 운영 baseline의 핵심 리스크가 아니다.
-- 현재 남아 있는 눈에 띄는 리스크는 `정문/K관` residual noise와 `origin=K관` nearby 경로의 느린 응답이다.
+- `classrooms timeout`, `transport mode mismatch`, `generic facility noun -> []`, `스타벅스 주차장 노이즈`, `정문/K관` residual noise는 더 이상 현재 운영 baseline의 핵심 리스크가 아니다.
+- 현재 남아 있는 눈에 띄는 리스크는 `공지/교시 API-first chaining`, `커피빈 empty semantics`, `course source-gap watchlist` 쪽이다.
 - `course`는 release gate가 아니라 watchlist라는 현재 정책을 유지한다. `데이터베이스`, `CSE301`, `김가톨`, `데이타베이스`, `CSE 420`는 계속 source-backed 여부 중심으로만 추적한다.

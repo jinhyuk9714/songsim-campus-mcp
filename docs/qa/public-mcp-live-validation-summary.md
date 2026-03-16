@@ -17,8 +17,8 @@
 ### place
 
 - `중도`, `학생식당`, `니콜스`, `K관` alias는 live 배포에서 정상 작동했습니다.
-- `정문`은 `main-gate`가 1순위로 오지만 `창업보육센터` 노이즈가 여전히 따라옵니다.
-- `김수환관` 검색은 첫 결과가 올바르지만 `K관` alias 중복 때문에 기숙사 결과가 함께 붙습니다.
+- `정문` exact short-query는 이제 `main-gate` 1건만 반환합니다.
+- `K관` exact short-query도 이제 `kim-sou-hwan-hall` 1건만 반환합니다.
 
 ### course
 
@@ -42,6 +42,7 @@
 ### restaurants
 
 - `중도`, `학생식당`, `니콜스`, `정문`, `중앙 도서관` origin alias와 spacing recovery는 정상입니다.
+- `K관` origin도 `kim-sou-hwan-hall`로 안정적으로 canonicalize되고, cached nearby 결과가 `10s` 안에 반환됩니다.
 - `budget_max` strict filtering은 기대대로 동작해 가격 근거가 없는 후보를 제거합니다.
 - `open_now=true`는 이제 영업중이 확인된 후보만 남기도록 strict filtering으로 고정했습니다.
 - representative query인 `학생식당 기준 지금 여는 카페만 3개`는 현재 빈 배열을 반환했고, `open_now=null` item이 섞이지 않았습니다.
@@ -83,18 +84,16 @@
 
 1. course source-gap watchlist 유지
    - `데이터베이스`, `CSE301`, `김가톨`, `데이타베이스`, `CSE 420`는 source-backed가 아니므로 gate가 아니라 watchlist로 계속 추적합니다.
-2. short query ranking polish
-   - `정문`의 2차 노이즈와 `K관` alias 중복을 조금 더 줄일 필요가 있습니다.
-3. MCP resource/prompt spot check
+2. MCP resource/prompt spot check
    - 이번 게이트는 API-first라 `songsim://notice-categories`, 자연어 transport/typo recovery를 간접 검증만 했습니다.
-4. release-pack course watchlist 모니터링
+3. release-pack course watchlist 모니터링
    - gate 밖으로 뺀 source-gap 질의가 실제 source 변화로 회복되는지 주기적으로 다시 확인하면 됩니다.
-5. hidden-risk audit 재실행
-   - classroom/transport/generic facility 축은 최근 운영 보정이 많아서 새 baseline으로 한 번 다시 굴리는 편이 좋습니다.
+4. brand long-tail watch 유지
+   - `커피빈`은 현재 campus-near 실재 후보가 없는 쪽에 가까워서, 코드 수정보다 관찰 유지가 우선입니다.
 
 ## 다음 우선순위
 
-- `short query ranking polish -> course source-gap watchlist 모니터링 -> hidden-risk audit 재실행` 순서가 가장 효과적입니다.
+- `MCP resource/prompt spot check 강화 -> course source-gap watchlist 모니터링 -> brand long-tail watch 유지` 순서가 가장 효과적입니다.
 - 그다음에 Shared GPT 핵심 10~15문장 샘플 검증으로 넘어가면 됩니다.
 
 ## 관련 문서
