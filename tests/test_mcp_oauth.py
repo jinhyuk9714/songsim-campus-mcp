@@ -95,6 +95,7 @@ def test_mcp_oauth_metadata_and_initialize_flow(app_env, monkeypatch):
         "tool_list_estimated_empty_classrooms",
         "tool_find_nearby_restaurants",
         "tool_search_restaurants",
+        "tool_search_dining_menus",
         "tool_list_latest_notices",
         "tool_list_transport_guides",
     }

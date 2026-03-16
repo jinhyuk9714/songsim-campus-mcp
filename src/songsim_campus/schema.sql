@@ -127,6 +127,20 @@ CREATE TABLE IF NOT EXISTS transport_guides (
     last_synced_at TIMESTAMPTZ NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS campus_dining_menus (
+    venue_slug TEXT PRIMARY KEY,
+    venue_name TEXT NOT NULL,
+    place_slug TEXT,
+    place_name TEXT,
+    week_label TEXT,
+    week_start DATE,
+    week_end DATE,
+    menu_text TEXT,
+    source_url TEXT,
+    source_tag TEXT NOT NULL DEFAULT 'demo',
+    last_synced_at TIMESTAMPTZ NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS profiles (
     id TEXT PRIMARY KEY,
     display_name TEXT NOT NULL DEFAULT '',
@@ -199,6 +213,8 @@ CREATE INDEX IF NOT EXISTS idx_restaurant_hours_cache_fetched_at
 ON restaurant_hours_cache(fetched_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notices_published_at ON notices(published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_transport_guides_mode ON transport_guides(mode);
+CREATE INDEX IF NOT EXISTS idx_campus_dining_menus_place_slug
+ON campus_dining_menus(place_slug);
 CREATE INDEX IF NOT EXISTS idx_profile_courses_profile_id ON profile_courses(profile_id);
 CREATE INDEX IF NOT EXISTS idx_sync_runs_started_at ON sync_runs(started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_sync_runs_trigger_target_started_at

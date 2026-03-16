@@ -185,6 +185,28 @@ class GptRestaurantSearchResult(BaseModel):
     location_hint: str | None = None
 
 
+class CampusDiningMenu(BaseModel):
+    venue_slug: str
+    venue_name: str
+    place_slug: str | None = None
+    place_name: str | None = None
+    week_label: str | None = None
+    week_start: str | None = None
+    week_end: str | None = None
+    menu_text: str | None = None
+    source_url: str | None = None
+    source_tag: str = "demo"
+    last_synced_at: str
+
+
+class GptCampusDiningMenuResult(BaseModel):
+    venue_name: str
+    place_name: str | None = None
+    week_label: str | None = None
+    menu_preview: str | None = None
+    source_url: str | None = None
+
+
 class EmptyClassroomBuilding(BaseModel):
     slug: str
     name: str

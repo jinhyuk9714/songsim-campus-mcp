@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 from datetime import datetime
 from pathlib import Path
@@ -29,12 +30,14 @@ from songsim_campus.services import (
     list_estimated_empty_classrooms,
     list_latest_notices,
     list_transport_guides,
+    refresh_campus_dining_menus_from_facilities_page,
     refresh_courses_from_subject_search,
     refresh_facility_hours_from_facilities_page,
     refresh_library_hours_from_library_page,
     refresh_notices_from_notice_board,
     refresh_places_from_campus_map,
     refresh_transport_guides_from_location_page,
+    search_campus_dining_menus,
     search_courses,
     search_places,
     search_restaurants,
@@ -42,10 +45,29 @@ from songsim_campus.services import (
 )
 
 FIXTURES_DIR = Path(__file__).with_name("fixtures")
+SAMPLE_MENU_PDF_BASE64 = (
+    "JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5k"
+    "b2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4K"
+    "ZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3gg"
+    "WzAgMCA2MTIgNzkyXSAvQ29udGVudHMgNCAwIFIgL1Jlc291cmNlcyA8PCAvRm9udCA8PCAv"
+    "RjEgNSAwIFIgPj4gPj4gPj4KZW5kb2JqCjQgMCBvYmoKPDwgL0xlbmd0aCAxNDIgPj4Kc3Ry"
+    "ZWFtCkJUCi9GMSAxMiBUZgo3MiA3MjAgVGQKKFdlZWtseSBNZW51IDIwMjYuMDMuMTYgLSAw"
+    "My4yMCkgVGoKMCAtMTggVGQKKENhZmUgQm9uYSkgVGoKMCAtMTggVGQKKEJ1bGdvZ2kgUmlj"
+    "ZSBCb3dsKSBUagowIC0xOCBUZAooTGVtb24gVGVhKSBUagpFVAplbmRzdHJlYW0KZW5kb2Jq"
+    "CjUgMCBvYmoKPDwgL1R5cGUgL0ZvbnQgL1N1YnR5cGUgL1R5cGUxIC9CYXNlRm9udCAvSGVs"
+    "dmV0aWNhID4+CmVuZG9iagp4cmVmCjAgNgowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAw"
+    "MDkgMDAwMDAgbiAKMDAwMDAwMDA1OCAwMDAwMCBuIAowMDAwMDAwMTE1IDAwMDAwIG4gCjAw"
+    "MDAwMDAyNDEgMDAwMDAgbiAKMDAwMDAwMDQzMyAwMDAwMCBuIAp0cmFpbGVyCjw8IC9TaXpl"
+    "IDYgL1Jvb3QgMSAwIFIgPj4Kc3RhcnR4cmVmCjUwMgolJUVPRgo="
+)
 
 
 def _fixture_json(name: str) -> dict:
     return json.loads((FIXTURES_DIR / name).read_text(encoding="utf-8"))
+
+
+def _sample_menu_pdf_bytes() -> bytes:
+    return base64.b64decode(SAMPLE_MENU_PDF_BASE64)
 
 
 def _restaurant_row(
@@ -3071,6 +3093,60 @@ class FakeFacilitiesSource:
         ]
 
 
+class FakeDiningMenuSource:
+    requested_urls: list[str]
+
+    def __init__(self, pdf_bytes: bytes | None = None, *, raise_on_fetch: bool = False):
+        self.pdf_bytes = pdf_bytes if pdf_bytes is not None else _sample_menu_pdf_bytes()
+        self.raise_on_fetch = raise_on_fetch
+        self.requested_urls = []
+
+    def fetch(self):
+        return '<facilities-menu></facilities-menu>'
+
+    def parse(self, html: str, *, fetched_at: str):
+        assert html == '<facilities-menu></facilities-menu>'
+        assert fetched_at == '2026-03-13T09:00:00+09:00'
+        return [
+            {
+                'facility_name': 'Buon Pranzo 부온 프란조',
+                'location': '학생미래인재관 2층',
+                'hours_text': '중식 11:30 ~ 14:00',
+                'category': '식당안내',
+                'menu_week_label': '3월 3주차 메뉴표 확인하기',
+                'menu_source_url': 'https://www.catholic.ac.kr/menu/buon.pdf',
+                'source_tag': 'cuk_facilities',
+                'last_synced_at': fetched_at,
+            },
+            {
+                'facility_name': 'Café Bona 카페 보나',
+                'location': '학생미래인재관 1층',
+                'hours_text': '조식 08:00 ~ 09:30',
+                'category': '식당안내',
+                'menu_week_label': '3월 3주차 메뉴표 확인하기',
+                'menu_source_url': 'https://www.catholic.ac.kr/menu/bona.pdf',
+                'source_tag': 'cuk_facilities',
+                'last_synced_at': fetched_at,
+            },
+            {
+                'facility_name': 'Café Mensa 카페 멘사',
+                'location': '김수환관 1층',
+                'hours_text': '10:30~14:30',
+                'category': '식당안내',
+                'menu_week_label': '3월 3주차 메뉴표 확인하기',
+                'menu_source_url': 'https://www.catholic.ac.kr/menu/mensa.pdf',
+                'source_tag': 'cuk_facilities',
+                'last_synced_at': fetched_at,
+            },
+        ]
+
+    def fetch_menu_document(self, url: str) -> bytes:
+        self.requested_urls.append(url)
+        if self.raise_on_fetch:
+            raise httpx.HTTPError('menu fetch failed')
+        return self.pdf_bytes
+
+
 class FakeTransportSource:
     def fetch(self):
         return '<transport></transport>'
@@ -3124,6 +3200,71 @@ def test_refresh_facility_hours_merges_by_location_and_skips_unknown_places(app_
     assert library.opening_hours['카페드림'] == '평일 08:00~19:00 토 10:00~16:00 (일/공휴일휴무)'
     assert hall.opening_hours['매머드커피'] == '평일 08:00~20:00 주말,공휴일 09:00~17:00'
     assert '없는시설' not in library.opening_hours
+
+
+def test_refresh_campus_dining_menus_extracts_menu_text_and_links(app_env):
+    init_db()
+    seed_demo(force=True)
+
+    with connection() as conn:
+        menus = refresh_campus_dining_menus_from_facilities_page(
+            conn,
+            source=FakeDiningMenuSource(),
+            fetched_at='2026-03-13T09:00:00+09:00',
+        )
+        stored = search_campus_dining_menus(conn, limit=10)
+
+    assert {item.venue_slug for item in menus} == {"buon-pranzo", "cafe-bona", "cafe-mensa"}
+    assert len(stored) == 3
+    bona = next(item for item in stored if item.venue_slug == "cafe-bona")
+    assert bona.place_slug == "student-center"
+    assert bona.place_name == "학생회관"
+    assert bona.week_label == "3월 3주차 메뉴표 확인하기"
+    assert bona.week_start == "2026-03-16"
+    assert bona.week_end == "2026-03-20"
+    assert bona.menu_text is not None
+    assert "Bulgogi Rice Bowl" in bona.menu_text
+    assert bona.source_url == "https://www.catholic.ac.kr/menu/bona.pdf"
+    assert bona.source_tag == "cuk_facilities_menu"
+
+
+def test_refresh_campus_dining_menus_preserves_link_when_pdf_extract_fails(app_env):
+    init_db()
+    seed_demo(force=True)
+
+    with connection() as conn:
+        menus = refresh_campus_dining_menus_from_facilities_page(
+            conn,
+            source=FakeDiningMenuSource(raise_on_fetch=True),
+            fetched_at='2026-03-13T09:00:00+09:00',
+        )
+
+    assert len(menus) == 3
+    assert all(item.menu_text is None for item in menus)
+    assert all(item.source_url is not None for item in menus)
+    assert all(item.week_label == "3월 3주차 메뉴표 확인하기" for item in menus)
+
+
+def test_search_campus_dining_menus_supports_generic_and_specific_queries(app_env):
+    init_db()
+    seed_demo(force=True)
+
+    with connection() as conn:
+        refresh_campus_dining_menus_from_facilities_page(
+            conn,
+            source=FakeDiningMenuSource(),
+            fetched_at='2026-03-13T09:00:00+09:00',
+        )
+        all_rows = search_campus_dining_menus(conn, query="학생식당 메뉴", limit=10)
+        bona_rows = search_campus_dining_menus(conn, query="카페 보나 메뉴", limit=10)
+
+    assert {item.venue_slug for item in all_rows} == {
+        "buon-pranzo",
+        "cafe-bona",
+        "cafe-mensa",
+    }
+    assert [item.venue_slug for item in bona_rows] == ["cafe-bona"]
+    assert bona_rows[0].place_name == "학생회관"
 
 
 def test_refresh_transport_guides_replaces_rows(app_env):
@@ -3283,6 +3424,10 @@ def test_sync_official_snapshot_runs_opening_hours_before_courses_and_transport(
         lambda conn: call_order.append('facilities') or [],
     )
     monkeypatch.setattr(
+        'songsim_campus.services.refresh_campus_dining_menus_from_facilities_page',
+        lambda conn: call_order.append('dining_menus') or [],
+    )
+    monkeypatch.setattr(
         'songsim_campus.services.refresh_courses_from_subject_search',
         lambda conn, year=None, semester=None: call_order.append('courses') or [],
     )
@@ -3299,5 +3444,14 @@ def test_sync_official_snapshot_runs_opening_hours_before_courses_and_transport(
     with connection() as conn:
         summary = sync_official_snapshot(conn, year=2026, semester=1, notice_pages=1)
 
-    assert call_order == ['places', 'library', 'facilities', 'courses', 'notices', 'transport']
+    assert call_order == [
+        'places',
+        'library',
+        'facilities',
+        'dining_menus',
+        'courses',
+        'notices',
+        'transport',
+    ]
+    assert summary['dining_menus'] == 0
     assert summary['transport_guides'] == 0

@@ -20,6 +20,7 @@ from .mcp_oauth import (
     is_public_mcp_oauth_enabled,
 )
 from .schemas import (
+    CampusDiningMenu,
     Course,
     McpCoordinates,
     McpNearbyRestaurantResult,
@@ -53,6 +54,7 @@ from .services import (
     list_latest_notices,
     list_profile_notices,
     list_transport_guides,
+    search_campus_dining_menus,
     search_courses,
     search_places,
     search_restaurants,
@@ -213,6 +215,13 @@ def _serialize_public_restaurant_search(restaurant) -> dict[str, object]:
     return payload
 
 
+def _serialize_public_dining_menu(menu: CampusDiningMenu) -> dict[str, object]:
+    payload = menu.model_dump()
+    if menu.menu_text is not None:
+        payload["menu_text"] = menu.menu_text
+    return payload
+
+
 def _serialize_public_course(course: Course) -> dict[str, object]:
     payload = course.model_dump()
     summary_parts = [course.title]
@@ -275,14 +284,19 @@ def _public_usage_guide() -> str:
                 "캠퍼스에 가까운 후보를 먼저 찾은 뒤 필요하면 더 가까운 외부 "
                 "지점까지 보여줄 수 있습니다."
             ),
-            "7. Use tool_list_latest_notices for latest notices; category is optional.",
             (
-                "8. Use tool_list_transport_guides for static subway or bus access "
+                "7. Use tool_search_dining_menus for official campus dining menus such as "
+                "학생식당 메뉴, 카페 보나 메뉴, 카페 멘사 메뉴, or 부온 프란조 이번 주 메뉴. "
+                "Returns extracted weekly menu text plus the original PDF link when available."
+            ),
+            "8. Use tool_list_latest_notices for latest notices; category is optional.",
+            (
+                "9. Use tool_list_transport_guides for static subway or bus access "
                 "guidance. You can pass query with natural-language cues like 지하철, "
                 "1호선, 역곡역, or 버스. 셔틀은 현재 지원하지 않아 빈 결과가 정상입니다."
             ),
             (
-                "9. Use songsim://notice-categories or /notice-categories when a user asks "
+                "10. Use songsim://notice-categories or /notice-categories when a user asks "
                 "which notice categories exist. Use songsim://class-periods, /periods, or "
                 "/gpt/periods when a user asks what a period number means."
             ),
@@ -300,6 +314,8 @@ def _public_usage_guide() -> str:
             "- 스타벅스 있어?",
             "- 중앙도서관 근처 밥집 추천해줘",
             "- 중도 근처 밥집 추천해줘",
+            "- 학생식당 메뉴 보여줘",
+            "- 카페 보나 이번 주 메뉴 알려줘",
         ]
     )
 
@@ -443,6 +459,32 @@ def build_mcp():
                 "period_start=7 plus year/semester when available.\n"
                 "The direct metadata paths are songsim://class-periods, "
                 "tool_get_class_periods, /periods, and /gpt/periods."
+            )
+
+        @mcp.prompt(
+            name="prompt_search_dining_menus",
+            description="Explain how to fetch official campus dining menus for the current week.",
+        )
+        def prompt_search_dining_menus(
+            query: Annotated[
+                str | None,
+                Field(
+                    description=(
+                        "교내 식당 메뉴 질의. 예: 학생식당 메뉴, 카페 보나 메뉴, "
+                        "카페 멘사 메뉴, 부온 프란조 이번 주 메뉴"
+                    )
+                ),
+            ] = None,
+            limit: Annotated[int, Field(description="최대 결과 수")] = 10,
+        ):
+            return (
+                "Use tool_search_dining_menus for official campus dining menus.\n"
+                f"query={query or '<optional>'}, limit={limit}.\n"
+                "Generic queries like 학생식당 메뉴, 교내 식당 메뉴, or 학식 메뉴 "
+                "should return all current official dining venues.\n"
+                "Venue-specific queries like 카페 보나 메뉴 or 부온 프란조 이번 주 메뉴 "
+                "should narrow to that venue.\n"
+                "This tool returns weekly menu text plus the original PDF link."
             )
 
         @mcp.prompt(
@@ -739,6 +781,37 @@ def build_mcp():
     )
     def tool_get_class_periods():
         return [item.model_dump() for item in get_class_periods()]
+
+    @mcp.tool(
+        description=(
+            (
+                "교내 공식 학식 3곳의 이번 주 메뉴를 찾을 때 사용합니다. "
+                "학생식당 메뉴, 교내 식당 메뉴, 학식 메뉴처럼 물으면 전체를 돌려주고, "
+                "카페 보나, 카페 멘사, 부온 프란조처럼 특정 매장을 물으면 "
+                "해당 매장만 좁혀서 메뉴 텍스트와 원본 PDF 링크를 보여줍니다."
+            )
+            if public_readonly
+            else "교내 공식 식당 메뉴를 질의별로 검색합니다."
+        ),
+        meta=tool_meta,
+    )
+    def tool_search_dining_menus(
+        query: Annotated[
+            str | None,
+            Field(
+                description=(
+                    "교내 식당 메뉴 질의. 예: 학생식당 메뉴, 교내 식당 메뉴, "
+                    "카페 보나 메뉴, 카페 멘사 메뉴, 부온 프란조 이번 주 메뉴"
+                )
+            ),
+        ] = None,
+        limit: Annotated[int, Field(description="최대 결과 수. 기본값은 10입니다.")] = 10,
+    ):
+        with connection() as conn:
+            menus = search_campus_dining_menus(conn, query=query, limit=limit)
+            if public_readonly:
+                return [_serialize_public_dining_menu(item) for item in menus]
+            return [item.model_dump() for item in menus]
 
     @mcp.tool(
         description=(

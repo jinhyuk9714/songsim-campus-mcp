@@ -15,8 +15,10 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from .db import connection, get_connection, init_db
 from .schemas import (
+    CampusDiningMenu,
     Course,
     EstimatedEmptyClassroomResponse,
+    GptCampusDiningMenuResult,
     GptNearbyRestaurantResult,
     GptNoticeCategoryInfo,
     GptNoticeResult,
@@ -45,6 +47,7 @@ from .seed import seed_demo
 from .services import (
     InvalidRequestError,
     NotFoundError,
+    _campus_dining_menu_preview,
     create_profile,
     find_nearby_restaurants,
     get_class_periods,
@@ -65,6 +68,7 @@ from .services import (
     release_automation_leader,
     run_admin_sync,
     run_automation_tick,
+    search_campus_dining_menus,
     search_courses,
     search_places,
     search_restaurants,
@@ -114,6 +118,14 @@ GPT_ACTION_PATHS: dict[str, dict[str, str]] = {
         "operationId": "listClassPeriods",
         "summary": "List class periods",
         "description": "List the fixed Songsim class period table.",
+    },
+    "/dining-menus": {
+        "operationId": "listDiningMenus",
+        "summary": "List current official campus dining menus",
+        "description": (
+            "List the current official campus dining menus for Buon Pranzo, Café Bona, "
+            "and Café Mensa with extracted weekly text and the original PDF link."
+        ),
     },
     "/restaurants/nearby": {
         "operationId": "findNearbyRestaurants",
@@ -169,6 +181,14 @@ GPT_ACTION_V2_PATHS: dict[str, dict[str, str]] = {
         "description": (
             "Use when the user asks what a period number means or needs the class "
             "period table before searching courses."
+        ),
+    },
+    "/gpt/dining-menus": {
+        "operationId": "listDiningMenusForGpt",
+        "summary": "List official campus dining menus with concise previews",
+        "description": (
+            "Use when the user asks for this week's official campus dining menu. "
+            "Returns concise menu previews and the original PDF links."
         ),
     },
     "/gpt/restaurants/nearby": {
@@ -380,6 +400,15 @@ def create_app() -> FastAPI:
             ),
         ).model_dump()
 
+    def _serialize_gpt_dining_menu(menu: CampusDiningMenu) -> dict[str, object]:
+        return GptCampusDiningMenuResult(
+            venue_name=menu.venue_name,
+            place_name=menu.place_name,
+            week_label=menu.week_label,
+            menu_preview=_campus_dining_menu_preview(menu.menu_text),
+            source_url=menu.source_url,
+        ).model_dump(exclude_none=True)
+
     def _build_filtered_openapi(
         request: Request,
         *,
@@ -475,6 +504,7 @@ def create_app() -> FastAPI:
             },
             {"title": "library_hours", "fields": []},
             {"title": "facility_hours", "fields": []},
+            {"title": "dining_menus", "fields": []},
             {
                 "title": "courses",
                 "fields": [
@@ -1363,6 +1393,18 @@ def create_app() -> FastAPI:
     def gpt_periods() -> list[Period]:
         return get_class_periods()
 
+    @app.get("/gpt/dining-menus", response_model=list[GptCampusDiningMenuResult])
+    def gpt_dining_menus(
+        query: str | None = Query(default=None, description="교내 식당 메뉴 검색어"),
+        limit: int = Query(default=10, ge=1, le=50),
+    ) -> list[GptCampusDiningMenuResult]:
+        with connection() as conn:
+            menus = search_campus_dining_menus(conn, query=query, limit=limit)
+        return [
+            GptCampusDiningMenuResult.model_validate(_serialize_gpt_dining_menu(menu))
+            for menu in menus
+        ]
+
     @app.get("/gpt/places", response_model=list[GptPlaceResult])
     def gpt_places(
         query: str = Query(default="", description="건물/시설/도서관 검색어"),
@@ -1506,6 +1548,14 @@ def create_app() -> FastAPI:
                 period_start=period_start,
                 limit=limit,
             )
+
+    @app.get("/dining-menus", response_model=list[CampusDiningMenu])
+    def dining_menus(
+        query: str | None = Query(default=None, description="교내 식당 메뉴 검색어"),
+        limit: int = Query(default=10, ge=1, le=50),
+    ) -> list[CampusDiningMenu]:
+        with connection() as conn:
+            return search_campus_dining_menus(conn, query=query, limit=limit)
 
     @app.get("/restaurants", response_model=list[Restaurant])
     def restaurants() -> list[Restaurant]:

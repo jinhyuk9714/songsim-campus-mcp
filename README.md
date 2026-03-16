@@ -250,6 +250,9 @@ curl 'http://127.0.0.1:8000/classrooms/empty?building=%EB%8B%88%EC%BD%9C%EC%8A%A
 curl 'http://127.0.0.1:8000/restaurants/nearby?origin=central-library&budget_max=10000&walk_minutes=15'
 curl 'http://127.0.0.1:8000/restaurants/nearby?origin=central-library&open_now=true&at=2026-03-15T11:00:00%2B09:00'
 curl 'http://127.0.0.1:8000/restaurants/search?query=%EB%A7%A4%EB%A8%B8%EB%93%9C%EC%BB%A4%ED%94%BC'
+curl 'http://127.0.0.1:8000/dining-menus'
+curl 'http://127.0.0.1:8000/dining-menus?query=%ED%95%99%EC%83%9D%EC%8B%9D%EB%8B%B9'
+curl 'http://127.0.0.1:8000/gpt/dining-menus?query=%EC%B9%B4%ED%8E%98%20%EB%B3%B4%EB%82%98'
 curl 'http://127.0.0.1:8000/transport?mode=subway'
 curl 'http://127.0.0.1:8000/readyz'
 curl -X POST 'http://127.0.0.1:8000/profiles' -H 'content-type: application/json' -d '{"display_name":"성심학생"}'
@@ -266,6 +269,7 @@ SONGSIM_ADMIN_ENABLED=true uv run songsim-api
 
 `budget_max`는 엄격 필터입니다. 가격 정보가 없는 식당은 결과에서 제외됩니다.
 브랜드 direct search는 `origin`이 없어도 동작하고, 먼저 캠퍼스에 가까운 후보를 찾습니다. 근처에 없으면 더 가까운 외부 지점을 보여줄 수 있습니다. `스타벅스`, `커피빈`, `투썸`, `빽다방`처럼 long-tail 브랜드도 direct search로 먼저 확인합니다.
+교내 공식 학식 3곳의 이번 주 메뉴는 `/dining-menus`와 `/gpt/dining-menus`로 조회할 수 있습니다. 현재는 주간 메뉴 텍스트와 원본 PDF 링크를 함께 반환하고, `오늘 메뉴`나 `내일 메뉴`도 이번 주 메뉴 기준으로 안내합니다.
 공지 카테고리 설명은 `/notice-categories` 또는 `songsim://notice-categories`로 바로 읽을 수 있고, 교시표는 `/periods`, `/gpt/periods`, `songsim://class-periods`로 바로 확인할 수 있습니다. 교시 기반 과목 조회는 `/courses?year=2026&semester=1&period_start=7`처럼 direct filter로도 처리할 수 있습니다.
 
 ## 대표 MCP 테스트 질문
@@ -283,6 +287,8 @@ SONGSIM_ADMIN_ENABLED=true uv run songsim-api
 - `최신 학사 공지 2개 보여줘`
 - `장학 공지 최신순으로 3개 보여줘`
 - `중앙도서관 근처 한식만 찾아줘`
+- `학생식당 메뉴 보여줘`
+- `카페 보나 이번 주 메뉴 알려줘`
 - `성심교정 지하철 오는 길 알려줘`
 
 ## 이미 들어있는 도메인 모델
@@ -305,6 +311,13 @@ SONGSIM_ADMIN_ENABLED=true uv run songsim-api
 - 가격대
 - 좌표
 - 태그
+
+### CampusDiningMenu
+- 공식 학식 매장명
+- 연결된 교내 place
+- 이번 주 라벨 / 주간 범위
+- 추출 메뉴 텍스트
+- 원본 PDF 링크
 
 ### Notice
 - 제목

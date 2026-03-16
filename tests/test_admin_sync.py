@@ -25,7 +25,7 @@ def test_run_admin_sync_records_success_history_for_snapshot(app_env, monkeypatc
         assert year == 2026
         assert semester == 1
         assert notice_pages == 2
-        return {"places": 3, "courses": 5, "notices": 7, "transport_guides": 1}
+        return {"places": 3, "dining_menus": 3, "courses": 5, "notices": 7, "transport_guides": 1}
 
     monkeypatch.setattr("songsim_campus.services.sync_official_snapshot", fake_snapshot)
 
@@ -33,7 +33,13 @@ def test_run_admin_sync_records_success_history_for_snapshot(app_env, monkeypatc
 
     assert run.target == "snapshot"
     assert run.status == "success"
-    assert run.summary == {"places": 3, "courses": 5, "notices": 7, "transport_guides": 1}
+    assert run.summary == {
+        "places": 3,
+        "dining_menus": 3,
+        "courses": 5,
+        "notices": 7,
+        "transport_guides": 1,
+    }
     assert run.error_text is None
     assert run.finished_at is not None
 
@@ -70,18 +76,29 @@ def test_run_admin_sync_dispatches_target_specific_parameters(app_env, monkeypat
         seen["notices"] = {"pages": pages, "fetched_at": fetched_at}
         return []
 
+    def fake_dining_menus(conn, *, fetched_at: str | None = None, source=None):
+        seen["dining_menus"] = {"fetched_at": fetched_at}
+        return []
+
     monkeypatch.setattr("songsim_campus.services.refresh_places_from_campus_map", fake_places)
     monkeypatch.setattr("songsim_campus.services.refresh_courses_from_subject_search", fake_courses)
     monkeypatch.setattr("songsim_campus.services.refresh_notices_from_notice_board", fake_notices)
+    monkeypatch.setattr(
+        "songsim_campus.services.refresh_campus_dining_menus_from_facilities_page",
+        fake_dining_menus,
+    )
 
     places_run = run_admin_sync(target="places", campus="9")
+    dining_run = run_admin_sync(target="dining_menus")
     courses_run = run_admin_sync(target="courses", year=2026, semester=1)
     notices_run = run_admin_sync(target="notices", notice_pages=3)
 
     assert places_run.summary == {"places": 0}
+    assert dining_run.summary == {"dining_menus": 0}
     assert courses_run.summary == {"courses": 0}
     assert notices_run.summary == {"notices": 0}
     assert seen["places"] == {"campus": "9", "fetched_at": None}
+    assert seen["dining_menus"] == {"fetched_at": None}
     assert seen["courses"] == {"year": 2026, "semester": 1, "fetched_at": None}
     assert seen["notices"] == {"pages": 3, "fetched_at": None}
 
@@ -135,8 +152,10 @@ def test_get_sync_dashboard_state_reports_row_counts_and_last_synced(app_env):
     datasets = {item["name"]: item for item in state["datasets"]}
     assert datasets["places"]["row_count"] == 5
     assert datasets["courses"]["row_count"] > 0
+    assert datasets["campus_dining_menus"]["row_count"] == 0
     assert datasets["notices"]["row_count"] > 0
     assert datasets["transport_guides"]["row_count"] == 0
     assert datasets["places"]["last_synced_at"] == "2026-03-13T09:00:00+09:00"
+    assert datasets["campus_dining_menus"]["last_synced_at"] is None
     assert datasets["transport_guides"]["last_synced_at"] is None
     assert state["recent_runs"] == []

@@ -441,6 +441,11 @@ class CampusFacilitiesSource:
         response.raise_for_status()
         return response.text
 
+    def fetch_menu_document(self, source_url: str) -> bytes:
+        response = httpx.get(source_url, timeout=20)
+        response.raise_for_status()
+        return response.content
+
     def parse(self, html: str, *, fetched_at: str) -> list[dict]:
         soup = BeautifulSoup(html, "html.parser")
         rows: list[dict] = []
@@ -451,6 +456,14 @@ class CampusFacilitiesSource:
             facility_name = _clean_text(title_node.get_text() if title_node else "")
             location = details.get("위치", "")
             hours_text = details.get("운영시간", "")
+            menu_anchor = next(
+                (
+                    anchor
+                    for anchor in card.select("a[href]")
+                    if "메뉴" in _clean_text(anchor.get_text())
+                ),
+                None,
+            )
             if not facility_name or not location or not hours_text:
                 continue
             rows.append(
@@ -458,6 +471,14 @@ class CampusFacilitiesSource:
                     "facility_name": facility_name,
                     "location": location,
                     "hours_text": hours_text,
+                    "menu_week_label": (
+                        _clean_text(menu_anchor.get_text()) if menu_anchor else None
+                    ),
+                    "menu_source_url": (
+                        urljoin(self.url, unescape(menu_anchor.get("href", "")))
+                        if menu_anchor and menu_anchor.get("href")
+                        else None
+                    ),
                     "category": "식당안내",
                     "source_tag": "cuk_facilities",
                     "last_synced_at": fetched_at,

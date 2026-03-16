@@ -6,14 +6,17 @@ import logging
 import math
 import re
 import sqlite3
+import unicodedata
 import uuid
 from copy import deepcopy
 from datetime import date, datetime, timedelta
 from functools import lru_cache
+from io import BytesIO
 from pathlib import Path
 from typing import Any, Protocol
 
 import httpx
+from pypdf import PdfReader
 
 from . import repo
 from .db import connection, get_connection
@@ -37,6 +40,7 @@ from .schemas import (
     AutomationJobObservability,
     AutomationObservability,
     CacheObservability,
+    CampusDiningMenu,
     Course,
     EmptyClassroomBuilding,
     EstimatedEmptyClassroom,
@@ -79,12 +83,13 @@ PLACE_FACILITY_KEYWORDS_PATH = DATA_DIR / "place_facility_keywords.json"
 PLACE_SHORT_QUERY_PREFERENCES_PATH = DATA_DIR / "place_short_query_preferences.json"
 RESTAURANT_SEARCH_ALIASES_PATH = DATA_DIR / "restaurant_search_aliases.json"
 RESTAURANT_SEARCH_NOISE_TERMS_PATH = DATA_DIR / "restaurant_search_noise_terms.json"
-SYNC_DATASET_TABLES = ("places", "courses", "notices", "transport_guides")
+SYNC_DATASET_TABLES = ("places", "campus_dining_menus", "courses", "notices", "transport_guides")
 ADMIN_SYNC_TARGETS = {
     "snapshot",
     "places",
     "library_hours",
     "facility_hours",
+    "dining_menus",
     "courses",
     "notices",
     "transport_guides",
@@ -131,6 +136,25 @@ NOTICE_CANONICAL_LIST_CATEGORIES = {"학사", "장학", "취창업"}
 TRANSPORT_UNSUPPORTED_QUERY_CUES = ("셔틀", "shuttle")
 TRANSPORT_SUBWAY_QUERY_CUES = ("지하철", "전철", "1호선", "subway", "역곡역", "역곡")
 TRANSPORT_BUS_QUERY_CUES = ("버스", "마을버스", "시내버스", "bus")
+DINING_MENU_GENERIC_QUERY_CUES = (
+    "교내 식당",
+    "교내식당",
+    "학생식당",
+    "학식",
+    "메뉴",
+    "오늘 메뉴",
+    "오늘메뉴",
+    "내일 메뉴",
+    "내일메뉴",
+)
+DINING_MENU_QUERY_FILLER_TERMS = (
+    "메뉴",
+    "오늘",
+    "내일",
+    "이번 주",
+    "이번주",
+    "주간",
+)
 
 
 class NotFoundError(ValueError):
@@ -1307,6 +1331,156 @@ def _normalize_facility_name(value: str) -> str:
     return normalized
 
 
+def _slugify_text(value: str) -> str:
+    ascii_text = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
+    slug = re.sub(r"[^a-zA-Z0-9]+", "-", ascii_text).strip("-").lower()
+    return slug or _normalize_facility_name(value)
+
+
+def _normalize_dining_menu_query(query: str | None) -> tuple[str | None, str | None, bool]:
+    collapsed_query, compact_query = _normalized_query_variants(query)
+    if collapsed_query is None:
+        return None, None, True
+
+    normalized_query = _normalize_facility_name(collapsed_query)
+    generic_normalized = {
+        _normalize_facility_name(item) for item in DINING_MENU_GENERIC_QUERY_CUES
+    }
+    stripped_query = collapsed_query
+    for token in DINING_MENU_QUERY_FILLER_TERMS:
+        stripped_query = stripped_query.replace(token, " ")
+    stripped_query = _collapse_whitespace(stripped_query)
+    stripped_compact = _compact_text(stripped_query)
+    is_generic = (
+        normalized_query in generic_normalized
+        or _normalize_facility_name(stripped_query) in generic_normalized
+        or not stripped_compact
+    )
+    return stripped_query or None, stripped_compact or None, is_generic
+
+
+def _rank_campus_dining_menu_candidate(
+    item: dict[str, Any],
+    *,
+    collapsed_query: str,
+    compact_query: str | None,
+) -> int | None:
+    venue_name = str(item.get("venue_name") or "")
+    venue_slug = str(item.get("venue_slug") or "")
+    place_name = str(item.get("place_name") or "")
+    if venue_slug.lower() == collapsed_query.lower():
+        return 0
+    if _matches_exact_text_candidate(
+        venue_name,
+        collapsed_query=collapsed_query,
+        compact_query=compact_query,
+    ):
+        return 1
+    if _matches_exact_text_candidate(
+        place_name,
+        collapsed_query=collapsed_query,
+        compact_query=compact_query,
+    ):
+        return 2
+    if _matches_partial_text_candidate(
+        venue_name,
+        collapsed_query=collapsed_query,
+        compact_query=compact_query,
+    ):
+        return 3
+    if _matches_partial_text_candidate(
+        place_name,
+        collapsed_query=collapsed_query,
+        compact_query=compact_query,
+    ):
+        return 4
+    lowered_query = collapsed_query.lower()
+    if venue_name and venue_name.lower() in lowered_query:
+        return 5
+    if place_name and place_name.lower() in lowered_query:
+        return 6
+    return None
+
+
+def _extract_campus_dining_menu_text(pdf_bytes: bytes) -> str | None:
+    reader = PdfReader(BytesIO(pdf_bytes))
+    lines: list[str] = []
+    for page in reader.pages:
+        page_text = page.extract_text() or ""
+        for raw_line in page_text.splitlines():
+            cleaned = raw_line.strip()
+            if cleaned:
+                lines.append(cleaned)
+    if not lines:
+        return None
+    return "\n".join(lines)
+
+
+def _extract_campus_dining_menu_week_range(
+    menu_text: str | None,
+) -> tuple[str | None, str | None]:
+    if not menu_text:
+        return None, None
+
+    match = re.search(
+        r"(\d{4})[./-](\d{2})[./-](\d{2})\s*[-~]\s*"
+        r"(?:(\d{4})[./-](\d{2})[./-](\d{2})|(\d{2})[./-](\d{2}))",
+        menu_text,
+    )
+    if not match:
+        return None, None
+
+    start_year = int(match.group(1))
+    start_month = int(match.group(2))
+    start_day = int(match.group(3))
+    if match.group(4) is not None:
+        end_year = int(match.group(4))
+        end_month = int(match.group(5))
+        end_day = int(match.group(6))
+    else:
+        end_year = start_year
+        end_month = start_month
+        end_day = int(match.group(8))
+
+    try:
+        week_start = date(start_year, start_month, start_day).isoformat()
+        week_end = date(end_year, end_month, end_day).isoformat()
+    except ValueError:
+        return None, None
+    return week_start, week_end
+
+
+def _resolve_campus_dining_menu_place(
+    conn: sqlite3.Connection,
+    *,
+    facility_name: str,
+    location: str,
+) -> Place | None:
+    place_lookup = _place_index(conn)
+    for candidate in _location_candidates(location):
+        slug = place_lookup.get(_normalize_place_key(candidate))
+        if slug:
+            return get_place(conn, slug)
+    query_candidates = [facility_name]
+    korean_query = " ".join(re.findall(r"[가-힣]+", facility_name))
+    if korean_query and korean_query not in query_candidates:
+        query_candidates.append(korean_query)
+    for candidate_query in query_candidates:
+        matches = search_places(conn, query=candidate_query, limit=1)
+        if matches:
+            return matches[0]
+    return None
+
+
+def _campus_dining_menu_preview(menu_text: str | None, *, limit: int = 220) -> str | None:
+    if not menu_text:
+        return None
+    preview = " | ".join(line.strip() for line in menu_text.splitlines() if line.strip())
+    if len(preview) <= limit:
+        return preview
+    return preview[: max(0, limit - 3)].rstrip() + "..."
+
+
 def _is_generic_opening_hours_key(value: str) -> bool:
     normalized = value.strip().lower().replace(" ", "")
     return normalized in {
@@ -2085,6 +2259,31 @@ def get_notice_categories() -> list[NoticeCategoryInfo]:
     return [NoticeCategoryInfo.model_validate(item) for item in PUBLIC_NOTICE_CATEGORY_METADATA]
 
 
+def search_campus_dining_menus(
+    conn: sqlite3.Connection,
+    query: str | None = None,
+    *,
+    limit: int = 10,
+) -> list[CampusDiningMenu]:
+    rows = repo.list_campus_dining_menus(conn, limit=max(limit, 10))
+    normalized_query, compact_query, is_generic = _normalize_dining_menu_query(query)
+    if is_generic or normalized_query is None:
+        return [CampusDiningMenu.model_validate(item) for item in rows[:limit]]
+
+    ranked: list[tuple[int, int, dict[str, Any]]] = []
+    for index, item in enumerate(rows):
+        rank = _rank_campus_dining_menu_candidate(
+            item,
+            collapsed_query=normalized_query,
+            compact_query=compact_query,
+        )
+        if rank is None:
+            continue
+        ranked.append((rank, index, item))
+    ranked.sort(key=lambda item: (item[0], item[1]))
+    return [CampusDiningMenu.model_validate(item) for _, _, item in ranked[:limit]]
+
+
 def search_places(
     conn: sqlite3.Connection,
     query: str = "",
@@ -2559,6 +2758,8 @@ def _run_admin_sync_target(
         return {"updated_places": len(refresh_library_hours_from_library_page(conn))}
     if target == "facility_hours":
         return {"updated_places": len(refresh_facility_hours_from_facilities_page(conn))}
+    if target == "dining_menus":
+        return {"dining_menus": len(refresh_campus_dining_menus_from_facilities_page(conn))}
     if target == "courses":
         return {
             "courses": len(
@@ -4026,6 +4227,57 @@ def refresh_facility_hours_from_facilities_page(
     return touched
 
 
+def refresh_campus_dining_menus_from_facilities_page(
+    conn: sqlite3.Connection,
+    *,
+    source: CampusFacilitiesSource | Any | None = None,
+    fetched_at: str | None = None,
+) -> list[CampusDiningMenu]:
+    source = source or CampusFacilitiesSource(FACILITIES_SOURCE_URL)
+    synced_at = fetched_at or _now_iso()
+    rows = source.parse(source.fetch(), fetched_at=synced_at)
+    menu_rows: list[dict[str, Any]] = []
+    for row in rows:
+        source_url = row.get("menu_source_url")
+        if not source_url:
+            continue
+        place = _resolve_campus_dining_menu_place(
+            conn,
+            facility_name=str(row.get("facility_name") or ""),
+            location=str(row.get("location") or ""),
+        )
+        menu_text: str | None = None
+        week_start: str | None = None
+        week_end: str | None = None
+        try:
+            pdf_bytes = source.fetch_menu_document(source_url)
+            menu_text = _extract_campus_dining_menu_text(pdf_bytes)
+            week_start, week_end = _extract_campus_dining_menu_week_range(menu_text)
+        except Exception:
+            menu_text = None
+            week_start = None
+            week_end = None
+
+        menu_rows.append(
+            {
+                "venue_slug": _slugify_text(str(row.get("facility_name") or "")),
+                "venue_name": str(row.get("facility_name") or ""),
+                "place_slug": place.slug if place is not None else None,
+                "place_name": place.name if place is not None else None,
+                "week_label": _normalize_optional_text(row.get("menu_week_label")),
+                "week_start": week_start,
+                "week_end": week_end,
+                "menu_text": menu_text,
+                "source_url": source_url,
+                "source_tag": "cuk_facilities_menu",
+                "last_synced_at": row.get("last_synced_at", synced_at),
+            }
+        )
+
+    repo.replace_campus_dining_menus(conn, menu_rows)
+    return search_campus_dining_menus(conn, limit=max(len(menu_rows), 1))
+
+
 def refresh_courses_from_subject_search(
     conn: sqlite3.Connection,
     *,
@@ -4150,6 +4402,7 @@ def sync_official_snapshot(
     )
     refresh_library_hours_from_library_page(conn)
     refresh_facility_hours_from_facilities_page(conn)
+    dining_menus = refresh_campus_dining_menus_from_facilities_page(conn)
     courses = refresh_courses_from_subject_search(
         conn,
         year=resolved_year,
@@ -4162,6 +4415,7 @@ def sync_official_snapshot(
     transport_guides = refresh_transport_guides_from_location_page(conn)
     return {
         "places": len(places),
+        "dining_menus": len(dining_menus),
         "courses": len(courses),
         "notices": len(notices),
         "transport_guides": len(transport_guides),

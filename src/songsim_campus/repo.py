@@ -658,6 +658,52 @@ def replace_transport_guides(conn: psycopg.Connection, rows: list[dict[str, Any]
     )
 
 
+def replace_campus_dining_menus(conn: psycopg.Connection, rows: list[dict[str, Any]]) -> None:
+    conn.execute("TRUNCATE TABLE campus_dining_menus")
+    _executemany(
+        conn,
+        """
+        INSERT INTO campus_dining_menus (
+            venue_slug, venue_name, place_slug, place_name, week_label,
+            week_start, week_end, menu_text, source_url, source_tag, last_synced_at
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """,
+        [
+            (
+                row["venue_slug"],
+                row["venue_name"],
+                row.get("place_slug"),
+                row.get("place_name"),
+                row.get("week_label"),
+                row.get("week_start"),
+                row.get("week_end"),
+                row.get("menu_text"),
+                row.get("source_url"),
+                row.get("source_tag", "demo"),
+                row["last_synced_at"],
+            )
+            for row in rows
+        ],
+    )
+
+
+def list_campus_dining_menus(
+    conn: psycopg.Connection,
+    *,
+    limit: int = 10,
+) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT *
+        FROM campus_dining_menus
+        ORDER BY venue_name, venue_slug
+        LIMIT %s
+        """,
+        (limit,),
+    ).fetchall()
+    return [_normalize_record(dict(row)) for row in rows]
+
+
 def list_transport_guides(
     conn: psycopg.Connection,
     mode: str | None = None,
@@ -783,7 +829,7 @@ def get_latest_sync_run(
 
 
 def get_dataset_sync_state(conn: psycopg.Connection, table: str) -> dict[str, Any]:
-    allowed = {"places", "courses", "notices", "transport_guides"}
+    allowed = {"places", "courses", "notices", "transport_guides", "campus_dining_menus"}
     if table not in allowed:
         raise ValueError(f"Unsupported dataset table: {table}")
     row = conn.execute(

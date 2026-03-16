@@ -14,6 +14,7 @@ from songsim_campus.repo import (
     update_place_opening_hours,
 )
 from songsim_campus.services import (
+    refresh_campus_dining_menus_from_facilities_page,
     refresh_facility_hours_from_facilities_page,
     refresh_transport_guides_from_location_page,
 )
@@ -107,6 +108,7 @@ def test_public_readonly_mode_exposes_gpt_actions_openapi(app_env, monkeypatch):
         "/notices",
         "/notice-categories",
         "/periods",
+        "/dining-menus",
         "/restaurants/search",
         "/restaurants/nearby",
         "/transport",
@@ -121,6 +123,7 @@ def test_public_readonly_mode_exposes_gpt_actions_openapi(app_env, monkeypatch):
         == "listNoticeCategories"
     )
     assert payload["paths"]["/periods"]["get"]["operationId"] == "listClassPeriods"
+    assert payload["paths"]["/dining-menus"]["get"]["operationId"] == "listDiningMenus"
     assert (
         payload["paths"]["/restaurants/nearby"]["get"]["operationId"]
         == "findNearbyRestaurants"
@@ -149,6 +152,7 @@ def test_public_readonly_mode_exposes_gpt_actions_openapi_v2(app_env, monkeypatc
         "/gpt/notices",
         "/gpt/notice-categories",
         "/gpt/periods",
+        "/gpt/dining-menus",
         "/gpt/restaurants/search",
         "/gpt/restaurants/nearby",
         "/gpt/classrooms/empty",
@@ -160,6 +164,10 @@ def test_public_readonly_mode_exposes_gpt_actions_openapi_v2(app_env, monkeypatc
         == "listNoticeCategoriesForGpt"
     )
     assert payload["paths"]["/gpt/periods"]["get"]["operationId"] == "listPeriodsForGpt"
+    assert (
+        payload["paths"]["/gpt/dining-menus"]["get"]["operationId"]
+        == "listDiningMenusForGpt"
+    )
     assert (
         payload["paths"]["/gpt/restaurants/search"]["get"]["operationId"]
         == "searchRestaurantsForGpt"
@@ -1702,6 +1710,63 @@ class ApiFacilitiesSource:
         ]
 
 
+class ApiDiningMenusSource:
+    def fetch(self):
+        return '<facilities-menu></facilities-menu>'
+
+    def parse(self, html: str, *, fetched_at: str):
+        assert html == '<facilities-menu></facilities-menu>'
+        return [
+            {
+                'facility_name': 'Buon Pranzo 부온 프란조',
+                'location': '학생미래인재관 2층',
+                'hours_text': '중식 11:30 ~ 14:00',
+                'category': '식당안내',
+                'menu_week_label': '3월 3주차 메뉴표 확인하기',
+                'menu_source_url': 'https://www.catholic.ac.kr/menu/buon.pdf',
+                'source_tag': 'cuk_facilities',
+                'last_synced_at': fetched_at,
+            },
+            {
+                'facility_name': 'Café Bona 카페 보나',
+                'location': '학생미래인재관 1층',
+                'hours_text': '조식 08:00 ~ 09:30',
+                'category': '식당안내',
+                'menu_week_label': '3월 3주차 메뉴표 확인하기',
+                'menu_source_url': 'https://www.catholic.ac.kr/menu/bona.pdf',
+                'source_tag': 'cuk_facilities',
+                'last_synced_at': fetched_at,
+            },
+            {
+                'facility_name': 'Café Mensa 카페 멘사',
+                'location': '김수환관 1층',
+                'hours_text': '10:30~14:30',
+                'category': '식당안내',
+                'menu_week_label': '3월 3주차 메뉴표 확인하기',
+                'menu_source_url': 'https://www.catholic.ac.kr/menu/mensa.pdf',
+                'source_tag': 'cuk_facilities',
+                'last_synced_at': fetched_at,
+            },
+        ]
+
+    def fetch_menu_document(self, url: str):
+        return (
+            b'%PDF-1.4\n'
+            b'1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n'
+            b'2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n'
+            b'3 0 obj\n'
+            b'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R '
+            b'/Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n'
+            b'4 0 obj\n<< /Length 142 >>\nstream\nBT\n/F1 12 Tf\n72 720 Td\n'
+            b'(Weekly Menu 2026.03.16 - 03.20) Tj\n0 -18 Td\n(Cafe Bona) Tj\n0 -18 Td\n'
+            b'(Bulgogi Rice Bowl) Tj\n0 -18 Td\n(Lemon Tea) Tj\nET\nendstream\nendobj\n'
+            b'5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n'
+            b'xref\n0 6\n0000000000 65535 f \n0000000009 00000 n \n0000000058 00000 n \n'
+            b'0000000115 00000 n \n0000000241 00000 n \n0000000433 00000 n \n'
+            b'trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n502\n%%EOF\n'
+        )
+
+
 class ApiTransportSource:
     def fetch(self):
         return '<transport></transport>'
@@ -1733,6 +1798,43 @@ def test_place_detail_returns_merged_opening_hours(client):
         payload['opening_hours']['카페드림']
         == '평일 08:00~19:00 토 10:00~16:00 (일/공휴일휴무)'
     )
+
+
+def test_dining_menus_endpoint_returns_current_week_rows(client):
+    with connection() as conn:
+        refresh_campus_dining_menus_from_facilities_page(conn, source=ApiDiningMenusSource())
+
+    response = client.get('/dining-menus')
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert {item['venue_slug'] for item in payload} == {
+        'buon-pranzo',
+        'cafe-bona',
+        'cafe-mensa',
+    }
+    bona = next(item for item in payload if item['venue_slug'] == 'cafe-bona')
+    assert bona['place_name'] == '학생회관'
+    assert bona['week_label'] == '3월 3주차 메뉴표 확인하기'
+    assert bona['week_start'] == '2026-03-16'
+    assert bona['source_url'] == 'https://www.catholic.ac.kr/menu/bona.pdf'
+    assert 'Bulgogi Rice Bowl' in bona['menu_text']
+
+
+def test_dining_menus_endpoint_supports_generic_and_specific_queries(client):
+    with connection() as conn:
+        refresh_campus_dining_menus_from_facilities_page(conn, source=ApiDiningMenusSource())
+
+    generic_response = client.get('/dining-menus', params={'query': '학생식당 메뉴'})
+    specific_response = client.get('/dining-menus', params={'query': '카페 보나 메뉴'})
+    gpt_response = client.get('/gpt/dining-menus', params={'query': '교내 식당'})
+
+    assert generic_response.status_code == 200
+    assert len(generic_response.json()) == 3
+    assert [item['venue_slug'] for item in specific_response.json()] == ['cafe-bona']
+    assert gpt_response.status_code == 200
+    assert gpt_response.json()[0]['menu_preview']
+    assert gpt_response.json()[0]['source_url']
 
 
 def test_transport_endpoint_returns_guides(client):
