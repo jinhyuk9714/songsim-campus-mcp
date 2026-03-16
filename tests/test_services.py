@@ -23,6 +23,7 @@ from songsim_campus.services import (
     _parse_campus_walk_graph,
     find_nearby_restaurants,
     get_class_periods,
+    get_notice_categories,
     get_place,
     investigate_course_query_coverage,
     list_estimated_empty_classrooms,
@@ -104,6 +105,25 @@ def test_get_class_periods_returns_ten_periods(app_env):
     assert len(periods) == 10
     assert periods[0].start == '09:00'
     assert periods[-1].end == '18:50'
+
+
+def test_get_notice_categories_returns_public_canonical_metadata(app_env):
+    categories = get_notice_categories()
+
+    assert [item.category for item in categories] == [
+        "academic",
+        "scholarship",
+        "employment",
+        "general",
+    ]
+    assert [item.category_display for item in categories] == [
+        "학사",
+        "장학",
+        "취업",
+        "일반",
+    ]
+    assert categories[2].aliases == ["career"]
+    assert categories[3].aliases == ["place"]
 
 
 def test_search_places_matches_alias(app_env):

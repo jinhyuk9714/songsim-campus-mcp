@@ -105,6 +105,8 @@ def test_public_readonly_mode_exposes_gpt_actions_openapi(app_env, monkeypatch):
         "/places",
         "/courses",
         "/notices",
+        "/notice-categories",
+        "/periods",
         "/restaurants/search",
         "/restaurants/nearby",
         "/transport",
@@ -112,6 +114,11 @@ def test_public_readonly_mode_exposes_gpt_actions_openapi(app_env, monkeypatch):
     assert payload["paths"]["/places"]["get"]["operationId"] == "searchPlaces"
     assert payload["paths"]["/courses"]["get"]["operationId"] == "searchCourses"
     assert payload["paths"]["/notices"]["get"]["operationId"] == "listLatestNotices"
+    assert (
+        payload["paths"]["/notice-categories"]["get"]["operationId"]
+        == "listNoticeCategories"
+    )
+    assert payload["paths"]["/periods"]["get"]["operationId"] == "listClassPeriods"
     assert (
         payload["paths"]["/restaurants/nearby"]["get"]["operationId"]
         == "findNearbyRestaurants"
@@ -138,12 +145,19 @@ def test_public_readonly_mode_exposes_gpt_actions_openapi_v2(app_env, monkeypatc
     assert set(payload["paths"]) == {
         "/gpt/places",
         "/gpt/notices",
+        "/gpt/notice-categories",
+        "/gpt/periods",
         "/gpt/restaurants/search",
         "/gpt/restaurants/nearby",
         "/gpt/classrooms/empty",
     }
     assert payload["paths"]["/gpt/places"]["get"]["operationId"] == "searchPlacesForGpt"
     assert payload["paths"]["/gpt/notices"]["get"]["operationId"] == "listLatestNoticesForGpt"
+    assert (
+        payload["paths"]["/gpt/notice-categories"]["get"]["operationId"]
+        == "listNoticeCategoriesForGpt"
+    )
+    assert payload["paths"]["/gpt/periods"]["get"]["operationId"] == "listPeriodsForGpt"
     assert (
         payload["paths"]["/gpt/restaurants/search"]["get"]["operationId"]
         == "searchRestaurantsForGpt"
@@ -605,6 +619,39 @@ def test_notice_endpoints_normalize_place_category_to_general(client):
     assert api_response.json()[0]["category"] == "general"
     assert gpt_response.status_code == 200
     assert gpt_response.json()[0]["category_display"] == "general"
+
+
+def test_notice_category_metadata_endpoints_return_public_and_gpt_labels(client):
+    api_response = client.get("/notice-categories")
+    gpt_response = client.get("/gpt/notice-categories")
+
+    assert api_response.status_code == 200
+    assert api_response.json() == [
+        {"category": "academic", "category_display": "학사", "aliases": []},
+        {"category": "scholarship", "category_display": "장학", "aliases": []},
+        {"category": "employment", "category_display": "취업", "aliases": ["career"]},
+        {"category": "general", "category_display": "일반", "aliases": ["place"]},
+    ]
+    assert gpt_response.status_code == 200
+    assert gpt_response.json() == [
+        {"category": "academic", "category_display": "academic", "aliases": []},
+        {"category": "scholarship", "category_display": "scholarship", "aliases": []},
+        {
+            "category": "employment",
+            "category_display": "employment",
+            "aliases": ["career"],
+        },
+        {"category": "general", "category_display": "general", "aliases": ["place"]},
+    ]
+
+
+def test_gpt_periods_endpoint_matches_standard_periods_truth(client):
+    periods_response = client.get("/periods")
+    gpt_periods_response = client.get("/gpt/periods")
+
+    assert periods_response.status_code == 200
+    assert gpt_periods_response.status_code == 200
+    assert gpt_periods_response.json() == periods_response.json()
 
 
 def test_gpt_nearby_restaurants_endpoint_returns_compact_summary_payload(client):

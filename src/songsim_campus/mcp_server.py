@@ -43,6 +43,7 @@ from .services import (
     create_profile,
     find_nearby_restaurants,
     get_class_periods,
+    get_notice_categories,
     get_place,
     get_profile_course_recommendations,
     get_profile_interests,
@@ -247,6 +248,10 @@ def _public_usage_guide() -> str:
                 "prompt_find_nearby_restaurants to choose the first tool."
             ),
             (
+                "2a. For metadata questions, use prompt_notice_categories or "
+                "prompt_class_periods before chaining to notices or courses."
+            ),
+            (
                 "3. Use tool_search_places for fuzzy building/facility queries such as "
                 "트러스트짐, 헬스장, 편의점, ATM, 복사실, K관, or 정문, then "
                 "tool_get_place when you know the slug."
@@ -274,6 +279,11 @@ def _public_usage_guide() -> str:
                 "8. Use tool_list_transport_guides for static subway or bus access "
                 "guidance. You can pass query with natural-language cues like 지하철, "
                 "1호선, 역곡역, or 버스. 셔틀은 현재 지원하지 않아 빈 결과가 정상입니다."
+            ),
+            (
+                "9. Use songsim://notice-categories or /notice-categories when a user asks "
+                "which notice categories exist. Use songsim://class-periods, /periods, or "
+                "/gpt/periods when a user asks what a period number means."
             ),
             "",
             "Example questions:",
@@ -370,7 +380,11 @@ def build_mcp():
         @mcp.resource("songsim://notice-categories")
         def notice_categories_resource() -> str:
             """Return public notice category labels as JSON."""
-            return json.dumps(NOTICE_CATEGORY_DISPLAY, ensure_ascii=False, indent=2)
+            return json.dumps(
+                [item.model_dump() for item in get_notice_categories()],
+                ensure_ascii=False,
+                indent=2,
+            )
 
         @mcp.resource("songsim://class-periods")
         def class_periods_resource() -> str:
@@ -421,8 +435,33 @@ def build_mcp():
             return (
                 "Use tool_search_courses for public course lookup.\n"
                 f"query={query or '<empty>'}, year={year}, semester={semester}.\n"
-                "If a user asks about period numbers, read songsim://class-periods or call "
-                "tool_get_class_periods."
+                "If a user asks about period numbers, use prompt_class_periods first.\n"
+                "The direct metadata paths are songsim://class-periods, "
+                "tool_get_class_periods, /periods, and /gpt/periods."
+            )
+
+        @mcp.prompt(
+            name="prompt_class_periods",
+            description="Explain how to read the static class period table directly.",
+        )
+        def prompt_class_periods():
+            return (
+                "Use songsim://class-periods or call tool_get_class_periods for the public "
+                "class period table.\n"
+                "The HTTP metadata paths are /periods and /gpt/periods.\n"
+                "Use this first for questions like 7교시가 몇 시야 or 3교시가 몇 시야."
+            )
+
+        @mcp.prompt(
+            name="prompt_notice_categories",
+            description="Explain how to read the public notice category list directly.",
+        )
+        def prompt_notice_categories():
+            return (
+                "Use songsim://notice-categories for the canonical public notice categories.\n"
+                "The HTTP metadata paths are /notice-categories and /gpt/notice-categories.\n"
+                "Use this first for questions like 공지 카테고리 종류, academic이 뭐야, "
+                "or employment랑 career 차이."
             )
 
         @mcp.prompt(
@@ -442,8 +481,10 @@ def build_mcp():
             return (
                 "Use tool_list_latest_notices for latest public notices.\n"
                 f"category={category or '<optional>'}, limit={limit}.\n"
-                "Category is optional. Use songsim://notice-categories if you need to explain "
-                "display labels before answering."
+                "Category is optional. For category-explanation questions, use "
+                "prompt_notice_categories first.\n"
+                "The direct metadata paths are songsim://notice-categories and "
+                "/notice-categories."
             )
 
         @mcp.prompt(

@@ -47,6 +47,7 @@ from .schemas import (
     MealRecommendationResponse,
     NearbyRestaurant,
     Notice,
+    NoticeCategoryInfo,
     ObservabilitySnapshot,
     Period,
     Place,
@@ -118,6 +119,12 @@ NOTICE_CATEGORY_FILTER_ALIASES = {
     "general": ("general", "place"),
     "place": ("general", "place"),
 }
+PUBLIC_NOTICE_CATEGORY_METADATA = (
+    {"category": "academic", "category_display": "학사", "aliases": []},
+    {"category": "scholarship", "category_display": "장학", "aliases": []},
+    {"category": "employment", "category_display": "취업", "aliases": ["career"]},
+    {"category": "general", "category_display": "일반", "aliases": ["place"]},
+)
 NOTICE_CANONICAL_LIST_CATEGORIES = {"학사", "장학", "취창업"}
 TRANSPORT_UNSUPPORTED_QUERY_CUES = ("셔틀", "shuttle")
 TRANSPORT_SUBWAY_QUERY_CUES = ("지하철", "전철", "1호선", "subway", "역곡역", "역곡")
@@ -2070,6 +2077,10 @@ def _course_match_result(course: Course, *, profile: Profile) -> tuple[list[str]
 
 def get_class_periods() -> list[Period]:
     return [Period(period=period, start=start, end=end) for period, start, end in CLASS_PERIODS]
+
+
+def get_notice_categories() -> list[NoticeCategoryInfo]:
+    return [NoticeCategoryInfo.model_validate(item) for item in PUBLIC_NOTICE_CATEGORY_METADATA]
 
 
 def search_places(

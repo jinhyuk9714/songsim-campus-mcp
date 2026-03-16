@@ -18,6 +18,7 @@ from .schemas import (
     Course,
     EstimatedEmptyClassroomResponse,
     GptNearbyRestaurantResult,
+    GptNoticeCategoryInfo,
     GptNoticeResult,
     GptPlaceResult,
     GptRestaurantSearchResult,
@@ -27,6 +28,7 @@ from .schemas import (
     MealRecommendationResponse,
     NearbyRestaurant,
     Notice,
+    NoticeCategoryInfo,
     Period,
     Place,
     Profile,
@@ -46,6 +48,7 @@ from .services import (
     create_profile,
     find_nearby_restaurants,
     get_class_periods,
+    get_notice_categories,
     get_observability_snapshot,
     get_place,
     get_profile_course_recommendations,
@@ -98,6 +101,19 @@ GPT_ACTION_PATHS: dict[str, dict[str, str]] = {
         "summary": "List latest public notices",
         "description": "List the latest public Songsim campus notices.",
     },
+    "/notice-categories": {
+        "operationId": "listNoticeCategories",
+        "summary": "List public notice categories",
+        "description": (
+            "List the canonical public notice categories and compatibility aliases such "
+            "as career -> employment."
+        ),
+    },
+    "/periods": {
+        "operationId": "listClassPeriods",
+        "summary": "List class periods",
+        "description": "List the fixed Songsim class period table.",
+    },
     "/restaurants/nearby": {
         "operationId": "findNearbyRestaurants",
         "summary": "Find nearby restaurants",
@@ -136,6 +152,22 @@ GPT_ACTION_V2_PATHS: dict[str, dict[str, str]] = {
         "description": (
             "Use when the user wants the latest Songsim public notices. "
             "Returns normalized notice categories and short summary previews."
+        ),
+    },
+    "/gpt/notice-categories": {
+        "operationId": "listNoticeCategoriesForGpt",
+        "summary": "List public notice categories with concise labels",
+        "description": (
+            "Use when the user asks which public notice categories exist or what "
+            "employment vs career means."
+        ),
+    },
+    "/gpt/periods": {
+        "operationId": "listPeriodsForGpt",
+        "summary": "List class periods with concise timing rows",
+        "description": (
+            "Use when the user asks what a period number means or needs the class "
+            "period table before searching courses."
         ),
     },
     "/gpt/restaurants/nearby": {
@@ -266,6 +298,15 @@ def create_app() -> FastAPI:
         if restaurant.max_price is not None:
             return f"{restaurant.max_price:,}원 이하"
         return None
+
+    def _serialize_gpt_notice_category(
+        item: NoticeCategoryInfo,
+    ) -> GptNoticeCategoryInfo:
+        return GptNoticeCategoryInfo(
+            category=item.category,
+            category_display=GPT_NOTICE_CATEGORY_DISPLAY.get(item.category, item.category),
+            aliases=item.aliases,
+        )
 
     def _gpt_restaurant_category_label(restaurant: NearbyRestaurant) -> str:
         return GPT_RESTAURANT_CATEGORY_DISPLAY.get(
@@ -1307,6 +1348,18 @@ def create_app() -> FastAPI:
 
     @app.get("/periods", response_model=list[Period])
     def periods() -> list[Period]:
+        return get_class_periods()
+
+    @app.get("/notice-categories", response_model=list[NoticeCategoryInfo])
+    def notice_categories() -> list[NoticeCategoryInfo]:
+        return get_notice_categories()
+
+    @app.get("/gpt/notice-categories", response_model=list[GptNoticeCategoryInfo])
+    def gpt_notice_categories() -> list[GptNoticeCategoryInfo]:
+        return [_serialize_gpt_notice_category(item) for item in get_notice_categories()]
+
+    @app.get("/gpt/periods", response_model=list[Period])
+    def gpt_periods() -> list[Period]:
         return get_class_periods()
 
     @app.get("/gpt/places", response_model=list[GptPlaceResult])

@@ -437,7 +437,9 @@ def test_mcp_public_readonly_mode_registers_prompts_and_extended_resources(app_e
     assert set(prompt_names) == {
         "prompt_find_place",
         "prompt_search_courses",
+        "prompt_notice_categories",
         "prompt_latest_notices",
+        "prompt_class_periods",
         "prompt_find_empty_classrooms",
         "prompt_search_restaurants",
         "prompt_find_nearby_restaurants",
@@ -672,6 +674,71 @@ def test_mcp_public_usage_and_class_period_resources_are_readable(app_env, monke
     assert "편의점" in usage_content
     assert periods_payload[0]["period"] == 1
     assert {"period", "start", "end"} <= set(periods_payload[0].keys())
+
+    clear_settings_cache()
+
+
+def test_mcp_public_notice_category_resource_returns_canonical_metadata(app_env, monkeypatch):
+    pytest.importorskip('mcp.server.fastmcp')
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        categories = list(await mcp.read_resource('songsim://notice-categories'))
+        return categories[0].content
+
+    payload = json.loads(asyncio.run(main()))
+
+    assert payload == [
+        {"category": "academic", "category_display": "학사", "aliases": []},
+        {"category": "scholarship", "category_display": "장학", "aliases": []},
+        {"category": "employment", "category_display": "취업", "aliases": ["career"]},
+        {"category": "general", "category_display": "일반", "aliases": ["place"]},
+    ]
+
+    clear_settings_cache()
+
+
+def test_mcp_public_metadata_prompts_explain_direct_metadata_flow(app_env, monkeypatch):
+    pytest.importorskip('mcp.server.fastmcp')
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        categories_prompt = await mcp.get_prompt("prompt_notice_categories", {})
+        periods_prompt = await mcp.get_prompt("prompt_class_periods", {})
+        notices_prompt = await mcp.get_prompt(
+            "prompt_latest_notices",
+            {"limit": 5},
+        )
+        courses_prompt = await mcp.get_prompt(
+            "prompt_search_courses",
+            {"query": "7교시"},
+        )
+        return (
+            categories_prompt.messages[0].content.text,
+            periods_prompt.messages[0].content.text,
+            notices_prompt.messages[0].content.text,
+            courses_prompt.messages[0].content.text,
+        )
+
+    categories_message, periods_message, notices_message, courses_message = asyncio.run(main())
+
+    assert "songsim://notice-categories" in categories_message
+    assert "/notice-categories" in categories_message
+    assert "employment" in categories_message
+    assert "career" in categories_message
+    assert "songsim://class-periods" in periods_message
+    assert "tool_get_class_periods" in periods_message
+    assert "/periods" in periods_message
+    assert "/gpt/periods" in periods_message
+    assert "songsim://notice-categories" in notices_message
+    assert "/notice-categories" in notices_message
+    assert "songsim://class-periods" in courses_message
+    assert "/periods" in courses_message
+    assert "/gpt/periods" in courses_message
 
     clear_settings_cache()
 

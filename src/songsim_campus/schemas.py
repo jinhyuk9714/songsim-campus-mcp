@@ -154,6 +154,18 @@ class GptNoticeResult(BaseModel):
     source_url: str | None = None
 
 
+class NoticeCategoryInfo(BaseModel):
+    category: str
+    category_display: str
+    aliases: list[str] = Field(default_factory=list)
+
+
+class GptNoticeCategoryInfo(BaseModel):
+    category: str
+    category_display: str
+    aliases: list[str] = Field(default_factory=list)
+
+
 class GptNearbyRestaurantResult(BaseModel):
     name: str
     category_display: str

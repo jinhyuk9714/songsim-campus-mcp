@@ -240,6 +240,10 @@ uv run songsim-mcp --transport streamable-http
 ```bash
 curl 'http://127.0.0.1:8000/places?query=도서관'
 curl 'http://127.0.0.1:8000/courses?query=객체지향&year=2026&semester=1'
+curl 'http://127.0.0.1:8000/notice-categories'
+curl 'http://127.0.0.1:8000/periods'
+curl 'http://127.0.0.1:8000/gpt/notice-categories'
+curl 'http://127.0.0.1:8000/gpt/periods'
 curl 'http://127.0.0.1:8000/classrooms/empty?building=%EB%8B%88%EC%BD%9C%EC%8A%A4%EA%B4%80&at=2026-03-16T10:15:00%2B09:00'
 curl 'http://127.0.0.1:8000/restaurants/nearby?origin=central-library&budget_max=10000&walk_minutes=15'
 curl 'http://127.0.0.1:8000/restaurants/nearby?origin=central-library&open_now=true&at=2026-03-15T11:00:00%2B09:00'
@@ -260,6 +264,7 @@ SONGSIM_ADMIN_ENABLED=true uv run songsim-api
 
 `budget_max`는 엄격 필터입니다. 가격 정보가 없는 식당은 결과에서 제외됩니다.
 브랜드 direct search는 `origin`이 없어도 동작하고, 캠퍼스에 가까운 후보를 먼저 보여줍니다. `스타벅스`, `커피빈`, `투썸`, `빽다방`처럼 long-tail 브랜드도 direct search로 먼저 확인합니다.
+공지 카테고리 설명은 `/notice-categories` 또는 `songsim://notice-categories`로 바로 읽을 수 있고, 교시표는 `/periods`, `/gpt/periods`, `songsim://class-periods`로 바로 확인할 수 있습니다.
 
 ## 대표 MCP 테스트 질문
 

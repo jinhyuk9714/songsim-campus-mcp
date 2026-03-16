@@ -23,7 +23,7 @@ Codex에서는 이 MCP가 공개 제품의 기준 표면입니다. HTTP API나 S
 ## 추천 사용 흐름
 
 1. `songsim://usage-guide` resource로 공개 범위를 확인
-2. prompt_find_place / prompt_find_empty_classrooms / prompt_search_courses / prompt_latest_notices / prompt_find_nearby_restaurants / prompt_search_restaurants / prompt_transport_guide 중 하나를 먼저 사용
+2. prompt_find_place / prompt_search_courses / prompt_class_periods / prompt_notice_categories / prompt_latest_notices / prompt_find_empty_classrooms / prompt_find_nearby_restaurants / prompt_search_restaurants / prompt_transport_guide 중 하나를 먼저 사용
 3. prompt가 가리키는 tool로 실제 조회
 
 강의실 공실은 공식 실시간 source가 있으면 그 결과를 우선 쓰고, 없으면 시간표 기준 예상 공실로 자동 폴백합니다.
@@ -33,6 +33,9 @@ Codex에서는 이 MCP가 공개 제품의 기준 표면입니다. HTTP API나 S
 - `성심교정 중앙도서관 정보 찾아줘`
 - `2026년 1학기 컴퓨터정보공학부 과목 검색해줘`
 - `최신 academic 공지 보여줘`
+- `공지 카테고리 종류 알려줘`
+- `employment랑 career 차이 설명해줘`
+- `7교시가 몇 시야?`
 - `중앙도서관 근처 한식집 찾아줘`
 
 ## 대표 MCP 테스트 질문
@@ -61,6 +64,7 @@ Codex에서는 이 MCP가 공개 제품의 기준 표면입니다. HTTP API나 S
 
 식당 조회에서 `budget_max`를 주면 가격 정보가 확인된 후보만 남고, 가격 정보가 없는 후보는 제외됩니다.
 브랜드 direct search는 `origin`이 없어도 캠퍼스에 가까운 후보를 먼저 보여줍니다. `스타벅스`, `커피빈`, `투썸`, `빽다방` 같은 브랜드도 같은 흐름으로 검색할 수 있습니다.
+카테고리 설명은 `songsim://notice-categories` 또는 `/notice-categories`, 교시표는 `songsim://class-periods`, `/periods`, `/gpt/periods`로 바로 확인할 수 있습니다.
 
 ## 공개 서버 제한
 
