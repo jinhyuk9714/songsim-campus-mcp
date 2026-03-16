@@ -56,6 +56,7 @@
 - `커피빈`은 여전히 `[]`지만 현재 정책상 immediate bug라기보다 “campus-near 실재 후보 없음 또는 curated alias 범위 밖”으로 보는 편이 맞습니다.
 
 2. course source-gap watchlist
+- `데이터베이스`는 `near_match_only`, `CSE301/김가톨/데이타베이스/CSE 420`는 `no_source_backed_hit` 상태로 유지됩니다.
 - release gate에서 빠졌기 때문에 지금 당장 구현 우선순위는 아니지만, source truth 변화가 생기면 다시 확인해야 합니다.
 
 ## 지금은 주요 리스크가 아닌 것
@@ -74,15 +75,17 @@
 
 ## 다음 구현 1순위
 
-`course source-gap watchlist 유지, no code`
+`brand long-tail watch 유지`
 
 이유:
 - release-pack은 이미 안정적이고 hard fail이 없습니다.
-- metadata parity까지 들어오면서 직전 soft item의 상당수가 해소됐습니다.
-- 지금 남은 이슈는 `커피빈` long-tail과 course source-gap watchlist처럼 코드 수정보다 관찰/재평가 성격이 더 강합니다.
+- GPT metadata spot check까지 끝나면서 `공지 카테고리`, `7교시` 축도 현재 운영에서 direct path로 확인됐습니다.
+- 지금 남은 이슈는 `커피빈` long-tail과 course source-gap watchlist인데, 그중 사용자 체감이 더 큰 쪽은 brand long-tail 관찰입니다.
 
 ## 관련 문서
 
 - [Hidden Risk Audit](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-hidden-risk-audit.md)
 - [Public MCP Release Pack 50](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-release-pack-50.md)
 - [Public MCP Live Validation Summary](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-live-validation-summary.md)
+- [Public MCP Course Watchlist](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-course-watchlist.md)
+- [Public MCP GPT Metadata Spot Check](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-gpt-metadata-spot-check.md)

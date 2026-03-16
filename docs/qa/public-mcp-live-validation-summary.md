@@ -96,11 +96,12 @@
 3. brand long-tail watch 유지
    - `커피빈`은 현재 campus-near 실재 후보가 없는 쪽에 가까워서, 코드 수정보다 관찰 유지가 우선입니다.
 4. Shared GPT 핵심 샘플 점검
-   - metadata endpoint가 추가됐으니 `공지 카테고리`, `7교시` 계열 질문을 GPT surface에서 한 번 더 짧게 확인하면 충분합니다.
+   - `HTTP/OpenAPI proxy` 기준 spot check 결과 `공지 카테고리`, `7교시` 계열 metadata path는 정상입니다.
+   - 이후 실제 ChatGPT UI 샘플 검증은 별도 UX 확인 작업으로 남길 수 있습니다.
 
 ## 다음 우선순위
 
-- `course source-gap watchlist 모니터링 -> brand long-tail watch 유지 -> Shared GPT metadata spot check` 순서가 가장 자연스럽습니다.
+- `brand long-tail watch 유지 -> course source-gap watchlist 모니터링 -> Shared GPT UI 샘플 확인` 순서가 가장 자연스럽습니다.
 - 그다음에 Shared GPT 핵심 10~15문장 샘플 검증으로 넘어가면 됩니다.
 
 ## 관련 문서
@@ -109,3 +110,5 @@
 - [공개 MCP 릴리즈팩 50](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-release-pack-50.md)
 - [공개 MCP 라이브 판정표 50](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-live-validation-50.md)
 - [기존 20문장 실측 리포트](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-live-validation-20.md)
+- [공개 MCP Course Watchlist](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-course-watchlist.md)
+- [공개 MCP GPT Metadata Spot Check](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-gpt-metadata-spot-check.md)
