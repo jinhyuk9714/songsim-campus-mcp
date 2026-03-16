@@ -263,6 +263,17 @@ def test_search_courses_normalizes_spacing_variants(app_env):
     assert courses[0].title == "객체지향프로그래밍설계"
 
 
+def test_search_courses_filters_by_period_start(app_env):
+    init_db()
+    seed_demo(force=True)
+    with connection() as conn:
+        courses = search_courses(conn, year=2026, semester=1, period_start=7, limit=5)
+
+    assert courses
+    assert [course.code for course in courses] == ["CSE401"]
+    assert all(course.period_start == 7 for course in courses)
+
+
 def test_load_place_alias_overrides_contract():
     overrides = _load_place_alias_overrides()
 

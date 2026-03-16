@@ -298,6 +298,7 @@ def search_courses(
     *,
     year: int | None = None,
     semester: int | None = None,
+    period_start: int | None = None,
     limit: int = 20,
 ) -> list[dict[str, Any]]:
     normalized = f"%{query.strip()}%"
@@ -317,6 +318,9 @@ def search_courses(
     if semester is not None:
         sql += " AND semester = %s"
         params.append(semester)
+    if period_start is not None:
+        sql += " AND period_start = %s"
+        params.append(period_start)
     sql += " ORDER BY year DESC, semester DESC, title LIMIT %s"
     params.append(limit)
     rows = conn.execute(sql, params).fetchall()

@@ -36,6 +36,7 @@ Codex에서는 이 MCP가 공개 제품의 기준 표면입니다. HTTP API나 S
 - `공지 카테고리 종류 알려줘`
 - `employment랑 career 차이 설명해줘`
 - `7교시가 몇 시야?`
+- `7교시에 시작하는 과목 찾고 싶어`
 - `중앙도서관 근처 한식집 찾아줘`
 
 ## 대표 MCP 테스트 질문
@@ -64,7 +65,7 @@ Codex에서는 이 MCP가 공개 제품의 기준 표면입니다. HTTP API나 S
 
 식당 조회에서 `budget_max`를 주면 가격 정보가 확인된 후보만 남고, 가격 정보가 없는 후보는 제외됩니다.
 브랜드 direct search는 `origin`이 없어도 캠퍼스에 가까운 후보를 먼저 찾고, 근처에 없으면 더 가까운 외부 지점을 보여줄 수 있습니다. `스타벅스`, `커피빈`, `투썸`, `빽다방` 같은 브랜드도 같은 흐름으로 검색할 수 있습니다.
-카테고리 설명은 `songsim://notice-categories` 또는 `/notice-categories`, 교시표는 `songsim://class-periods`, `/periods`, `/gpt/periods`로 바로 확인할 수 있습니다.
+카테고리 설명은 `songsim://notice-categories` 또는 `/notice-categories`, 교시표는 `songsim://class-periods`, `/periods`, `/gpt/periods`로 바로 확인할 수 있습니다. 교시 기반 과목 조회는 `tool_search_courses(period_start=7, year=2026, semester=1)` 또는 `/courses?year=2026&semester=1&period_start=7`처럼 direct filter를 쓰면 됩니다.
 
 ## 공개 서버 제한
 

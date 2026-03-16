@@ -93,7 +93,8 @@ GPT_ACTION_PATHS: dict[str, dict[str, str]] = {
         "operationId": "searchCourses",
         "summary": "Search public course offerings",
         "description": (
-            "Search public Songsim course offerings by title and optional year or semester."
+            "Search public Songsim course offerings by title and optional year, "
+            "semester, or exact period_start."
         ),
     },
     "/notices": {
@@ -1493,10 +1494,18 @@ def create_app() -> FastAPI:
         query: str = Query(default=""),
         year: int | None = Query(default=None),
         semester: int | None = Query(default=None),
+        period_start: int | None = Query(default=None),
         limit: int = Query(default=20, ge=1, le=50),
     ) -> list[Course]:
         with connection() as conn:
-            return search_courses(conn, query=query, year=year, semester=semester, limit=limit)
+            return search_courses(
+                conn,
+                query=query,
+                year=year,
+                semester=semester,
+                period_start=period_start,
+                limit=limit,
+            )
 
     @app.get("/restaurants", response_model=list[Restaurant])
     def restaurants() -> list[Restaurant]:

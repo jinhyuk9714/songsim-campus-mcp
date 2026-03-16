@@ -737,6 +737,7 @@ def test_mcp_public_metadata_prompts_explain_direct_metadata_flow(app_env, monke
     assert "songsim://notice-categories" in notices_message
     assert "/notice-categories" in notices_message
     assert "songsim://class-periods" in courses_message
+    assert "period_start" in courses_message
     assert "/periods" in courses_message
     assert "/gpt/periods" in courses_message
 
@@ -766,6 +767,29 @@ def test_mcp_public_search_places_returns_condensed_place_payload(app_env, monke
     assert payload["highlights"][0] == "별칭: 도서관, 중도"
     assert "description" not in payload
     assert "opening_hours" not in payload
+
+    clear_settings_cache()
+
+
+def test_mcp_public_search_courses_tool_accepts_period_start(app_env, monkeypatch):
+    pytest.importorskip('mcp.server.fastmcp')
+    init_db()
+    seed_demo(force=True)
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        result = await mcp.call_tool(
+            'tool_search_courses',
+            {'year': 2026, 'semester': 1, 'period_start': 7, 'limit': 5},
+        )
+        return _tool_payloads(result)
+
+    payload = asyncio.run(main())
+
+    assert [item["code"] for item in payload] == ["CSE401"]
+    assert all(item["period_start"] == 7 for item in payload)
 
     clear_settings_cache()
 

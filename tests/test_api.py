@@ -113,6 +113,8 @@ def test_public_readonly_mode_exposes_gpt_actions_openapi(app_env, monkeypatch):
     }
     assert payload["paths"]["/places"]["get"]["operationId"] == "searchPlaces"
     assert payload["paths"]["/courses"]["get"]["operationId"] == "searchCourses"
+    course_parameters = payload["paths"]["/courses"]["get"]["parameters"]
+    assert any(item["name"] == "period_start" for item in course_parameters)
     assert payload["paths"]["/notices"]["get"]["operationId"] == "listLatestNotices"
     assert (
         payload["paths"]["/notice-categories"]["get"]["operationId"]
@@ -1399,6 +1401,18 @@ def test_courses_endpoint_normalizes_spacing_variants(client):
     assert response.status_code == 200
     assert response.json()
     assert response.json()[0]["title"] == "객체지향프로그래밍설계"
+
+
+def test_courses_endpoint_filters_by_period_start(client):
+    response = client.get(
+        "/courses",
+        params={"year": 2026, "semester": 1, "period_start": 7, "limit": 5},
+    )
+
+    assert response.status_code == 200
+    assert response.json()
+    assert [item["code"] for item in response.json()] == ["CSE401"]
+    assert all(item["period_start"] == 7 for item in response.json())
 
 
 def test_nearby_restaurants_endpoint_uses_campus_graph_for_external_routes(client):

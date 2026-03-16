@@ -432,11 +432,15 @@ def build_mcp():
             query: Annotated[str, Field(description="과목명, 코드, 교수명 등 검색어")] = "",
             year: Annotated[int | None, Field(description="학년도 필터")] = None,
             semester: Annotated[int | None, Field(description="학기 필터")] = None,
+            period_start: Annotated[int | None, Field(description="교시 시작 번호 필터")] = None,
         ):
             return (
                 "Use tool_search_courses for public course lookup.\n"
-                f"query={query or '<empty>'}, year={year}, semester={semester}.\n"
+                f"query={query or '<empty>'}, year={year}, semester={semester}, "
+                f"period_start={period_start}.\n"
                 "If a user asks about period numbers, use prompt_class_periods first.\n"
+                "For questions like 7교시에 시작하는 과목, call tool_search_courses with "
+                "period_start=7 plus year/semester when available.\n"
                 "The direct metadata paths are songsim://class-periods, "
                 "tool_get_class_periods, /periods, and /gpt/periods."
             )
@@ -687,9 +691,15 @@ def build_mcp():
 
     @mcp.tool(
         description=(
-            "과목명, 코드, 교수, 학기 조건으로 현재 공개된 성심교정 개설과목을 찾을 때 사용합니다."
+            (
+                "과목명, 코드, 교수, 학기, 교시 조건으로 현재 공개된 "
+                "성심교정 개설과목을 찾을 때 사용합니다."
+            )
             if public_readonly
-            else "현재 공개된 성심교정 개설과목을 과목명, 코드, 교수, 학기 조건으로 찾습니다."
+            else (
+                "현재 공개된 성심교정 개설과목을 과목명, 코드, 교수, 학기, "
+                "교시 조건으로 찾습니다."
+            )
         ),
         meta=tool_meta,
     )
@@ -700,6 +710,10 @@ def build_mcp():
         ] = "",
         year: Annotated[int | None, Field(description="학년도 필터. 예: 2026")] = None,
         semester: Annotated[int | None, Field(description="학기 필터. 예: 1, 2")] = None,
+        period_start: Annotated[
+            int | None,
+            Field(description="교시 시작 번호 필터. 예: 7"),
+        ] = None,
         limit: Annotated[int, Field(description="최대 결과 수. 기본값은 20입니다.")] = 20,
     ):
         with connection() as conn:
@@ -708,6 +722,7 @@ def build_mcp():
                 query=query,
                 year=year,
                 semester=semester,
+                period_start=period_start,
                 limit=limit,
             )
             if public_readonly:

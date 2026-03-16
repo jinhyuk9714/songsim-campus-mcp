@@ -2130,6 +2130,7 @@ def search_courses(
     *,
     year: int | None = None,
     semester: int | None = None,
+    period_start: int | None = None,
     limit: int = 20,
 ) -> list[Course]:
     collapsed_query, compact_query = _normalized_query_variants(query)
@@ -2146,6 +2147,7 @@ def search_courses(
             candidate_query,
             year=year,
             semester=semester,
+            period_start=period_start,
             limit=fetch_limit,
         ):
             item_id = int(item["id"])
