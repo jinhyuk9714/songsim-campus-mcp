@@ -24,7 +24,7 @@
 - 건물별 WIFI 안내 조회
 - 지하철/버스 교통 안내 조회
 
-Codex에서는 이 MCP가 공개 제품의 기준 표면입니다. HTTP API나 Shared GPT보다 먼저 연결해 두면, 같은 검증 가능한 데이터 도구를 가장 직접적으로 쓸 수 있습니다.
+Codex에서는 이 MCP가 공개 제품의 기준 표면입니다. 학생-facing 기본 입구는 Remote MCP이고, HTTP는 검증 가능한 companion layer입니다.
 
 ## 추천 사용 흐름
 
@@ -90,9 +90,9 @@ Codex에서는 이 MCP가 공개 제품의 기준 표면입니다. HTTP API나 S
 증명서 발급 안내는 `tool_list_certificate_guides`로 조회하고, HTTP에서는 `/certificate-guides`를 씁니다.
 장학제도 안내는 `songsim://scholarship-guide`, `tool_list_scholarship_guides`, `/scholarship-guides`로 조회합니다.
 건물별 WIFI 안내는 `songsim://wifi-guide`, `tool_list_wifi_guides`, `/wifi-guides`로 조회합니다.
-교내 공식 학식 메뉴는 `prompt_search_dining_menus`와 `tool_search_dining_menus`로 조회하고, HTTP에서는 `/dining-menus`, `/gpt/dining-menus`를 씁니다. 현재는 current-week 메뉴 텍스트와 원본 PDF 링크를 함께 반환합니다.
-중앙도서관 열람실 좌석은 `prompt_library_seat_status`와 `tool_get_library_seat_status`로 조회하고, HTTP에서는 `/library-seats`, `/gpt/library-seats`를 씁니다. 이 기능은 best-effort live fetch이며 stale cache 또는 unavailable note로 폴백할 수 있습니다.
-카테고리 설명은 `songsim://notice-categories` 또는 `/notice-categories`, 교시표는 `songsim://class-periods`, `/periods`, `/gpt/periods`로 바로 확인할 수 있습니다. 교시 기반 과목 조회는 `tool_search_courses(period_start=7, year=2026, semester=1)` 또는 `/courses?year=2026&semester=1&period_start=7`처럼 direct filter를 쓰면 됩니다.
+교내 공식 학식 메뉴는 `prompt_search_dining_menus`와 `tool_search_dining_menus`로 조회하고, HTTP에서는 `/dining-menus`를 씁니다. 현재는 current-week 메뉴 텍스트와 원본 PDF 링크를 함께 반환합니다.
+중앙도서관 열람실 좌석은 `prompt_library_seat_status`와 `tool_get_library_seat_status`로 조회하고, HTTP에서는 `/library-seats`를 씁니다. 이 기능은 best-effort live fetch이며 stale cache 또는 unavailable note로 폴백할 수 있습니다.
+카테고리 설명은 `songsim://notice-categories` 또는 `/notice-categories`, 교시표는 `songsim://class-periods` 또는 `/periods`로 확인할 수 있습니다. 교시 기반 과목 조회는 `tool_search_courses(period_start=7, year=2026, semester=1)` 또는 `/courses?year=2026&semester=1&period_start=7`처럼 direct filter를 쓰면 됩니다.
 
 ## 공개 서버 제한
 
@@ -102,7 +102,7 @@ Codex에서는 이 MCP가 공개 제품의 기준 표면입니다. HTTP API나 S
 - 강의실 공실 응답에는 realtime/estimated fallback 여부가 함께 표시됩니다.
 - profile, timetable, notice preferences, meal personalization, admin 기능은 제외됩니다.
 
-전체 검증 자산은 `docs/qa/` 아래에서 운영합니다. Codex는 public MCP를 기준 표면으로 쓰고, Shared GPT는 릴리즈팩 중 핵심 10~15문장만 샘플 확인합니다.
+전체 검증 자산은 `docs/qa/` 아래에서 운영합니다. Codex는 public MCP를 기준 표면으로 쓰고, GPT 표면은 선택적 포장층으로만 다룹니다.
 
 - [공개 MCP 500문장 코퍼스](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-corpus-500.md)
 - [공개 MCP 릴리즈팩 50](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-release-pack-50.md)

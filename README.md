@@ -10,7 +10,7 @@
 
 - Remote MCP: ChatGPT, Claude, Codex 같은 클라이언트에서 직접 연결
 - HTTP API: 장소, 과목, 학사일정, 증명발급, 장학제도, 공지, 식당, WIFI, 교통 안내 조회
-- Shared GPT: ChatGPT GPT Builder에서 GPT 전용 v2 Actions schema로 붙여 `chatgpt.com/g/...` 링크로 공개
+- Optional packaging: 필요하면 ChatGPT GPT Builder의 Actions schema로 Shared GPT를 얹을 수 있음
 - Local full mode: profile, timetable, admin sync, observability, automation 운영
 
 공개 MCP 사용 패턴은 이 순서를 기준으로 보면 됩니다.
@@ -229,8 +229,8 @@ uv run songsim-api
 ```
 
 문서: `http://127.0.0.1:8000/docs`
-Shared GPT용 v2 schema: `http://127.0.0.1:8000/gpt-actions-openapi-v2.json`
-기존 Actions schema(v1): `http://127.0.0.1:8000/gpt-actions-openapi.json`
+선택적 Shared GPT 포장용 v2 schema: `http://127.0.0.1:8000/gpt-actions-openapi-v2.json`
+기존 Actions schema(v1, 회귀용): `http://127.0.0.1:8000/gpt-actions-openapi.json`
 
 ### 5. MCP 서버 실행
 
@@ -249,13 +249,13 @@ uv run songsim-mcp --transport streamable-http
 공개 MCP에서 기본으로 노출되는 resource:
 
 - `songsim://usage-guide`
-- `songsim://source-registry`
+- `songsim://academic-calendar`
+- `songsim://certificate-guide`
+- `songsim://scholarship-guide`
+- `songsim://wifi-guide`
 - `songsim://transport-guide`
-- `songsim://place-categories`
-- `songsim://notice-categories`
-- `songsim://class-periods`
 
-## API 예시
+## 학생용 공개 예시
 
 ```bash
 curl 'http://127.0.0.1:8000/places?query=도서관'
@@ -264,21 +264,27 @@ curl 'http://127.0.0.1:8000/academic-calendar?academic_year=2026&month=3'
 curl 'http://127.0.0.1:8000/certificate-guides'
 curl 'http://127.0.0.1:8000/scholarship-guides'
 curl 'http://127.0.0.1:8000/wifi-guides'
-curl 'http://127.0.0.1:8000/notice-categories'
-curl 'http://127.0.0.1:8000/periods'
 curl 'http://127.0.0.1:8000/library-seats'
 curl 'http://127.0.0.1:8000/library-seats?query=%EC%A0%9C1%EC%9E%90%EC%9C%A0%EC%97%B4%EB%9E%8C%EC%8B%A4'
-curl 'http://127.0.0.1:8000/gpt/notice-categories'
-curl 'http://127.0.0.1:8000/gpt/periods'
-curl 'http://127.0.0.1:8000/gpt/library-seats?query=%EC%97%B4%EB%9E%8C%EC%8B%A4%20%EB%82%A8%EC%9D%80%20%EC%A2%8C%EC%84%9D'
 curl 'http://127.0.0.1:8000/classrooms/empty?building=%EB%8B%88%EC%BD%9C%EC%8A%A4%EA%B4%80&at=2026-03-16T10:15:00%2B09:00'
 curl 'http://127.0.0.1:8000/restaurants/nearby?origin=central-library&budget_max=10000&walk_minutes=15'
 curl 'http://127.0.0.1:8000/restaurants/nearby?origin=central-library&open_now=true&at=2026-03-15T11:00:00%2B09:00'
 curl 'http://127.0.0.1:8000/restaurants/search?query=%EB%A7%A4%EB%A8%B8%EB%93%9C%EC%BB%A4%ED%94%BC'
 curl 'http://127.0.0.1:8000/dining-menus'
 curl 'http://127.0.0.1:8000/dining-menus?query=%ED%95%99%EC%83%9D%EC%8B%9D%EB%8B%B9'
-curl 'http://127.0.0.1:8000/gpt/dining-menus?query=%EC%B9%B4%ED%8E%98%20%EB%B3%B4%EB%82%98'
 curl 'http://127.0.0.1:8000/transport?mode=subway'
+```
+
+`budget_max`는 엄격 필터입니다. 가격 정보가 없는 식당은 결과에서 제외됩니다.
+브랜드 direct search는 `origin`이 없어도 동작하고, 먼저 캠퍼스에 가까운 후보를 찾습니다. 근처에 없으면 더 가까운 외부 지점을 보여줄 수 있습니다. `스타벅스`, `커피빈`, `투썸`, `빽다방`처럼 long-tail 브랜드도 direct search로 먼저 확인합니다.
+교내 공식 학식 3곳의 이번 주 메뉴는 `/dining-menus`로 조회할 수 있습니다. 현재는 주간 메뉴 텍스트와 원본 PDF 링크를 함께 반환하고, `오늘 메뉴`나 `내일 메뉴`도 이번 주 메뉴 기준으로 안내합니다.
+중앙도서관 열람실 좌석은 `/library-seats`로 best-effort 실시간 조회할 수 있습니다. public API automation이 켜져 있으면 5분 간격 prewarm으로 짧은 stale cache를 먼저 채우고, source가 응답하지 않으면 stale cache 또는 unavailable note로 안전하게 폴백합니다.
+학사일정은 `/academic-calendar`, 증명발급 안내는 `/certificate-guides`, 장학제도는 `/scholarship-guides`, WIFI 안내는 `/wifi-guides`로 바로 조회할 수 있습니다.
+교시 기반 과목 조회는 `/courses?year=2026&semester=1&period_start=7`처럼 direct filter로도 처리할 수 있습니다. 카테고리/교시표 같은 메타데이터 helper는 필요할 때만 꺼내 쓰면 됩니다.
+
+## 로컬 full / 운영 예시
+
+```bash
 curl 'http://127.0.0.1:8000/readyz'
 curl -X POST 'http://127.0.0.1:8000/profiles' -H 'content-type: application/json' -d '{"display_name":"성심학생"}'
 curl -X PUT 'http://127.0.0.1:8000/profiles/{profile_id}/timetable' -H 'content-type: application/json' -d '[{"year":2026,"semester":1,"code":"07487","section":"01"}]'
@@ -289,15 +295,7 @@ curl 'http://127.0.0.1:8000/profiles/{profile_id}/meal-recommendations?origin=ce
 SONGSIM_ADMIN_ENABLED=true uv run songsim-api
 # 브라우저에서 http://127.0.0.1:8000/admin/sync 열기
 # 관측성 JSON은 http://127.0.0.1:8000/admin/observability.json
-# 자동화를 켜면 같은 앱 안에서 snapshot sync + library seat prewarm + cache cleanup이 주기적으로 실행됨
 ```
-
-`budget_max`는 엄격 필터입니다. 가격 정보가 없는 식당은 결과에서 제외됩니다.
-브랜드 direct search는 `origin`이 없어도 동작하고, 먼저 캠퍼스에 가까운 후보를 찾습니다. 근처에 없으면 더 가까운 외부 지점을 보여줄 수 있습니다. `스타벅스`, `커피빈`, `투썸`, `빽다방`처럼 long-tail 브랜드도 direct search로 먼저 확인합니다.
-교내 공식 학식 3곳의 이번 주 메뉴는 `/dining-menus`와 `/gpt/dining-menus`로 조회할 수 있습니다. 현재는 주간 메뉴 텍스트와 원본 PDF 링크를 함께 반환하고, `오늘 메뉴`나 `내일 메뉴`도 이번 주 메뉴 기준으로 안내합니다.
-중앙도서관 열람실 좌석은 `/library-seats`와 `/gpt/library-seats`로 best-effort 실시간 조회할 수 있습니다. public API automation이 켜져 있으면 5분 간격 prewarm으로 짧은 stale cache를 먼저 채우고, source가 응답하지 않으면 stale cache 또는 unavailable note로 안전하게 폴백합니다.
-학사일정은 `/academic-calendar`, 증명발급 안내는 `/certificate-guides`, 장학제도는 `/scholarship-guides`, WIFI 안내는 `/wifi-guides`로 바로 조회할 수 있습니다.
-공지 카테고리 설명은 `/notice-categories` 또는 `songsim://notice-categories`로 바로 읽을 수 있고, 교시표는 `/periods`, `/gpt/periods`, `songsim://class-periods`로 바로 확인할 수 있습니다. 교시 기반 과목 조회는 `/courses?year=2026&semester=1&period_start=7`처럼 direct filter로도 처리할 수 있습니다.
 
 ## 대표 MCP 테스트 질문
 

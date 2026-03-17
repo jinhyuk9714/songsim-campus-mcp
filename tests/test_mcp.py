@@ -933,6 +933,7 @@ def test_mcp_public_usage_and_class_period_resources_are_readable(app_env, monke
     assert "매머드커피" in usage_content
     assert "헬스장" in usage_content
     assert "편의점" in usage_content
+    assert "/gpt/" not in usage_content
     assert periods_payload[0]["period"] == 1
     assert {"period", "start", "end"} <= set(periods_payload[0].keys())
 
@@ -1008,16 +1009,13 @@ def test_mcp_public_metadata_prompts_explain_direct_metadata_flow(app_env, monke
     assert "songsim://class-periods" in periods_message
     assert "tool_get_class_periods" in periods_message
     assert "/periods" in periods_message
-    assert "/gpt/periods" in periods_message
     assert "tool_get_library_seat_status" in seats_message
     assert "/library-seats" in seats_message
-    assert "/gpt/library-seats" in seats_message
     assert "songsim://notice-categories" in notices_message
     assert "/notice-categories" in notices_message
     assert "songsim://class-periods" in courses_message
     assert "period_start" in courses_message
     assert "/periods" in courses_message
-    assert "/gpt/periods" in courses_message
     assert "tool_search_dining_menus" in dining_message
     assert "학생식당 메뉴" in dining_message
     assert "카페 보나" in dining_message

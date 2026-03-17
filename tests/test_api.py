@@ -217,9 +217,6 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     monkeypatch.setenv("SONGSIM_ADMIN_ENABLED", "true")
     monkeypatch.setenv("SONGSIM_PUBLIC_HTTP_URL", "https://songsim-api.onrender.com")
     monkeypatch.setenv("SONGSIM_PUBLIC_MCP_URL", "https://songsim-mcp.onrender.com/mcp")
-    monkeypatch.setenv("SONGSIM_MCP_OAUTH_ENABLED", "true")
-    monkeypatch.setenv("SONGSIM_MCP_OAUTH_ISSUER", "https://songsim.us.auth0.com/")
-    monkeypatch.setenv("SONGSIM_MCP_OAUTH_AUDIENCE", "https://songsim-mcp.onrender.com/mcp")
     clear_settings_cache()
 
     app = create_app()
@@ -237,7 +234,10 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     assert "Songsim Campus MCP" in landing.text
     assert "https://songsim-api.onrender.com" in landing.text
     assert "https://songsim-mcp.onrender.com/mcp" in landing.text
-    assert "Google login" in landing.text
+    assert "configured without OAuth" in landing.text
+    assert "GPT Actions OpenAPI" not in landing.text
+    assert "/gpt/*" not in landing.text
+    assert "Admin Sync" not in landing.text
     assert docs.status_code == 200
     assert places.status_code == 200
     assert create_profile.status_code == 404

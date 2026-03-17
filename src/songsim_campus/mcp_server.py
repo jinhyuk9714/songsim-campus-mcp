@@ -275,8 +275,8 @@ def _public_usage_guide() -> str:
             "This server is read-only.",
             (
                 "Available: places, courses, academic calendar, certificate guides, "
-                "scholarship guides, wifi guides, notices, nearby restaurants, "
-                "transport guides."
+                "scholarship guides, wifi guides, notices, dining menus, library seats, "
+                "empty classrooms, nearby restaurants, restaurant search, transport guides."
             ),
             "Unavailable: profile, timetable, notice preferences, meal personalization, admin.",
             "",
@@ -285,10 +285,6 @@ def _public_usage_guide() -> str:
             (
                 "2. Use a prompt such as prompt_find_place or "
                 "prompt_find_nearby_restaurants to choose the first tool."
-            ),
-            (
-                "2a. For metadata questions, use prompt_notice_categories or "
-                "prompt_class_periods before chaining to notices or courses."
             ),
             (
                 "3. Use tool_search_places for fuzzy building/facility queries such as "
@@ -347,9 +343,8 @@ def _public_usage_guide() -> str:
                 "1호선, 역곡역, or 버스. 셔틀은 현재 지원하지 않아 빈 결과가 정상입니다."
             ),
             (
-                "15. Use songsim://notice-categories or /notice-categories when a user asks "
-                "which notice categories exist. Use songsim://class-periods, /periods, or "
-                "/gpt/periods when a user asks what a period number means."
+                "15. Advanced metadata helpers exist for notice categories and class periods "
+                "when you need them, but they are not the main student entry flow."
             ),
             "",
             "Example questions:",
@@ -553,7 +548,7 @@ def build_mcp():
                 "For questions like 7교시에 시작하는 과목, call tool_search_courses with "
                 "period_start=7 plus year/semester when available.\n"
                 "The direct metadata paths are songsim://class-periods, "
-                "tool_get_class_periods, /periods, and /gpt/periods."
+                "tool_get_class_periods, and /periods."
             )
 
         @mcp.prompt(
@@ -619,7 +614,7 @@ def build_mcp():
             return (
                 "Use songsim://class-periods or call tool_get_class_periods for the public "
                 "class period table.\n"
-                "The HTTP metadata paths are /periods and /gpt/periods.\n"
+                "The HTTP metadata path is /periods.\n"
                 "Use this first for questions like 7교시가 몇 시야 or 3교시가 몇 시야."
             )
 
@@ -641,7 +636,7 @@ def build_mcp():
             return (
                 "Use tool_get_library_seat_status for 중앙도서관 열람실 좌석 현황.\n"
                 f"query={query or '<optional>'}.\n"
-                "The HTTP paths are /library-seats and /gpt/library-seats.\n"
+                "The HTTP path is /library-seats.\n"
                 "This is a best-effort live lookup with fresh cache and stale fallback, "
                 "so availability_mode may be live, stale_cache, or unavailable."
             )
@@ -653,7 +648,7 @@ def build_mcp():
         def prompt_notice_categories():
             return (
                 "Use songsim://notice-categories for the canonical public notice categories.\n"
-                "The HTTP metadata paths are /notice-categories and /gpt/notice-categories.\n"
+                "The HTTP metadata path is /notice-categories.\n"
                 "Use this first for questions like 공지 카테고리 종류, academic이 뭐야, "
                 "or employment랑 career 차이."
             )

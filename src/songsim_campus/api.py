@@ -820,7 +820,8 @@ def create_app() -> FastAPI:
             or "Set SONGSIM_PUBLIC_MCP_URL to show the public MCP URL."
         )
         oauth_enabled = (
-            settings.app_mode == "public_readonly" and settings.mcp_oauth_enabled
+            settings.app_mode == "public_readonly"
+            and settings.public_mcp_auth_mode == "oauth"
         )
         example_prompts = [
             "성심교정 중앙도서관 위치 알려줘",
@@ -840,6 +841,14 @@ def create_app() -> FastAPI:
             '<a class="pill" href="/admin/sync">Admin Sync</a>'
             if settings.admin_enabled and not public_readonly
             else ""
+        )
+        gpt_actions_links = (
+            ""
+            if public_readonly
+            else (
+                '<a class="pill" href="/gpt-actions-openapi-v2.json">GPT Actions OpenAPI v2</a>'
+                '<a class="pill" href="/gpt-actions-openapi.json">GPT Actions OpenAPI v1</a>'
+            )
         )
         examples_html = "".join(
             f"<li>{html.escape(prompt)}</li>"
@@ -927,8 +936,9 @@ def create_app() -> FastAPI:
       <h1>Songsim Campus MCP</h1>
       <p class="lead">
         Verified Catholic University Songsim campus data server for places, courses,
-        academic calendar, notices, restaurants, and transit. The remote MCP endpoint is the primary
-        public product surface, and the HTTP API is the thin companion layer.
+        academic calendar, certificates, scholarships, campus wifi, notices, restaurants,
+        and transit. The remote MCP endpoint is the primary public product surface, and the
+        HTTP API is the thin companion layer.
       </p>
       <div class="hero">
         <section class="card">
@@ -936,13 +946,13 @@ def create_app() -> FastAPI:
           <p>
             This server exposes verified Songsim campus data through a remote read-only MCP
             endpoint for ChatGPT, Claude, and Codex-style clients, plus a companion HTTP API
-            for direct integrations and GPT Actions.
+            for direct lookups and verification.
           </p>
           <p class="meta">
             {
               (
-                "Remote MCP access is the core public interface and requires "
-                "OAuth login via Auth0 and Google login."
+                "Remote MCP access is the core public interface and currently "
+                "requires OAuth login."
               )
               if oauth_enabled
               else (
@@ -954,8 +964,7 @@ def create_app() -> FastAPI:
           <p>
             <a class="pill primary" href="{html.escape(docs_url)}">Open API Docs</a>
             <a class="pill" href="/openapi.json">OpenAPI JSON</a>
-            <a class="pill" href="/gpt-actions-openapi-v2.json">GPT Actions OpenAPI v2</a>
-            <a class="pill" href="/gpt-actions-openapi.json">GPT Actions OpenAPI v1</a>
+            {gpt_actions_links}
             <a class="pill" href="{html.escape(privacy_url)}">Privacy Policy</a>
             {admin_link}
           </p>
@@ -974,7 +983,7 @@ def create_app() -> FastAPI:
           <ul>{examples_html}</ul>
         </article>
         <article class="card">
-          <h2>MCP-Backed HTTP Endpoints</h2>
+          <h2>Student HTTP Companion</h2>
           <ul>
             <li><code>/places</code> campus places and landmarks</li>
             <li><code>/courses</code> public course offerings</li>
@@ -982,14 +991,16 @@ def create_app() -> FastAPI:
             <li><code>/certificate-guides</code> certificate issuance guides</li>
             <li><code>/scholarship-guides</code> scholarship baseline guides</li>
             <li><code>/wifi-guides</code> campus wifi SSIDs and connection steps</li>
+            <li><code>/library-seats</code> central-library seat status</li>
+            <li><code>/dining-menus</code> official weekly campus dining menus</li>
             <li>
               <code>/classrooms/empty</code> official realtime classrooms first,
               estimated fallback
             </li>
             <li><code>/restaurants/nearby</code> walkable food recommendations</li>
+            <li><code>/restaurants/search</code> direct cafe and brand lookup</li>
             <li><code>/notices</code> latest public campus notices</li>
             <li><code>/transport</code> Songsim transit guides</li>
-            <li><code>/gpt/*</code> concise GPT-friendly summaries for shared GPT actions</li>
           </ul>
         </article>
         <article class="card">
