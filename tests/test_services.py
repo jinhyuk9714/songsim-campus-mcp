@@ -29,10 +29,12 @@ from songsim_campus.services import (
     get_notice_categories,
     get_place,
     investigate_course_query_coverage,
+    list_academic_calendar,
     list_certificate_guides,
     list_estimated_empty_classrooms,
     list_latest_notices,
     list_transport_guides,
+    refresh_academic_calendar_from_source,
     refresh_campus_dining_menus_from_facilities_page,
     refresh_certificate_guides_from_certificate_page,
     refresh_courses_from_subject_search,
@@ -3486,6 +3488,29 @@ class FakeCertificateSource:
         ]
 
 
+class FakeAcademicCalendarSource:
+    def fetch_range(self, *, start_date: str, end_date: str):
+        assert start_date == "2026-03-01"
+        assert end_date == "2027-02-28"
+        return '{"data":[]}'
+
+    def parse(self, payload: str, *, fetched_at: str):
+        assert payload == '{"data":[]}'
+        assert fetched_at == "2026-03-17T15:00:00+09:00"
+        return [
+            {
+                "academic_year": 2026,
+                "title": "1학기 개시일",
+                "start_date": "2026-03-03",
+                "end_date": "2026-03-03",
+                "campuses": ["성심", "성의", "성신"],
+                "source_url": "https://www.catholic.ac.kr/ko/support/calendar2024_list.do",
+                "source_tag": "cuk_academic_calendar",
+                "last_synced_at": fetched_at,
+            }
+        ]
+
+
 def test_refresh_library_hours_merges_opening_hours_into_existing_place(app_env):
     init_db()
     seed_demo(force=True)
@@ -3618,6 +3643,118 @@ def test_refresh_certificate_guides_replaces_rows(app_env):
     assert guides[0].title == "인터넷 증명발급"
     assert guides[0].source_url == "https://catholic.certpia.com/"
     assert guides[0].source_tag == "cuk_certificate_guides"
+
+
+def test_refresh_academic_calendar_replaces_rows(app_env):
+    init_db()
+
+    with connection() as conn:
+        refresh_academic_calendar_from_source(
+            conn,
+            source=FakeAcademicCalendarSource(),
+            academic_year=2026,
+            fetched_at="2026-03-17T15:00:00+09:00",
+        )
+        events = list_academic_calendar(conn, academic_year=2026, limit=10)
+
+    assert len(events) == 1
+    assert events[0].title == "1학기 개시일"
+    assert events[0].campuses == ["성심", "성의", "성신"]
+    assert events[0].source_tag == "cuk_academic_calendar"
+
+
+def test_list_academic_calendar_defaults_to_current_academic_year_and_prioritizes_songsim(
+    app_env,
+    monkeypatch,
+):
+    init_db()
+    monkeypatch.setattr("songsim_campus.services._current_academic_year", lambda today=None: 2026)
+
+    with connection() as conn:
+        repo.replace_academic_calendar(
+            conn,
+            [
+                {
+                    "academic_year": 2025,
+                    "title": "이전 학년도 행사",
+                    "start_date": "2025-03-05",
+                    "end_date": "2025-03-05",
+                    "campuses": ["성심"],
+                    "source_url": "https://www.catholic.ac.kr/ko/support/calendar2024_list.do",
+                    "source_tag": "cuk_academic_calendar",
+                    "last_synced_at": "2026-03-17T15:00:00+09:00",
+                },
+                {
+                    "academic_year": 2026,
+                    "title": "성의 전용 행사",
+                    "start_date": "2026-03-01",
+                    "end_date": "2026-03-01",
+                    "campuses": ["성의"],
+                    "source_url": "https://www.catholic.ac.kr/ko/support/calendar2024_list.do",
+                    "source_tag": "cuk_academic_calendar",
+                    "last_synced_at": "2026-03-17T15:00:00+09:00",
+                },
+                {
+                    "academic_year": 2026,
+                    "title": "1학기 개시일",
+                    "start_date": "2026-03-03",
+                    "end_date": "2026-03-03",
+                    "campuses": ["성심", "성의", "성신"],
+                    "source_url": "https://www.catholic.ac.kr/ko/support/calendar2024_list.do",
+                    "source_tag": "cuk_academic_calendar",
+                    "last_synced_at": "2026-03-17T15:00:00+09:00",
+                },
+            ],
+        )
+        events = list_academic_calendar(conn, limit=10)
+
+    assert [item.title for item in events] == ["1학기 개시일", "성의 전용 행사"]
+
+
+def test_list_academic_calendar_filters_by_month_and_query(app_env):
+    init_db()
+
+    with connection() as conn:
+        repo.replace_academic_calendar(
+            conn,
+            [
+                {
+                    "academic_year": 2026,
+                    "title": "추가 등록기간",
+                    "start_date": "2026-03-31",
+                    "end_date": "2026-04-03",
+                    "campuses": ["성심"],
+                    "source_url": "https://www.catholic.ac.kr/ko/support/calendar2024_list.do",
+                    "source_tag": "cuk_academic_calendar",
+                    "last_synced_at": "2026-03-17T15:00:00+09:00",
+                },
+                {
+                    "academic_year": 2026,
+                    "title": "중간고사",
+                    "start_date": "2026-04-20",
+                    "end_date": "2026-04-24",
+                    "campuses": ["성심"],
+                    "source_url": "https://www.catholic.ac.kr/ko/support/calendar2024_list.do",
+                    "source_tag": "cuk_academic_calendar",
+                    "last_synced_at": "2026-03-17T15:00:00+09:00",
+                },
+                {
+                    "academic_year": 2026,
+                    "title": "3월 행사",
+                    "start_date": "2026-03-10",
+                    "end_date": "2026-03-10",
+                    "campuses": ["성심"],
+                    "source_url": "https://www.catholic.ac.kr/ko/support/calendar2024_list.do",
+                    "source_tag": "cuk_academic_calendar",
+                    "last_synced_at": "2026-03-17T15:00:00+09:00",
+                },
+            ],
+        )
+        april = list_academic_calendar(conn, academic_year=2026, month=4, limit=10)
+        registration = list_academic_calendar(conn, academic_year=2026, query="등록", limit=10)
+
+    assert [item.title for item in april] == ["추가 등록기간", "중간고사"]
+    assert [item.title for item in registration] == ["추가 등록기간"]
 
 
 def test_list_transport_guides_infers_mode_from_query_and_normalizes_spacing(app_env):
@@ -3772,6 +3909,10 @@ def test_sync_official_snapshot_runs_opening_hours_before_courses_and_transport(
         lambda conn, pages=None: call_order.append('notices') or [],
     )
     monkeypatch.setattr(
+        'songsim_campus.services.refresh_academic_calendar_from_source',
+        lambda conn: call_order.append('academic_calendar') or [],
+    )
+    monkeypatch.setattr(
         'songsim_campus.services.refresh_certificate_guides_from_certificate_page',
         lambda conn: call_order.append('certificate_guides') or [],
     )
@@ -3791,9 +3932,11 @@ def test_sync_official_snapshot_runs_opening_hours_before_courses_and_transport(
         'dining_menus',
         'courses',
         'notices',
+        'academic_calendar',
         'certificate_guides',
         'transport',
     ]
     assert summary['dining_menus'] == 0
+    assert summary['academic_calendar'] == 0
     assert summary['certificate_guides'] == 0
     assert summary['transport_guides'] == 0

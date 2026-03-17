@@ -18,6 +18,7 @@ from songsim_campus.repo import (
 )
 from songsim_campus.seed import seed_demo
 from songsim_campus.services import (
+    refresh_academic_calendar_from_source,
     refresh_certificate_guides_from_certificate_page,
     refresh_transport_guides_from_location_page,
 )
@@ -59,6 +60,28 @@ class McpCertificateSource:
                 ],
                 "source_url": "https://catholic.certpia.com/",
                 "source_tag": "cuk_certificate_guides",
+                "last_synced_at": fetched_at,
+            }
+        ]
+
+
+class McpAcademicCalendarSource:
+    def fetch_range(self, *, start_date: str, end_date: str):
+        assert start_date == "2026-03-01"
+        assert end_date == "2027-02-28"
+        return '{"data":[]}'
+
+    def parse(self, payload: str, *, fetched_at: str):
+        assert payload == '{"data":[]}'
+        return [
+            {
+                "academic_year": 2026,
+                "title": "1학기 개시일",
+                "start_date": "2026-03-03",
+                "end_date": "2026-03-03",
+                "campuses": ["성심", "성의", "성신"],
+                "source_url": "https://www.catholic.ac.kr/ko/support/calendar2024_list.do",
+                "source_tag": "cuk_academic_calendar",
                 "last_synced_at": fetched_at,
             }
         ]
@@ -110,6 +133,35 @@ def test_mcp_certificate_tool_and_resource_share_service_data(app_env):
 
     assert tool_payload["title"] == "인터넷 증명발급"
     assert resource_payload[0]["title"] == "인터넷 증명발급"
+
+
+def test_mcp_academic_calendar_tool_and_resource_share_service_data(app_env):
+    pytest.importorskip("mcp.server.fastmcp")
+    init_db()
+    seed_demo(force=True)
+    with connection() as conn:
+        refresh_academic_calendar_from_source(
+            conn,
+            source=McpAcademicCalendarSource(),
+            academic_year=2026,
+        )
+
+    async def main():
+        mcp = build_mcp()
+        tool_result = await mcp.call_tool(
+            "tool_list_academic_calendar",
+            {"academic_year": 2026, "limit": 10},
+        )
+        resource_result = await mcp.read_resource("songsim://academic-calendar")
+        return tool_result, list(resource_result)
+
+    tool_result, resource_result = asyncio.run(main())
+
+    tool_payload = json.loads(tool_result[0].text)
+    resource_payload = json.loads(resource_result[0].content)
+
+    assert tool_payload["title"] == "1학기 개시일"
+    assert resource_payload[0]["title"] == "1학기 개시일"
 
 
 def test_mcp_transport_tool_accepts_query_and_mode_precedence(app_env, monkeypatch):
@@ -453,6 +505,7 @@ def test_mcp_public_readonly_mode_registers_only_read_only_tools(app_env, monkey
         "tool_search_places",
         "tool_get_place",
         "tool_search_courses",
+        "tool_list_academic_calendar",
         "tool_list_certificate_guides",
         "tool_get_class_periods",
         "tool_get_library_seat_status",
@@ -466,6 +519,7 @@ def test_mcp_public_readonly_mode_registers_only_read_only_tools(app_env, monkey
     assert "tool_create_profile" not in tool_names
     assert "tool_get_profile_notices" not in tool_names
     assert "songsim://source-registry" in resource_uris
+    assert "songsim://academic-calendar" in resource_uris
     assert "songsim://certificate-guide" in resource_uris
     assert "songsim://transport-guide" in resource_uris
 
@@ -488,6 +542,7 @@ def test_mcp_public_readonly_mode_registers_prompts_and_extended_resources(app_e
     assert set(prompt_names) == {
         "prompt_find_place",
         "prompt_search_courses",
+        "prompt_academic_calendar",
         "prompt_notice_categories",
         "prompt_latest_notices",
         "prompt_class_periods",
@@ -500,6 +555,7 @@ def test_mcp_public_readonly_mode_registers_prompts_and_extended_resources(app_e
     }
     assert set(resource_uris) >= {
         "songsim://source-registry",
+        "songsim://academic-calendar",
         "songsim://certificate-guide",
         "songsim://transport-guide",
         "songsim://usage-guide",
@@ -547,6 +603,8 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
     assert "slug" in tools["tool_get_place"]["description"]
     assert "과목명" in tools["tool_search_courses"]["description"]
     assert "교수" in tools["tool_search_courses"]["description"]
+    assert "학사일정" in tools["tool_list_academic_calendar"]["description"]
+    assert "academic_year" in tools["tool_list_academic_calendar"]["description"]
     assert "브랜드" in tools["tool_search_restaurants"]["description"]
     assert "매머드커피" in tools["tool_search_restaurants"]["description"]
     assert "학생식당 메뉴" in tools["tool_search_dining_menus"]["description"]
@@ -604,6 +662,9 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
     assert "역곡역" in (
         tools["tool_list_transport_guides"]["inputSchema"]["properties"]["query"]["description"]
     )
+    assert "1-12" in (
+        tools["tool_list_academic_calendar"]["inputSchema"]["properties"]["month"]["description"]
+    )
     assert "최대 결과 수" in (
         tools["tool_list_certificate_guides"]["inputSchema"]["properties"]["limit"]["description"]
     )
@@ -632,6 +693,24 @@ def test_mcp_public_prompts_explain_tool_selection_flow(app_env, monkeypatch):
     assert "query=K관" in message
     assert "tool_get_place" in message
     assert "songsim://place-categories" in message
+
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        prompt = await mcp.get_prompt(
+            "prompt_academic_calendar",
+            {"academic_year": 2026, "month": 3, "query": "등록"},
+        )
+        return prompt
+
+    prompt = asyncio.run(main())
+    message = prompt.messages[0].content.text
+
+    assert "tool_list_academic_calendar" in message
+    assert "academic_year=2026" in message
+    assert "month=3" in message
+    assert "query=등록" in message
 
     clear_settings_cache()
 
@@ -734,6 +813,7 @@ def test_mcp_public_usage_and_class_period_resources_are_readable(app_env, monke
     assert "read-only" in usage_content
     assert "tool_search_places" in usage_content
     assert "tool_search_restaurants" in usage_content
+    assert "tool_list_academic_calendar" in usage_content
     assert "tool_list_estimated_empty_classrooms" in usage_content
     assert "실시간" in usage_content
     assert "tool_find_nearby_restaurants" in usage_content

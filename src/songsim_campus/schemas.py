@@ -97,6 +97,18 @@ class CertificateGuide(BaseModel):
     last_synced_at: str
 
 
+class AcademicCalendarEvent(BaseModel):
+    id: int
+    academic_year: int
+    title: str
+    start_date: str
+    end_date: str
+    campuses: list[str] = Field(default_factory=list)
+    source_url: str | None = None
+    source_tag: str = "demo"
+    last_synced_at: str
+
+
 class McpCoordinates(BaseModel):
     latitude: float
     longitude: float

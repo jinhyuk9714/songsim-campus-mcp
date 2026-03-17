@@ -15,6 +15,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from .db import connection, get_connection, init_db
 from .schemas import (
+    AcademicCalendarEvent,
     CampusDiningMenu,
     CertificateGuide,
     Course,
@@ -65,6 +66,7 @@ from .services import (
     get_profile_timetable,
     get_readiness_snapshot,
     get_sync_dashboard_state,
+    list_academic_calendar,
     list_certificate_guides,
     list_estimated_empty_classrooms,
     list_latest_notices,
@@ -105,6 +107,14 @@ GPT_ACTION_PATHS: dict[str, dict[str, str]] = {
         "description": (
             "Search public Songsim course offerings by title and optional year, "
             "semester, or exact period_start."
+        ),
+    },
+    "/academic-calendar": {
+        "operationId": "listAcademicCalendar",
+        "summary": "List academic calendar events",
+        "description": (
+            "List public academic calendar events by academic year with optional "
+            "month overlap and title substring filters."
         ),
     },
     "/notices": {
@@ -578,6 +588,7 @@ def create_app() -> FastAPI:
                     )
                 ],
             },
+            {"title": "academic_calendar", "fields": []},
             {"title": "transport_guides", "fields": []},
         ]
 
@@ -792,6 +803,7 @@ def create_app() -> FastAPI:
         example_prompts = [
             "성심교정 중앙도서관 위치 알려줘",
             "2026년 1학기 객체지향 과목 찾아줘",
+            "2026학년도 3월 학사일정 보여줘",
             "재학증명서 발급 안내 알려줘",
             "니콜스관인데 지금 예상 빈 강의실 있어?",
             "중앙도서관 근처 밥집 추천해줘",
@@ -891,7 +903,7 @@ def create_app() -> FastAPI:
       <h1>Songsim Campus MCP</h1>
       <p class="lead">
         Verified Catholic University Songsim campus data server for places, courses,
-        notices, restaurants, and transit. The remote MCP endpoint is the primary
+        academic calendar, notices, restaurants, and transit. The remote MCP endpoint is the primary
         public product surface, and the HTTP API is the thin companion layer.
       </p>
       <div class="hero">
@@ -942,6 +954,7 @@ def create_app() -> FastAPI:
           <ul>
             <li><code>/places</code> campus places and landmarks</li>
             <li><code>/courses</code> public course offerings</li>
+            <li><code>/academic-calendar</code> current academic calendar events</li>
             <li><code>/certificate-guides</code> certificate issuance guides</li>
             <li>
               <code>/classrooms/empty</code> official realtime classrooms first,
@@ -1430,6 +1443,25 @@ def create_app() -> FastAPI:
     @app.get("/periods", response_model=list[Period])
     def periods() -> list[Period]:
         return get_class_periods()
+
+    @app.get("/academic-calendar", response_model=list[AcademicCalendarEvent])
+    def academic_calendar(
+        academic_year: int | None = Query(default=None),
+        month: int | None = Query(default=None, ge=1, le=12),
+        query: str | None = Query(default=None, description="학사일정 제목 부분 검색어"),
+        limit: int = Query(default=20, ge=1, le=50),
+    ) -> list[AcademicCalendarEvent]:
+        with connection() as conn:
+            try:
+                return list_academic_calendar(
+                    conn,
+                    academic_year=academic_year,
+                    month=month,
+                    query=query,
+                    limit=limit,
+                )
+            except InvalidRequestError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/certificate-guides", response_model=list[CertificateGuide])
     def certificate_guides(

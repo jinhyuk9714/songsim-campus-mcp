@@ -52,6 +52,7 @@ from .services import (
     get_profile_interests,
     get_profile_meal_recommendations,
     get_profile_timetable,
+    list_academic_calendar,
     list_certificate_guides,
     list_estimated_empty_classrooms,
     list_latest_notices,
@@ -257,8 +258,8 @@ def _public_usage_guide() -> str:
             "",
             "This server is read-only.",
             (
-                "Available: places, courses, certificate guides, notices, nearby "
-                "restaurants, transport guides."
+                "Available: places, courses, academic calendar, certificate guides, "
+                "notices, nearby restaurants, transport guides."
             ),
             "Unavailable: profile, timetable, notice preferences, meal personalization, admin.",
             "",
@@ -307,17 +308,21 @@ def _public_usage_guide() -> str:
                 "This is a best-effort live lookup with stale fallback."
             ),
             (
-                "9. Use tool_list_certificate_guides for 증명서 발급 안내 such as "
+                "9. Use tool_list_academic_calendar for 학사일정 questions such as "
+                "3월 학사일정, 1학기 개시일, 추가 등록기간, or 중간고사 일정."
+            ),
+            (
+                "10. Use tool_list_certificate_guides for 증명서 발급 안내 such as "
                 "재학증명서 발급 방법, 졸업증명서 발급 안내, or 인터넷 증명발급 questions."
             ),
-            "10. Use tool_list_latest_notices for latest notices; category is optional.",
+            "11. Use tool_list_latest_notices for latest notices; category is optional.",
             (
-                "11. Use tool_list_transport_guides for static subway or bus access "
+                "12. Use tool_list_transport_guides for static subway or bus access "
                 "guidance. You can pass query with natural-language cues like 지하철, "
                 "1호선, 역곡역, or 버스. 셔틀은 현재 지원하지 않아 빈 결과가 정상입니다."
             ),
             (
-                "12. Use songsim://notice-categories or /notice-categories when a user asks "
+                "13. Use songsim://notice-categories or /notice-categories when a user asks "
                 "which notice categories exist. Use songsim://class-periods, /periods, or "
                 "/gpt/periods when a user asks what a period number means."
             ),
@@ -416,6 +421,16 @@ def build_mcp():
                 indent=2,
             )
 
+    @mcp.resource("songsim://academic-calendar")
+    def academic_calendar_resource() -> str:
+        """Return the latest academic calendar events as JSON."""
+        with connection() as conn:
+            return json.dumps(
+                [item.model_dump() for item in list_academic_calendar(conn, limit=50)],
+                ensure_ascii=False,
+                indent=2,
+            )
+
     if public_readonly:
         @mcp.resource("songsim://usage-guide")
         def usage_guide_resource() -> str:
@@ -492,6 +507,35 @@ def build_mcp():
                 "period_start=7 plus year/semester when available.\n"
                 "The direct metadata paths are songsim://class-periods, "
                 "tool_get_class_periods, /periods, and /gpt/periods."
+            )
+
+        @mcp.prompt(
+            name="prompt_academic_calendar",
+            description="Explain how to fetch academic calendar events by academic year or month.",
+        )
+        def prompt_academic_calendar(
+            academic_year: Annotated[
+                int | None,
+                Field(description="optional academic year"),
+            ] = None,
+            month: Annotated[
+                int | None,
+                Field(description="optional month filter as an integer from 1 to 12"),
+            ] = None,
+            query: Annotated[
+                str | None,
+                Field(description="optional title substring like 등록, 개시일, 중간고사"),
+            ] = None,
+            limit: Annotated[int, Field(description="최대 결과 수")] = 20,
+        ):
+            return (
+                "Use tool_list_academic_calendar for public academic calendar lookup.\n"
+                f"academic_year={academic_year}, month={month}, query={query or '<optional>'}, "
+                f"limit={limit}.\n"
+                "month is optional and should be an integer from 1 to 12. "
+                "It keeps events that overlap that month within the academic year.\n"
+                "Use this for questions like 3월 학사일정, 1학기 개시일, "
+                "추가 등록기간, or 중간고사 일정."
             )
 
         @mcp.prompt(
@@ -723,6 +767,42 @@ def build_mcp():
                 "This tool is for subway and bus access guidance, not live routing. "
                 "셔틀 is not currently supported, so an empty result (빈 결과) is normal."
             )
+
+    @mcp.tool(
+        description=(
+            "성심교정 학사일정을 읽을 때 사용합니다. academic_year, month, query로 "
+            "개시일, 등록기간, 중간고사 같은 일정을 현재 스냅샷 기준으로 찾습니다."
+            if public_readonly
+            else "학교 학사일정 current snapshot을 가져옵니다."
+        ),
+        meta=tool_meta,
+    )
+    def tool_list_academic_calendar(
+        academic_year: Annotated[int | None, Field(description="학년도 필터. 예: 2026")] = None,
+        month: Annotated[
+            int | None,
+            Field(description="월 필터. 1-12 정수이며 해당 월과 겹치는 일정만 남깁니다."),
+        ] = None,
+        query: Annotated[
+            str | None,
+            Field(description="일정 제목 부분 검색. 예: 등록, 개시일, 중간고사"),
+        ] = None,
+        limit: Annotated[int, Field(description="최대 결과 수. 기본값은 20입니다.")] = 20,
+    ):
+        with connection() as conn:
+            try:
+                events = list_academic_calendar(
+                    conn,
+                    academic_year=academic_year,
+                    month=month,
+                    query=query,
+                    limit=limit,
+                )
+                return [item.model_dump() for item in events]
+            except InvalidRequestError as exc:
+                if public_readonly:
+                    return _serialize_public_error(exc)
+                return {"error": str(exc)}
 
     @mcp.tool(
         description=(

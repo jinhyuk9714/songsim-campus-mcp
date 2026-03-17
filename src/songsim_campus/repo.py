@@ -17,6 +17,7 @@ JSON_COLUMNS = {
     "notices": {"labels_json": "labels"},
     "transport_guides": {"steps_json": "steps"},
     "certificate_guides": {"steps_json": "steps"},
+    "academic_calendar": {"campuses_json": "campuses"},
     "profile_notice_preferences": {
         "categories_json": "categories",
         "keywords_json": "keywords",
@@ -35,6 +36,7 @@ JSON_DEFAULTS = {
     "raw_payload_json": {},
     "labels_json": [],
     "steps_json": [],
+    "campuses_json": [],
     "categories_json": [],
     "keywords_json": [],
     "params_json": {},
@@ -684,6 +686,32 @@ def replace_certificate_guides(conn: psycopg.Connection, rows: list[dict[str, An
     )
 
 
+def replace_academic_calendar(conn: psycopg.Connection, rows: list[dict[str, Any]]) -> None:
+    conn.execute("TRUNCATE TABLE academic_calendar RESTART IDENTITY CASCADE")
+    _executemany(
+        conn,
+        """
+        INSERT INTO academic_calendar (
+            academic_year, title, start_date, end_date, campuses_json,
+            source_url, source_tag, last_synced_at
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """,
+        [
+            (
+                row["academic_year"],
+                row["title"],
+                row["start_date"],
+                row["end_date"],
+                Jsonb(row.get("campuses", [])),
+                row.get("source_url"),
+                row.get("source_tag", "demo"),
+                row["last_synced_at"],
+            )
+            for row in rows
+        ],
+    )
+
+
 def replace_campus_dining_menus(conn: psycopg.Connection, rows: list[dict[str, Any]]) -> None:
     conn.execute("TRUNCATE TABLE campus_dining_menus")
     _executemany(
@@ -802,6 +830,43 @@ def list_certificate_guides(
     return [_row_to_dict("certificate_guides", row) for row in rows]
 
 
+def list_academic_calendar(
+    conn: psycopg.Connection,
+    *,
+    academic_year: int | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    query: str | None = None,
+    limit: int | None = None,
+) -> list[dict[str, Any]]:
+    sql = """
+        SELECT *
+        FROM academic_calendar
+    """
+    clauses: list[str] = []
+    params: list[Any] = []
+    if academic_year is not None:
+        clauses.append("academic_year = %s")
+        params.append(academic_year)
+    if start_date is not None:
+        clauses.append("end_date >= %s")
+        params.append(start_date)
+    if end_date is not None:
+        clauses.append("start_date <= %s")
+        params.append(end_date)
+    if query:
+        clauses.append("title ILIKE %s")
+        params.append(f"%{query}%")
+    if clauses:
+        sql += " WHERE " + " AND ".join(clauses)
+    sql += " ORDER BY start_date, end_date, title, id"
+    if limit is not None:
+        sql += " LIMIT %s"
+        params.append(limit)
+    rows = conn.execute(sql, params).fetchall()
+    return [_row_to_dict("academic_calendar", row) for row in rows]
+
+
 def create_sync_run(
     conn: psycopg.Connection,
     *,
@@ -917,6 +982,7 @@ def get_dataset_sync_state(conn: psycopg.Connection, table: str) -> dict[str, An
         "notices",
         "transport_guides",
         "certificate_guides",
+        "academic_calendar",
         "campus_dining_menus",
     }
     if table not in allowed:

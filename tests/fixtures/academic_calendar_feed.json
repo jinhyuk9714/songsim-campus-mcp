@@ -1,0 +1,52 @@
+{
+  "data": [
+    {
+      "cSeq": 2820,
+      "siteId": "ko",
+      "writerId": "admin",
+      "beginDt": 1772463600000,
+      "endDt": 1772463600000,
+      "content": "<strong>1학기 개시일</strong> / 신입생 입학미사",
+      "campus": "성심,성의,성신",
+      "miniYn": "Y",
+      "createDt": 1764287303000,
+      "updateDt": 1772522467000
+    },
+    {
+      "cSeq": 2821,
+      "siteId": "ko",
+      "writerId": "admin",
+      "beginDt": 1772463600000,
+      "endDt": 1772463600000,
+      "content": " 수강신청 변경기간 ",
+      "campus": "성심",
+      "miniYn": "Y",
+      "createDt": 1764287303000,
+      "updateDt": 1772522467000
+    },
+    {
+      "cSeq": 2823,
+      "siteId": "ko",
+      "writerId": "admin",
+      "beginDt": 1773068400000,
+      "endDt": 1773327600000,
+      "content": "추가 등록기간",
+      "campus": "성심",
+      "miniYn": "Y",
+      "createDt": 1764287303000,
+      "updateDt": 1772522467000
+    },
+    {
+      "cSeq": 3001,
+      "siteId": "ko",
+      "writerId": "admin",
+      "beginDt": 1799074800000,
+      "endDt": 1799247600000,
+      "content": "동계 계절학기 등록",
+      "campus": "성의",
+      "miniYn": "Y",
+      "createDt": 1798000000000,
+      "updateDt": 1799000000000
+    }
+  ]
+}

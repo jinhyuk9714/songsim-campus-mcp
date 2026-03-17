@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime
 from html import unescape
 from urllib.parse import urlencode, urljoin
+from zoneinfo import ZoneInfo
 
 import httpx
 from bs4 import BeautifulSoup
@@ -14,6 +16,7 @@ SCHEDULE_PATTERN = re.compile(
 )
 WHITESPACE_PATTERN = re.compile(r"\s+")
 SEAT_STATUS_INTEGER_PATTERN = re.compile(r"(\d[\d,]*)")
+KST = ZoneInfo("Asia/Seoul")
 
 
 def _clean_text(value: str | None) -> str:
@@ -49,6 +52,22 @@ def _unique(items: list[str]) -> list[str]:
         seen.add(normalized)
         result.append(normalized)
     return result
+
+
+def _date_from_epoch_millis(value: int | str | None) -> str | None:
+    if value in (None, ""):
+        return None
+    try:
+        timestamp_millis = int(value)
+    except (TypeError, ValueError):
+        return None
+    return datetime.fromtimestamp(timestamp_millis / 1000, tz=KST).date().isoformat()
+
+
+def _academic_year_from_date_string(value: str) -> int:
+    year = int(value[:4])
+    month = int(value[5:7])
+    return year if month >= 3 else year - 1
 
 
 def _extract_table_grid(table) -> list[list[str]]:
@@ -862,6 +881,54 @@ class CertificateGuideSource:
     @staticmethod
     def _normalize_note(text: str) -> str:
         return text.lstrip("*※ ").strip()
+
+
+class AcademicCalendarSource:
+    """Official academic calendar parser backed by the public JSON feed."""
+
+    def __init__(self, url: str, site_id: str = "ko"):
+        self.url = url
+        self.site_id = site_id
+
+    def fetch_range(self, *, start_date: str, end_date: str) -> str:
+        response = httpx.get(
+            self.url,
+            params={
+                "mode": "getCalendarData",
+                "siteId": self.site_id,
+                "start": start_date,
+                "end": end_date,
+            },
+            timeout=20,
+        )
+        response.raise_for_status()
+        return response.text
+
+    def parse(self, payload: str, *, fetched_at: str) -> list[dict]:
+        data = json.loads(payload)
+        rows: list[dict] = []
+        for item in data.get("data", []):
+            title = _clean_text(item.get("content"))
+            start_date = _date_from_epoch_millis(item.get("beginDt"))
+            end_date = _date_from_epoch_millis(item.get("endDt")) or start_date
+            if not title or start_date is None or end_date is None:
+                continue
+            campuses = _unique(
+                [_clean_text(part) for part in str(item.get("campus") or "").split(",")]
+            )
+            rows.append(
+                {
+                    "academic_year": _academic_year_from_date_string(start_date),
+                    "title": title,
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "campuses": campuses,
+                    "source_url": self.url,
+                    "source_tag": "cuk_academic_calendar",
+                    "last_synced_at": fetched_at,
+                }
+            )
+        return rows
 
 
 class NoticeSource:

@@ -16,6 +16,7 @@ from songsim_campus.repo import (
     update_place_opening_hours,
 )
 from songsim_campus.services import (
+    refresh_academic_calendar_from_source,
     refresh_campus_dining_menus_from_facilities_page,
     refresh_certificate_guides_from_certificate_page,
     refresh_facility_hours_from_facilities_page,
@@ -189,6 +190,7 @@ def test_public_readonly_mode_exposes_gpt_actions_openapi(app_env, monkeypatch):
     assert set(payload["paths"]) == {
         "/places",
         "/courses",
+        "/academic-calendar",
         "/certificate-guides",
         "/notices",
         "/notice-categories",
@@ -201,6 +203,7 @@ def test_public_readonly_mode_exposes_gpt_actions_openapi(app_env, monkeypatch):
     }
     assert payload["paths"]["/places"]["get"]["operationId"] == "searchPlaces"
     assert payload["paths"]["/courses"]["get"]["operationId"] == "searchCourses"
+    assert payload["paths"]["/academic-calendar"]["get"]["operationId"] == "listAcademicCalendar"
     assert payload["paths"]["/certificate-guides"]["get"]["operationId"] == "listCertificateGuides"
     course_parameters = payload["paths"]["/courses"]["get"]["parameters"]
     assert any(item["name"] == "period_start" for item in course_parameters)
@@ -2036,6 +2039,28 @@ class ApiCertificateSource:
         ]
 
 
+class ApiAcademicCalendarSource:
+    def fetch_range(self, *, start_date: str, end_date: str):
+        assert start_date == "2026-03-01"
+        assert end_date == "2027-02-28"
+        return '{"data":[]}'
+
+    def parse(self, payload: str, *, fetched_at: str):
+        assert payload == '{"data":[]}'
+        return [
+            {
+                "academic_year": 2026,
+                "title": "1학기 개시일",
+                "start_date": "2026-03-03",
+                "end_date": "2026-03-03",
+                "campuses": ["성심", "성의", "성신"],
+                "source_url": "https://www.catholic.ac.kr/ko/support/calendar2024_list.do",
+                "source_tag": "cuk_academic_calendar",
+                "last_synced_at": fetched_at,
+            }
+        ]
+
+
 def test_place_detail_returns_merged_opening_hours(client):
     with connection() as conn:
         refresh_facility_hours_from_facilities_page(conn, source=ApiFacilitiesSource())
@@ -2177,6 +2202,33 @@ def test_certificate_guides_endpoint_returns_guides(client):
             ],
             "source_url": "https://catholic.certpia.com/",
             "source_tag": "cuk_certificate_guides",
+            "last_synced_at": items[0]["last_synced_at"],
+        }
+    ]
+
+
+def test_academic_calendar_endpoint_returns_events(client):
+    with connection() as conn:
+        refresh_academic_calendar_from_source(
+            conn,
+            source=ApiAcademicCalendarSource(),
+            academic_year=2026,
+        )
+
+    response = client.get("/academic-calendar", params={"academic_year": 2026, "month": 3})
+    items = response.json()
+
+    assert response.status_code == 200
+    assert items == [
+        {
+            "id": 1,
+            "academic_year": 2026,
+            "title": "1학기 개시일",
+            "start_date": "2026-03-03",
+            "end_date": "2026-03-03",
+            "campuses": ["성심", "성의", "성신"],
+            "source_url": "https://www.catholic.ac.kr/ko/support/calendar2024_list.do",
+            "source_tag": "cuk_academic_calendar",
             "last_synced_at": items[0]["last_synced_at"],
         }
     ]

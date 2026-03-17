@@ -5,6 +5,7 @@ from pathlib import Path
 
 from songsim_campus.ingest.kakao_places import parse_place_detail_opening_hours
 from songsim_campus.ingest.official_sources import (
+    AcademicCalendarSource,
     CampusFacilitiesSource,
     CampusMapSource,
     CertificateGuideSource,
@@ -344,6 +345,32 @@ def test_certificate_parser_extracts_guides_summaries_and_steps():
     )
     assert "업무를 중단" in stopped_mail["summary"]
     assert stopped_mail["steps"][-1] == "문의: 학생지원팀 02-2164-4732"
+
+
+def test_academic_calendar_parser_normalizes_kst_dates_and_campuses():
+    source = AcademicCalendarSource("https://www.catholic.ac.kr/ko/support/calendar2024_list.do")
+
+    rows = source.parse(
+        _fixture("academic_calendar_feed.json"),
+        fetched_at="2026-03-17T15:00:00+09:00",
+    )
+
+    opening = next(item for item in rows if item["title"] == "1학기 개시일 / 신입생 입학미사")
+    assert opening["academic_year"] == 2026
+    assert opening["start_date"] == "2026-03-03"
+    assert opening["end_date"] == "2026-03-03"
+    assert opening["campuses"] == ["성심", "성의", "성신"]
+    assert opening["source_url"] == "https://www.catholic.ac.kr/ko/support/calendar2024_list.do"
+    assert opening["source_tag"] == "cuk_academic_calendar"
+
+    registration = next(item for item in rows if item["title"] == "추가 등록기간")
+    assert registration["start_date"] == "2026-03-10"
+    assert registration["end_date"] == "2026-03-13"
+
+    winter = next(item for item in rows if item["title"] == "동계 계절학기 등록")
+    assert winter["academic_year"] == 2026
+    assert winter["start_date"] == "2027-01-05"
+    assert winter["end_date"] == "2027-01-07"
 
 
 def test_kakao_place_detail_parser_normalizes_weekdays_breaks_and_holidays():

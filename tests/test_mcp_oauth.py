@@ -104,6 +104,7 @@ def test_mcp_oauth_metadata_and_initialize_flow(app_env, monkeypatch):
         "tool_search_places",
         "tool_get_place",
         "tool_search_courses",
+        "tool_list_academic_calendar",
         "tool_list_certificate_guides",
         "tool_get_class_periods",
         "tool_get_library_seat_status",

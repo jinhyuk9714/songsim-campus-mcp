@@ -29,6 +29,7 @@ from .ingest.kakao_places import (
     parse_place_detail_opening_hours,
 )
 from .ingest.official_sources import (
+    AcademicCalendarSource,
     CampusFacilitiesSource,
     CampusMapSource,
     CertificateGuideSource,
@@ -40,6 +41,7 @@ from .ingest.official_sources import (
     classify_notice_category,
 )
 from .schemas import (
+    AcademicCalendarEvent,
     AutomationJobObservability,
     AutomationObservability,
     CacheObservability,
@@ -83,6 +85,7 @@ LIBRARY_SEAT_STATUS_SOURCE_URL = "http://203.229.203.240/8080/Domian5.asp"
 FACILITIES_SOURCE_URL = "https://www.catholic.ac.kr/ko/campuslife/restaurant.do"
 TRANSPORT_SOURCE_URL = "https://www.catholic.ac.kr/ko/about/location_songsim.do"
 CERTIFICATE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/certificate.do"
+ACADEMIC_CALENDAR_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/calendar2024_list.do"
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 CAMPUS_WALK_GRAPH_PATH = DATA_DIR / "campus_walk_graph.json"
 PERSONALIZATION_RULES_PATH = DATA_DIR / "personalization_rules.json"
@@ -96,6 +99,7 @@ SYNC_DATASET_TABLES = (
     "campus_dining_menus",
     "courses",
     "notices",
+    "academic_calendar",
     "certificate_guides",
     "transport_guides",
 )
@@ -111,6 +115,7 @@ ADMIN_SYNC_TARGETS = {
     "dining_menus",
     "courses",
     "notices",
+    "academic_calendar",
     "transport_guides",
 }
 AUTOMATION_SYNC_TARGETS = {"snapshot", "library_seat_prewarm", "cache_cleanup"}
@@ -214,6 +219,39 @@ def _now() -> datetime:
 
 def _now_iso() -> str:
     return _now().isoformat(timespec="seconds")
+
+
+def _current_academic_year(today: date | None = None) -> int:
+    resolved_today = today or _now().date()
+    return resolved_today.year if resolved_today.month >= 3 else resolved_today.year - 1
+
+
+def _academic_year_bounds(academic_year: int) -> tuple[str, str]:
+    start = date(academic_year, 3, 1)
+    end = date(academic_year + 1, 3, 1) - timedelta(days=1)
+    return start.isoformat(), end.isoformat()
+
+
+def _academic_month_bounds(academic_year: int, month: int) -> tuple[str, str]:
+    if month < 1 or month > 12:
+        raise InvalidRequestError("month must be an integer between 1 and 12.")
+    year = academic_year if month >= 3 else academic_year + 1
+    start = date(year, month, 1)
+    if month == 12:
+        next_month = date(year + 1, 1, 1)
+    else:
+        next_month = date(year, month + 1, 1)
+    return start.isoformat(), (next_month - timedelta(days=1)).isoformat()
+
+
+def _academic_calendar_priority(event: AcademicCalendarEvent) -> tuple[int, str, str, str, int]:
+    return (
+        0 if "성심" in event.campuses else 1,
+        event.start_date,
+        event.end_date,
+        event.title,
+        event.id,
+    )
 
 
 def _new_observability_state(process_started_at: str | None = None) -> dict[str, Any]:
@@ -3066,6 +3104,36 @@ def list_certificate_guides(
     ]
 
 
+def list_academic_calendar(
+    conn: sqlite3.Connection,
+    *,
+    academic_year: int | None = None,
+    month: int | None = None,
+    query: str | None = None,
+    limit: int = 20,
+) -> list[AcademicCalendarEvent]:
+    resolved_year = academic_year or _current_academic_year()
+    normalized_query = (query or "").strip() or None
+    normalized_limit = max(1, min(limit, 50))
+    start_date = None
+    end_date = None
+    if month is not None:
+        start_date, end_date = _academic_month_bounds(resolved_year, month)
+
+    events = [
+        AcademicCalendarEvent.model_validate(item)
+        for item in repo.list_academic_calendar(
+            conn,
+            academic_year=resolved_year,
+            start_date=start_date,
+            end_date=end_date,
+            query=normalized_query,
+        )
+    ]
+    events.sort(key=_academic_calendar_priority)
+    return events[:normalized_limit]
+
+
 def list_transport_guides(
     conn: sqlite3.Connection,
     mode: str | None = None,
@@ -3177,6 +3245,8 @@ def _run_admin_sync_target(
                 )
             )
         }
+    if target == "academic_calendar":
+        return {"academic_calendar": len(refresh_academic_calendar_from_source(conn))}
     if target == "transport_guides":
         return {"transport_guides": len(refresh_transport_guides_from_location_page(conn))}
     if target == "cache_cleanup":
@@ -4806,6 +4876,28 @@ def refresh_notices_from_notice_board(
     ]
 
 
+def refresh_academic_calendar_from_source(
+    conn: sqlite3.Connection,
+    *,
+    source: AcademicCalendarSource | Any | None = None,
+    academic_year: int | None = None,
+    fetched_at: str | None = None,
+) -> list[AcademicCalendarEvent]:
+    source = source or AcademicCalendarSource(ACADEMIC_CALENDAR_SOURCE_URL)
+    synced_at = fetched_at or _now_iso()
+    resolved_year = academic_year or _current_academic_year()
+    start_date, end_date = _academic_year_bounds(resolved_year)
+    rows = source.parse(
+        source.fetch_range(start_date=start_date, end_date=end_date),
+        fetched_at=synced_at,
+    )
+    repo.replace_academic_calendar(conn, rows)
+    return [
+        AcademicCalendarEvent.model_validate(item)
+        for item in repo.list_academic_calendar(conn, academic_year=resolved_year)
+    ]
+
+
 def refresh_transport_guides_from_location_page(
     conn: sqlite3.Connection,
     *,
@@ -4865,6 +4957,7 @@ def sync_official_snapshot(
         conn,
         pages=notice_pages or settings.official_notice_pages,
     )
+    academic_calendar = refresh_academic_calendar_from_source(conn)
     certificate_guides = refresh_certificate_guides_from_certificate_page(conn)
     transport_guides = refresh_transport_guides_from_location_page(conn)
     return {
@@ -4872,6 +4965,7 @@ def sync_official_snapshot(
         "dining_menus": len(dining_menus),
         "courses": len(courses),
         "notices": len(notices),
+        "academic_calendar": len(academic_calendar),
         "certificate_guides": len(certificate_guides),
         "transport_guides": len(transport_guides),
     }
