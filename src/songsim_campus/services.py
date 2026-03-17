@@ -6,6 +6,7 @@ import logging
 import math
 import re
 import sqlite3
+import threading
 import unicodedata
 import uuid
 from copy import deepcopy
@@ -131,6 +132,7 @@ CLASS_PERIODS = [
 
 logger = logging.getLogger(__name__)
 OBSERVABILITY_EVENT_LIMIT = 10
+READINESS_CACHE_TTL_SECONDS = 30
 EMPTY_CLASSROOM_ESTIMATE_NOTE = (
     "공식 시간표 기준 예상 공실입니다. 실시간 점유는 반영되지 않습니다."
 )
@@ -241,11 +243,18 @@ def _new_observability_state(process_started_at: str | None = None) -> dict[str,
 
 
 _OBSERVABILITY_STATE = _new_observability_state()
+_READINESS_CACHE_LOCK = threading.Lock()
+_READINESS_CACHE: dict[tuple[str, str], dict[str, Any]] = {}
 
 
 def reset_observability_state() -> None:
     global _OBSERVABILITY_STATE
     _OBSERVABILITY_STATE = _new_observability_state()
+
+
+def reset_readiness_cache() -> None:
+    with _READINESS_CACHE_LOCK:
+        _READINESS_CACHE.clear()
 
 
 def set_automation_leader(is_leader: bool) -> None:
@@ -378,8 +387,18 @@ def _record_sync_result(
         )
 
 
-def get_readiness_snapshot() -> dict[str, Any]:
-    settings = get_settings()
+def _readiness_cache_key(settings: Any) -> tuple[str, str]:
+    return (settings.app_mode, settings.database_url)
+
+
+def _rollback_readiness_connection(conn: sqlite3.Connection) -> None:
+    try:
+        conn.rollback()
+    except Exception:
+        pass
+
+
+def _compute_readiness_snapshot(settings: Any) -> dict[str, Any]:
     public_readonly = settings.app_mode == "public_readonly"
     readiness: dict[str, Any] = {
         "ok": True,
@@ -416,6 +435,7 @@ def get_readiness_snapshot() -> dict[str, Any]:
                 readiness["ok"] = False
                 readiness["tables"][table] = {"ok": False, "error": str(exc)}
                 logger.warning("event=readiness_check_failed check=%s error=%s", table, exc)
+                _rollback_readiness_connection(conn)
         try:
             repo.list_sync_runs(conn, limit=1)
             readiness["tables"]["sync_runs"] = {"ok": True}
@@ -423,13 +443,34 @@ def get_readiness_snapshot() -> dict[str, Any]:
             readiness["ok"] = False
             readiness["tables"]["sync_runs"] = {"ok": False, "error": str(exc)}
             logger.warning("event=readiness_check_failed check=sync_runs error=%s", exc)
+            _rollback_readiness_connection(conn)
     finally:
+        _rollback_readiness_connection(conn)
         conn.close()
 
     readiness["ok"] = readiness["database"]["ok"] and all(
         item.get("ok", False) for item in readiness["tables"].values()
     )
     return readiness
+
+
+def get_readiness_snapshot() -> dict[str, Any]:
+    settings = get_settings()
+    cache_key = _readiness_cache_key(settings)
+    ttl = timedelta(seconds=READINESS_CACHE_TTL_SECONDS)
+    with _READINESS_CACHE_LOCK:
+        cached = _READINESS_CACHE.get(cache_key)
+        current = _now()
+        if cached is not None and current - cached["fetched_at"] < ttl:
+            return deepcopy(cached["snapshot"])
+
+        snapshot = _compute_readiness_snapshot(settings)
+        cached_snapshot = deepcopy(snapshot)
+        _READINESS_CACHE[cache_key] = {
+            "fetched_at": current,
+            "snapshot": cached_snapshot,
+        }
+        return deepcopy(cached_snapshot)
 
 
 def get_observability_snapshot(

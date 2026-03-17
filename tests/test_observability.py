@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -9,6 +9,7 @@ from songsim_campus import repo
 from songsim_campus.db import connection, init_db
 from songsim_campus.seed import seed_demo
 from songsim_campus.services import (
+    SYNC_DATASET_TABLES,
     find_nearby_restaurants,
     get_observability_snapshot,
     get_readiness_snapshot,
@@ -293,3 +294,143 @@ def test_readiness_snapshot_allows_empty_optional_public_datasets(app_env, monke
     assert readiness["ok"] is True
     assert readiness["tables"]["campus_dining_menus"]["ok"] is True
     assert readiness["tables"]["courses"]["ok"] is True
+
+
+def test_readiness_snapshot_caches_success_within_ttl(app_env, monkeypatch):
+    init_db()
+    current = {"value": datetime.fromisoformat("2026-03-17T17:00:00+09:00")}
+    dataset_calls: list[str] = []
+    sync_calls: list[int] = []
+
+    monkeypatch.setattr("songsim_campus.services._now", lambda: current["value"])
+
+    def fake_dataset_state(conn, table: str):
+        dataset_calls.append(table)
+        return {
+            "name": table,
+            "row_count": 1,
+            "last_synced_at": "2026-03-17T16:59:00+09:00",
+        }
+
+    def fake_list_sync_runs(conn, limit: int = 1):
+        sync_calls.append(limit)
+        return []
+
+    monkeypatch.setattr("songsim_campus.services.repo.get_dataset_sync_state", fake_dataset_state)
+    monkeypatch.setattr("songsim_campus.services.repo.list_sync_runs", fake_list_sync_runs)
+
+    first = get_readiness_snapshot()
+    current["value"] += timedelta(seconds=10)
+    second = get_readiness_snapshot()
+
+    assert first == second
+    assert dataset_calls == list(SYNC_DATASET_TABLES)
+    assert sync_calls == [1]
+
+
+def test_readiness_snapshot_recomputes_after_ttl(app_env, monkeypatch):
+    init_db()
+    current = {"value": datetime.fromisoformat("2026-03-17T17:10:00+09:00")}
+    dataset_calls: list[str] = []
+
+    monkeypatch.setattr("songsim_campus.services._now", lambda: current["value"])
+
+    def fake_dataset_state(conn, table: str):
+        dataset_calls.append(table)
+        return {
+            "name": table,
+            "row_count": 1,
+            "last_synced_at": "2026-03-17T17:09:00+09:00",
+        }
+
+    monkeypatch.setattr("songsim_campus.services.repo.get_dataset_sync_state", fake_dataset_state)
+    monkeypatch.setattr("songsim_campus.services.repo.list_sync_runs", lambda conn, limit=1: [])
+
+    get_readiness_snapshot()
+    current["value"] += timedelta(seconds=31)
+    get_readiness_snapshot()
+
+    assert len(dataset_calls) == len(SYNC_DATASET_TABLES) * 2
+
+
+def test_readiness_snapshot_keeps_cache_separate_by_app_mode(app_env, monkeypatch):
+    init_db()
+    current = {"value": datetime.fromisoformat("2026-03-17T17:20:00+09:00")}
+    dataset_calls: list[str] = []
+
+    monkeypatch.setattr("songsim_campus.services._now", lambda: current["value"])
+
+    def fake_dataset_state(conn, table: str):
+        dataset_calls.append(table)
+        return {
+            "name": table,
+            "row_count": 1,
+            "last_synced_at": "2026-03-17T17:19:00+09:00",
+        }
+
+    monkeypatch.setattr("songsim_campus.services.repo.get_dataset_sync_state", fake_dataset_state)
+    monkeypatch.setattr("songsim_campus.services.repo.list_sync_runs", lambda conn, limit=1: [])
+
+    get_readiness_snapshot()
+    current["value"] += timedelta(seconds=10)
+    get_readiness_snapshot()
+
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+    get_readiness_snapshot()
+    clear_settings_cache()
+
+    assert len(dataset_calls) == len(SYNC_DATASET_TABLES) * 2
+
+
+def test_readiness_snapshot_rolls_back_after_dataset_failure(app_env, monkeypatch):
+    init_db()
+    seed_demo(force=True)
+    original_get_dataset_sync_state = repo.get_dataset_sync_state
+
+    def flaky_dataset_state(conn, table: str):
+        if table == "places":
+            conn.execute("SELECT * FROM missing_readiness_table")
+        return original_get_dataset_sync_state(conn, table)
+
+    monkeypatch.setattr("songsim_campus.services.repo.get_dataset_sync_state", flaky_dataset_state)
+
+    readiness = get_readiness_snapshot()
+
+    assert readiness["ok"] is False
+    assert readiness["tables"]["places"]["ok"] is False
+    assert readiness["tables"]["courses"]["ok"] is True
+    assert readiness["tables"]["notices"]["ok"] is True
+    assert readiness["tables"]["sync_runs"]["ok"] is True
+
+
+def test_readiness_snapshot_caches_failure_within_ttl(app_env, monkeypatch):
+    init_db()
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+    current = {"value": datetime.fromisoformat("2026-03-17T17:30:00+09:00")}
+    dataset_calls: list[str] = []
+
+    monkeypatch.setattr("songsim_campus.services._now", lambda: current["value"])
+
+    def fake_dataset_state(conn, table: str):
+        dataset_calls.append(table)
+        if table == "certificate_guides":
+            return {"name": table, "row_count": 0, "last_synced_at": None}
+        return {
+            "name": table,
+            "row_count": 1,
+            "last_synced_at": "2026-03-17T17:29:00+09:00",
+        }
+
+    monkeypatch.setattr("songsim_campus.services.repo.get_dataset_sync_state", fake_dataset_state)
+    monkeypatch.setattr("songsim_campus.services.repo.list_sync_runs", lambda conn, limit=1: [])
+
+    first = get_readiness_snapshot()
+    current["value"] += timedelta(seconds=5)
+    second = get_readiness_snapshot()
+    clear_settings_cache()
+
+    assert first["ok"] is False
+    assert second["ok"] is False
+    assert dataset_calls == list(SYNC_DATASET_TABLES)

@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from psycopg import sql
 
 from songsim_campus.api import create_app
+from songsim_campus.services import reset_readiness_cache
 from songsim_campus.settings import clear_settings_cache
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -128,6 +129,13 @@ def app_env(postgres_server, monkeypatch: pytest.MonkeyPatch):
     os.environ.pop("SONGSIM_MCP_OAUTH_SCOPES", None)
     os.environ.pop("SONGSIM_KAKAO_REST_API_KEY", None)
     os.environ.pop("SONGSIM_DATABASE_PATH", None)
+
+
+@pytest.fixture(autouse=True)
+def reset_readiness_runtime_cache():
+    reset_readiness_cache()
+    yield
+    reset_readiness_cache()
 
 
 @pytest.fixture()

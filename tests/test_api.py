@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
 from fastapi.testclient import TestClient
 
 from songsim_campus import services
@@ -91,6 +93,34 @@ def test_healthz_stays_liveness_only_when_required_public_dataset_is_empty(app_e
 
     assert response.status_code == 200
     assert response.json() == {"ok": True}
+
+
+def test_readyz_caches_snapshot_within_ttl(app_env, monkeypatch):
+    current = {"value": datetime.fromisoformat("2026-03-17T18:00:00+09:00")}
+    dataset_calls: list[str] = []
+
+    monkeypatch.setattr("songsim_campus.services._now", lambda: current["value"])
+
+    def fake_dataset_state(conn, table: str):
+        dataset_calls.append(table)
+        return {
+            "name": table,
+            "row_count": 1,
+            "last_synced_at": "2026-03-17T17:59:00+09:00",
+        }
+
+    monkeypatch.setattr("songsim_campus.services.repo.get_dataset_sync_state", fake_dataset_state)
+    monkeypatch.setattr("songsim_campus.services.repo.list_sync_runs", lambda conn, limit=1: [])
+
+    app = create_app()
+    with TestClient(app) as public_client:
+        first = public_client.get("/readyz")
+        current["value"] += timedelta(seconds=10)
+        second = public_client.get("/readyz")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert dataset_calls == list(services.SYNC_DATASET_TABLES)
 
 
 def test_admin_sync_route_is_disabled_by_default(client):

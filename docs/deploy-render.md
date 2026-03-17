@@ -59,7 +59,8 @@
 - MCP endpoint: `https://.../mcp`
 
 Render Blueprint health check는 `songsim-public-api`에서 `/healthz`를 사용합니다.
-`/readyz`는 운영자 수동 확인용으로 보고, public data freshness나 DB 연결 상태를 점검할 때 별도로 확인합니다.
+`/readyz`는 운영자 수동 확인용 cached readiness로 보고, public data freshness나 DB 연결 상태를 점검할 때 별도로 확인합니다.
+steady-state polling이 있어도 DB 부하가 커지지 않도록 readiness snapshot은 프로세스 로컬 cache를 짧게 사용합니다.
 
 ## 5. 주의
 
