@@ -54,9 +54,12 @@
 
 - API landing page: `https://.../`
 - API docs: `https://.../docs`
-- API readiness: `https://.../readyz`
 - API liveness: `https://.../healthz`
+- API readiness: `https://.../readyz`
 - MCP endpoint: `https://.../mcp`
+
+Render Blueprint health check는 `songsim-public-api`에서 `/healthz`를 사용합니다.
+`/readyz`는 운영자 수동 확인용으로 보고, public data freshness나 DB 연결 상태를 점검할 때 별도로 확인합니다.
 
 ## 5. 주의
 
