@@ -20,6 +20,7 @@ from .mcp_oauth import (
     is_public_mcp_oauth_enabled,
 )
 from .schemas import (
+    AcademicSupportGuide,
     CampusDiningMenu,
     CertificateGuide,
     Course,
@@ -56,6 +57,7 @@ from .services import (
     get_profile_meal_recommendations,
     get_profile_timetable,
     list_academic_calendar,
+    list_academic_support_guides,
     list_certificate_guides,
     list_estimated_empty_classrooms,
     list_latest_notices,
@@ -275,6 +277,12 @@ def _serialize_public_wifi_guide(guide: WifiGuide) -> dict[str, object]:
     return payload
 
 
+def _serialize_public_academic_support_guide(guide: AcademicSupportGuide) -> dict[str, object]:
+    payload = guide.model_dump()
+    payload["guide_summary"] = guide.summary or (guide.steps[0] if guide.steps else "")
+    return payload
+
+
 def _public_usage_guide() -> str:
     return "\n".join(
         [
@@ -282,10 +290,10 @@ def _public_usage_guide() -> str:
             "",
             "This server is read-only.",
             (
-                "Available: places, courses, academic calendar, certificate guides, "
-                "leave-of-absence guides, scholarship guides, wifi guides, notices, "
-                "dining menus, library seats, empty classrooms, nearby restaurants, "
-                "restaurant search, transport guides."
+                "Available: places, courses, academic calendar, academic support guides, "
+                "certificate guides, leave-of-absence guides, scholarship guides, wifi "
+                "guides, notices, dining menus, library seats, empty classrooms, nearby "
+                "restaurants, restaurant search, transport guides."
             ),
             "Use these public read-only tools for student information questions first.",
             "",
@@ -334,29 +342,33 @@ def _public_usage_guide() -> str:
                 "3월 학사일정, 1학기 개시일, 추가 등록기간, or 중간고사 일정."
             ),
             (
-                "10. Use tool_list_certificate_guides for 증명서 발급 안내 such as "
+                "10. Use tool_list_academic_support_guides for 학사지원 업무안내 such as "
+                "휴복학 문의처, 학점교류 담당 전화번호, 성적 담당처, or 교직 업무 문의 questions."
+            ),
+            (
+                "11. Use tool_list_certificate_guides for 증명서 발급 안내 such as "
                 "재학증명서 발급 방법, 졸업증명서 발급 안내, or 인터넷 증명발급 questions."
             ),
             (
-                "11. Use tool_list_leave_of_absence_guides for 휴학 안내 such as 휴학 신청방법, "
+                "12. Use tool_list_leave_of_absence_guides for 휴학 안내 such as 휴학 신청방법, "
                 "군휴학, 질병휴학, 등록금 반환 기준, or 휴복학 FAQ questions."
             ),
             (
-                "12. Use tool_list_scholarship_guides for 장학제도 baseline guidance such as "
+                "13. Use tool_list_scholarship_guides for 장학제도 baseline guidance such as "
                 "장학생 자격, 장학금 신청, 장학금 지급, or 장학제도 공식 문서 questions."
             ),
             (
-                "13. Use tool_list_wifi_guides for campus wifi guidance such as 니콜스관 "
+                "14. Use tool_list_wifi_guides for campus wifi guidance such as 니콜스관 "
                 "SSID, 중앙도서관 와이파이, or 무선랜 접속 방법 questions."
             ),
-            "14. Use tool_list_latest_notices for latest notices; category is optional.",
+            "15. Use tool_list_latest_notices for latest notices; category is optional.",
             (
-                "15. Use tool_list_transport_guides for static subway or bus access "
+                "16. Use tool_list_transport_guides for static subway or bus access "
                 "guidance. You can pass query with natural-language cues like 지하철, "
                 "1호선, 역곡역, or 버스. 셔틀은 현재 지원하지 않아 빈 결과가 정상입니다."
             ),
             (
-                "16. Optional reference resources exist for notice categories and class periods "
+                "17. Optional reference resources exist for notice categories and class periods "
                 "when you need them."
             ),
             "",
@@ -369,6 +381,8 @@ def _public_usage_guide() -> str:
             "- 편의점 어디 있어?",
             "- 최신 장학 공지 3개 보여줘",
             "- 장학제도 안내 알려줘",
+            "- 휴복학 문의 어디로 해야 해?",
+            "- 학점교류 담당 전화번호 알려줘",
             "- 휴학 신청방법 알려줘",
             "- 군휴학 제출 안내 알려줘",
             "- 니콜스관 WIFI 안내 알려줘",
@@ -409,9 +423,9 @@ def build_mcp():
         "Songsim Campus MCP",
         instructions=(
             "Use this read-only Songsim campus info server to answer student questions "
-            "about places, courses, academic calendar, notices, certificate, "
-            "leave-of-absence, and scholarship guides, wifi guides, dining, nearby "
-            "restaurants, library seats, empty classrooms, and transport."
+            "about places, courses, academic calendar, academic support, notices, "
+            "certificate, leave-of-absence, and scholarship guides, wifi guides, "
+            "dining, nearby restaurants, library seats, empty classrooms, and transport."
         ),
         website_url=settings.public_http_url or None,
         host=settings.app_host,
@@ -486,6 +500,16 @@ def build_mcp():
         with connection() as conn:
             return json.dumps(
                 [item.model_dump() for item in list_wifi_guides(conn, limit=50)],
+                ensure_ascii=False,
+                indent=2,
+            )
+
+    @mcp.resource("songsim://academic-support-guide")
+    def academic_support_guide_resource() -> str:
+        """Return the latest academic-support guides as JSON."""
+        with connection() as conn:
+            return json.dumps(
+                [item.model_dump() for item in list_academic_support_guides(conn, limit=50)],
                 ensure_ascii=False,
                 indent=2,
             )
@@ -952,6 +976,27 @@ def build_mcp():
             guides = list_wifi_guides(conn, limit=limit)
             if public_readonly:
                 return [_serialize_public_wifi_guide(item) for item in guides]
+            return [item.model_dump() for item in guides]
+
+    @mcp.tool(
+        description=(
+            (
+                "학사지원팀 업무안내를 읽을 때 사용합니다. 휴복학, 학점교류, 성적, 졸업, "
+                "교직 같은 업무구분별 담당업무와 문의처 전화번호를 current snapshot으로 "
+                "돌려줍니다."
+            )
+            if public_readonly
+            else "학교 학사지원팀 업무안내 current snapshot을 가져옵니다."
+        ),
+        meta=tool_meta,
+    )
+    def tool_list_academic_support_guides(
+        limit: Annotated[int, Field(description="최대 결과 수. 기본값은 20입니다.")] = 20,
+    ):
+        with connection() as conn:
+            guides = list_academic_support_guides(conn, limit=limit)
+            if public_readonly:
+                return [_serialize_public_academic_support_guide(item) for item in guides]
             return [item.model_dump() for item in guides]
 
     @mcp.tool(

@@ -19,6 +19,7 @@ from songsim_campus.repo import (
 )
 from songsim_campus.services import (
     refresh_academic_calendar_from_source,
+    refresh_academic_support_guides_from_source,
     refresh_campus_dining_menus_from_facilities_page,
     refresh_certificate_guides_from_certificate_page,
     refresh_facility_hours_from_facilities_page,
@@ -235,6 +236,7 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     assert "Songsim Campus MCP" in landing.text
     assert "https://songsim-api.onrender.com" in landing.text
     assert "https://songsim-mcp.onrender.com/mcp" in landing.text
+    assert "/academic-support-guides" in landing.text
     assert "configured without OAuth" in landing.text
     assert "GPT Actions OpenAPI" not in landing.text
     assert "/gpt/*" not in landing.text
@@ -243,6 +245,7 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     assert places.status_code == 200
     assert create_profile.status_code == 404
     assert admin_sync.status_code == 404
+    assert "/academic-support-guides" in openapi.text
     assert "/profiles" not in openapi.text
     assert "/admin/sync" not in openapi.text
 
@@ -1284,6 +1287,7 @@ def test_admin_sync_dashboard_runs_snapshot_and_shows_recent_history(admin_clien
             "places": 5,
             "courses": 10,
             "notices": 4,
+            "academic_support_guides": 5,
             "certificate_guides": 3,
             "leave_of_absence_guides": 2,
             "scholarship_guides": 4,
@@ -1313,6 +1317,7 @@ def test_admin_sync_dashboard_runs_snapshot_and_shows_recent_history(admin_clien
     assert "Automation Status" in page.text
     assert "snapshot" in page.text
     assert "success" in page.text
+    assert "academic_support_guides" in page.text
     assert "certificate_guides" in page.text
     assert "leave_of_absence_guides" in page.text
     assert "scholarship_guides" in page.text
@@ -1334,6 +1339,7 @@ def test_admin_observability_pages_render_runtime_state(admin_client, client, mo
             "places": 5,
             "courses": 10,
             "notices": 4,
+            "academic_support_guides": 5,
             "certificate_guides": 3,
             "leave_of_absence_guides": 2,
             "scholarship_guides": 4,
@@ -2220,6 +2226,25 @@ class ApiWifiGuideSource:
         ]
 
 
+class ApiAcademicSupportSource:
+    def fetch(self):
+        return "<academic-support></academic-support>"
+
+    def parse(self, html: str, *, fetched_at: str):
+        assert html == "<academic-support></academic-support>"
+        return [
+            {
+                "title": "수업 / 학점교류",
+                "summary": "타 대학 학점교류 신청 · 관리 업무",
+                "steps": ["타 대학 학점교류 신청 · 관리 업무"],
+                "contacts": ["02-2164-4510", "02-2164-4048"],
+                "source_url": "https://www.catholic.ac.kr/ko/support/academic_contact_information.do",
+                "source_tag": "cuk_academic_support_guides",
+                "last_synced_at": fetched_at,
+            }
+        ]
+
+
 def test_place_detail_returns_merged_opening_hours(client):
     with connection() as conn:
         refresh_facility_hours_from_facilities_page(conn, source=ApiFacilitiesSource())
@@ -2466,6 +2491,28 @@ def test_wifi_guides_endpoint_returns_guides(client):
             ],
             "source_url": "https://www.catholic.ac.kr/ko/campuslife/wifi.do",
             "source_tag": "cuk_wifi_guides",
+            "last_synced_at": items[0]["last_synced_at"],
+        }
+    ]
+
+
+def test_academic_support_guides_endpoint_returns_guides(client):
+    with connection() as conn:
+        refresh_academic_support_guides_from_source(conn, source=ApiAcademicSupportSource())
+
+    response = client.get("/academic-support-guides")
+    items = response.json()
+
+    assert response.status_code == 200
+    assert items == [
+        {
+            "id": 1,
+            "title": "수업 / 학점교류",
+            "summary": "타 대학 학점교류 신청 · 관리 업무",
+            "steps": ["타 대학 학점교류 신청 · 관리 업무"],
+            "contacts": ["02-2164-4510", "02-2164-4048"],
+            "source_url": "https://www.catholic.ac.kr/ko/support/academic_contact_information.do",
+            "source_tag": "cuk_academic_support_guides",
             "last_synced_at": items[0]["last_synced_at"],
         }
     ]

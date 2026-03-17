@@ -6,6 +6,7 @@ from pathlib import Path
 from songsim_campus.ingest.kakao_places import parse_place_detail_opening_hours
 from songsim_campus.ingest.official_sources import (
     AcademicCalendarSource,
+    AcademicSupportGuideSource,
     CampusFacilitiesSource,
     CampusMapSource,
     CertificateGuideSource,
@@ -432,6 +433,28 @@ def test_leave_of_absence_parser_extracts_sections_steps_and_links():
         == "휴학시점: 학기개시일 부터 90일 초과 / 반환금액: 없음 / 대상 휴학: 군, 질병, 육아"
     )
     assert all(row["source_tag"] == "cuk_leave_of_absence_guides" for row in rows)
+
+
+def test_academic_support_parser_extracts_contacts_steps_and_title():
+    source = AcademicSupportGuideSource(
+        "https://www.catholic.ac.kr/ko/support/academic_contact_information.do"
+    )
+
+    rows = source.parse(
+        _fixture("academic_contact_information.html"),
+        fetched_at="2026-03-18T12:00:00+09:00",
+    )
+
+    assert any("교육과정" in row["title"] for row in rows)
+    credits = next(row for row in rows if "학점교류" in row["title"])
+    assert credits["title"] == "수업 / 학점교류"
+    assert credits["summary"] == "타 대학 학점교류 신청 · 관리 업무"
+    assert credits["contacts"] == ["02-2164-4510", "02-2164-4048"]
+    leave = next(row for row in rows if row["title"] == "휴·복학")
+    assert leave["contacts"] == ["02-2164-4288"]
+    academic = next(row for row in rows if row["title"].startswith("학적"))
+    assert academic["steps"][0].startswith("전공배정")
+    assert all(row["source_tag"] == "cuk_academic_support_guides" for row in rows)
 
 
 def test_academic_calendar_parser_normalizes_kst_dates_and_campuses():

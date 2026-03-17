@@ -16,6 +16,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from .db import connection, get_connection, init_db
 from .schemas import (
     AcademicCalendarEvent,
+    AcademicSupportGuide,
     CampusDiningMenu,
     CertificateGuide,
     Course,
@@ -70,6 +71,7 @@ from .services import (
     get_readiness_snapshot,
     get_sync_dashboard_state,
     list_academic_calendar,
+    list_academic_support_guides,
     list_certificate_guides,
     list_estimated_empty_classrooms,
     list_latest_notices,
@@ -619,6 +621,7 @@ def create_app() -> FastAPI:
                 ],
             },
             {"title": "academic_calendar", "fields": []},
+            {"title": "academic_support_guides", "fields": []},
             {"title": "leave_of_absence_guides", "fields": []},
             {"title": "scholarship_guides", "fields": []},
             {"title": "wifi_guides", "fields": []},
@@ -999,6 +1002,10 @@ def create_app() -> FastAPI:
             <li><code>/places</code> campus places and landmarks</li>
             <li><code>/courses</code> public course offerings</li>
             <li><code>/academic-calendar</code> current academic calendar events</li>
+            <li>
+              <code>/academic-support-guides</code> academic office contacts and
+              responsibilities
+            </li>
             <li><code>/certificate-guides</code> certificate issuance guides</li>
             <li><code>/leave-of-absence-guides</code> leave-of-absence application guides</li>
             <li><code>/scholarship-guides</code> scholarship baseline guides</li>
@@ -1519,6 +1526,13 @@ def create_app() -> FastAPI:
     ) -> list[CertificateGuide]:
         with connection() as conn:
             return list_certificate_guides(conn, limit=limit)
+
+    @app.get("/academic-support-guides", response_model=list[AcademicSupportGuide])
+    def academic_support_guides(
+        limit: int = Query(default=20, ge=1, le=50),
+    ) -> list[AcademicSupportGuide]:
+        with connection() as conn:
+            return list_academic_support_guides(conn, limit=limit)
 
     @app.get("/leave-of-absence-guides", response_model=list[LeaveOfAbsenceGuide])
     def leave_of_absence_guides(

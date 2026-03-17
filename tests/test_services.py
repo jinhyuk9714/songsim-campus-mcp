@@ -30,6 +30,7 @@ from songsim_campus.services import (
     get_place,
     investigate_course_query_coverage,
     list_academic_calendar,
+    list_academic_support_guides,
     list_certificate_guides,
     list_estimated_empty_classrooms,
     list_latest_notices,
@@ -38,6 +39,7 @@ from songsim_campus.services import (
     list_transport_guides,
     list_wifi_guides,
     refresh_academic_calendar_from_source,
+    refresh_academic_support_guides_from_source,
     refresh_campus_dining_menus_from_facilities_page,
     refresh_certificate_guides_from_certificate_page,
     refresh_courses_from_subject_search,
@@ -3589,6 +3591,34 @@ class FakeWifiGuideSource:
         ]
 
 
+class FakeAcademicSupportSource:
+    def __init__(self, rows=None):
+        self._rows = rows or [
+            {
+                "title": "업무안내",
+                "summary": "학사지원학부의 대표 서비스",
+                "steps": ["전공과정, 수업운영, 학적, 졸업/교직, 학점교류 문의"],
+                "contacts": ["02-2164-4510", "02-2164-4288"],
+            }
+        ]
+
+    def fetch(self):
+        return "<support></support>"
+
+    def parse(self, html: str, *, fetched_at: str):
+        assert html == "<support></support>"
+        assert fetched_at == "2026-03-17T15:00:00+09:00"
+        return [
+            {
+                **row,
+                "source_url": "https://www.catholic.ac.kr/ko/support/academic_contact_information.do",
+                "source_tag": "cuk_academic_support_guides",
+                "last_synced_at": fetched_at,
+            }
+            for row in self._rows
+        ]
+
+
 def test_refresh_library_hours_merges_opening_hours_into_existing_place(app_env):
     init_db()
     seed_demo(force=True)
@@ -3791,6 +3821,23 @@ def test_refresh_wifi_guides_replaces_rows(app_env):
     assert guides[0].ssids == ["catholic_univ", "강의실 호실명 (ex: N301)"]
     assert guides[0].source_url == "https://www.catholic.ac.kr/ko/campuslife/wifi.do"
     assert guides[0].source_tag == "cuk_wifi_guides"
+
+
+def test_refresh_academic_support_guides_replaces_rows(app_env):
+    init_db()
+
+    with connection() as conn:
+        refresh_academic_support_guides_from_source(
+            conn,
+            source=FakeAcademicSupportSource(),
+            fetched_at="2026-03-17T15:00:00+09:00",
+        )
+        guides = list_academic_support_guides(conn)
+
+    assert len(guides) == 1
+    assert guides[0].title == "업무안내"
+    assert guides[0].contacts == ["02-2164-4510", "02-2164-4288"]
+    assert guides[0].source_tag == "cuk_academic_support_guides"
 
 
 def test_list_wifi_guides_preserves_snapshot_order_and_limit(app_env):
@@ -4122,6 +4169,10 @@ def test_sync_official_snapshot_runs_opening_hours_before_courses_and_transport(
         lambda conn: call_order.append('scholarship_guides') or [],
     )
     monkeypatch.setattr(
+        'songsim_campus.services.refresh_academic_support_guides_from_source',
+        lambda conn: call_order.append('academic_support_guides') or [],
+    )
+    monkeypatch.setattr(
         'songsim_campus.services.refresh_wifi_guides_from_source',
         lambda conn: call_order.append('wifi_guides') or [],
     )
@@ -4145,6 +4196,7 @@ def test_sync_official_snapshot_runs_opening_hours_before_courses_and_transport(
         'certificate_guides',
         'leave_of_absence_guides',
         'scholarship_guides',
+        'academic_support_guides',
         'wifi_guides',
         'transport',
     ]
@@ -4153,5 +4205,6 @@ def test_sync_official_snapshot_runs_opening_hours_before_courses_and_transport(
     assert summary['certificate_guides'] == 0
     assert summary['leave_of_absence_guides'] == 0
     assert summary['scholarship_guides'] == 0
+    assert summary['academic_support_guides'] == 0
     assert summary['wifi_guides'] == 0
     assert summary['transport_guides'] == 0

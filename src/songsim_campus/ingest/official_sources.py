@@ -1247,6 +1247,95 @@ class WifiGuideSource:
         return [fallback] if fallback else []
 
 
+class AcademicSupportGuideSource:
+    """Normalize the 학사지원 업무안내 table into guide rows."""
+
+    def __init__(self, url: str):
+        self.url = url
+
+    def fetch(self) -> str:
+        response = httpx.get(self.url, timeout=10)
+        response.raise_for_status()
+        return response.text
+
+    def parse(self, html: str, *, fetched_at: str) -> list[dict]:
+        soup = BeautifulSoup(html, "html.parser")
+        table = next(
+            (
+                candidate
+                for candidate in soup.select("table")
+                if candidate.select_one("caption strong")
+                and "업무안내표" in candidate.select_one("caption strong").get_text()
+            ),
+            None,
+        )
+        if table is None:
+            return []
+
+        rows: list[dict] = []
+        parent_title = ""
+        for row in table.select("tbody tr"):
+            cells = row.find_all("td")
+            if len(cells) < 3:
+                continue
+
+            if len(cells) >= 4:
+                parent_title = _clean_text(cells[0].get_text(" ", strip=True))
+                primary = parent_title
+                secondary = _clean_text(cells[1].get_text(" ", strip=True))
+                task_cell = cells[2]
+                contact_cell = cells[3]
+            else:
+                primary = _clean_text(cells[0].get_text(" ", strip=True))
+                secondary = ""
+                if cells[0].get("colspan") == "2":
+                    parent_title = ""
+                elif parent_title:
+                    secondary = primary
+                    primary = parent_title
+                task_cell = cells[-2]
+                contact_cell = cells[-1]
+
+            title = " / ".join(part for part in (primary, secondary) if part)
+            if not title:
+                continue
+
+            steps = _extract_list_or_text(task_cell)
+            rows.append(
+                {
+                    "title": title,
+                    "summary": steps[0] if steps else "",
+                    "steps": steps,
+                    "contacts": _clean_contact_cell(contact_cell),
+                    "source_url": self.url,
+                    "source_tag": "cuk_academic_support_guides",
+                    "last_synced_at": fetched_at,
+                }
+            )
+        return rows
+
+
+def _clean_contact_cell(cell) -> list[str]:
+    parts: list[str] = []
+    for line in cell.get_text("\n", strip=True).splitlines():
+        cleaned = _clean_text(line)
+        if cleaned:
+            parts.append(cleaned)
+    return parts
+
+
+def _extract_list_or_text(cell) -> list[str]:
+    items = [
+        _clean_text(li.get_text(" ", strip=True))
+        for li in cell.select("li")
+        if _clean_text(li.get_text(" ", strip=True))
+    ]
+    if items:
+        return items
+    fallback = _clean_text(cell.get_text(" ", strip=True))
+    return [fallback] if fallback else []
+
+
 class AcademicCalendarSource:
     """Official academic calendar parser backed by the public JSON feed."""
 

@@ -119,6 +119,17 @@ class ScholarshipGuide(BaseModel):
     last_synced_at: str
 
 
+class AcademicSupportGuide(BaseModel):
+    id: int
+    title: str
+    summary: str = ""
+    steps: list[str] = Field(default_factory=list)
+    contacts: list[str] = Field(default_factory=list)
+    source_url: str | None = None
+    source_tag: str = "demo"
+    last_synced_at: str
+
+
 class WifiGuide(BaseModel):
     id: int
     building_name: str
