@@ -273,6 +273,63 @@ def test_profile_notices_match_profile_context_and_return_reasons(app_env):
     assert notices[2].matched_reasons == ["keyword:자기소개서"]
 
 
+def test_profile_notice_preferences_canonicalize_alias_categories(app_env):
+    init_db()
+    with connection() as conn:
+        profile = create_profile(conn)
+
+        preferences = set_profile_notice_preferences(
+            conn,
+            profile.id,
+            ProfileNoticePreferences(
+                categories=["career", "employment", "place"],
+                keywords=[],
+            ),
+        )
+
+    assert preferences.categories == ["employment", "general"]
+
+
+def test_profile_notices_match_legacy_alias_categories_with_canonical_preferences(app_env):
+    init_db()
+    with connection() as conn:
+        profile = create_profile(conn)
+        set_profile_notice_preferences(
+            conn,
+            profile.id,
+            ProfileNoticePreferences(categories=["career", "place"], keywords=[]),
+        )
+        replace_notices(
+            conn,
+            [
+                _notice_row(
+                    "진로취업상담 안내",
+                    "career",
+                    summary="진로 상담 공지",
+                    labels=["취창업"],
+                    published_at="2026-03-12",
+                ),
+                _notice_row(
+                    "중앙도서관 자리 안내",
+                    "place",
+                    summary="도서관 자리 현황 안내",
+                    labels=["생활"],
+                    published_at="2026-03-13",
+                ),
+            ],
+        )
+
+        notices = list_profile_notices(conn, profile.id)
+
+    assert [item.notice.title for item in notices] == [
+        "중앙도서관 자리 안내",
+        "진로취업상담 안내",
+    ]
+    assert [item.notice.category for item in notices] == ["general", "employment"]
+    assert notices[0].matched_reasons == ["category:general"]
+    assert notices[1].matched_reasons == ["category:employment"]
+
+
 def test_profile_notice_scoring_does_not_double_count_same_reason_type(app_env):
     init_db()
     with connection() as conn:

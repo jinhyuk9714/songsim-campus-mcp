@@ -72,6 +72,60 @@ def test_profile_endpoints_store_timetable_and_notice_preferences(client):
     assert notices_with_preferences.json()[0]["notice"]["category"] == "academic"
 
 
+def test_profile_notice_preferences_endpoint_canonicalizes_aliases_and_matches_legacy_categories(
+    client,
+):
+    with connection() as conn:
+        seed_demo(force=True)
+        replace_notices(
+            conn,
+            [
+                {
+                    "title": "진로취업상담 안내",
+                    "category": "career",
+                    "published_at": "2026-03-12",
+                    "summary": "진로 상담 공지",
+                    "labels": ["취창업"],
+                    "source_url": "https://example.edu/notices/career",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "title": "중앙도서관 자리 안내",
+                    "category": "place",
+                    "published_at": "2026-03-13",
+                    "summary": "도서관 자리 현황 안내",
+                    "labels": ["생활"],
+                    "source_url": "https://example.edu/notices/place",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+
+    created = client.post("/profiles", json={"display_name": "성심학생"})
+    profile_id = created.json()["id"]
+
+    preferences_response = client.put(
+        f"/profiles/{profile_id}/notice-preferences",
+        json={"categories": ["career", "employment", "place"], "keywords": []},
+    )
+    notices_response = client.get(f"/profiles/{profile_id}/notices")
+
+    assert created.status_code == 200
+    assert preferences_response.status_code == 200
+    assert preferences_response.json()["categories"] == ["employment", "general"]
+    assert notices_response.status_code == 200
+    assert [item["notice"]["title"] for item in notices_response.json()] == [
+        "중앙도서관 자리 안내",
+        "진로취업상담 안내",
+    ]
+    assert [item["notice"]["category"] for item in notices_response.json()] == [
+        "general",
+        "employment",
+    ]
+
+
 def test_profile_patch_interests_and_course_recommendations_endpoints(client):
     with connection() as conn:
         seed_demo(force=True)

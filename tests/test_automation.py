@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
+import songsim_campus.services as services_module
 from songsim_campus import repo
 from songsim_campus.db import connection, get_connection, init_db
 from songsim_campus.services import get_observability_snapshot, run_automation_tick
@@ -276,6 +277,103 @@ def test_run_automation_tick_records_failed_run(app_env, monkeypatch, caplog):
     assert stored[0]["status"] == "failed"
     assert stored[0]["trigger"] == "automation"
     assert "event=automation_job_failed" in caplog.text
+
+
+def test_run_automation_tick_returns_noop_when_automation_is_disabled(app_env, monkeypatch):
+    monkeypatch.setenv("SONGSIM_AUTOMATION_ENABLED", "false")
+    clear_settings_cache()
+    init_db()
+    services_module.reset_observability_state()
+
+    calls: list[dict[str, str]] = []
+    monkeypatch.setattr(
+        "songsim_campus.services._is_automation_job_due",
+        lambda *args, **kwargs: True,
+    )
+    monkeypatch.setattr(
+        "songsim_campus.services.run_admin_sync",
+        lambda **kwargs: calls.append(kwargs),
+    )
+
+    runs = run_automation_tick(job_names={"snapshot"})
+
+    assert runs == []
+    assert calls == []
+
+
+def test_run_automation_tick_returns_noop_when_leader_lock_is_unavailable(
+    app_env,
+    monkeypatch,
+):
+    monkeypatch.setenv("SONGSIM_AUTOMATION_ENABLED", "true")
+    clear_settings_cache()
+    init_db()
+    services_module.reset_observability_state()
+
+    calls: list[dict[str, str]] = []
+    monkeypatch.setattr(
+        "songsim_campus.services._is_automation_job_due",
+        lambda *args, **kwargs: True,
+    )
+    monkeypatch.setattr(
+        "songsim_campus.services.try_acquire_automation_leader",
+        lambda conn: False,
+    )
+    monkeypatch.setattr(
+        "songsim_campus.services.run_admin_sync",
+        lambda **kwargs: calls.append(kwargs),
+    )
+
+    runs = run_automation_tick(job_names={"snapshot"})
+
+    assert runs == []
+    assert calls == []
+
+
+def test_run_automation_tick_acquires_and_releases_leader_for_direct_invocation(
+    app_env,
+    monkeypatch,
+):
+    monkeypatch.setenv("SONGSIM_AUTOMATION_ENABLED", "true")
+    clear_settings_cache()
+    init_db()
+    services_module.reset_observability_state()
+
+    acquired: list[bool] = []
+    released: list[bool] = []
+
+    monkeypatch.setattr(
+        "songsim_campus.services._is_automation_job_due",
+        lambda *args, **kwargs: True,
+    )
+    monkeypatch.setattr(
+        "songsim_campus.services.try_acquire_automation_leader",
+        lambda conn: acquired.append(True) or True,
+    )
+    monkeypatch.setattr(
+        "songsim_campus.services.release_automation_leader",
+        lambda conn: released.append(True) or True,
+    )
+    monkeypatch.setattr(
+        "songsim_campus.services.run_admin_sync",
+        lambda **kwargs: services_module.SyncRun(
+            id=1,
+            target=kwargs["target"],
+            status="success",
+            trigger=kwargs["trigger"],
+            params={},
+            summary={"ok": 1},
+            error_text=None,
+            started_at="2026-03-14T09:00:00+09:00",
+            finished_at="2026-03-14T09:00:01+09:00",
+        ),
+    )
+
+    runs = run_automation_tick(job_names={"snapshot"})
+
+    assert [run.target for run in runs] == ["snapshot"]
+    assert acquired == [True]
+    assert released == [True]
 
 
 def test_postgres_advisory_lock_allows_only_one_holder(app_env):

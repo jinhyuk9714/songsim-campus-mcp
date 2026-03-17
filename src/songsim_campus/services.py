@@ -826,18 +826,37 @@ def _normalize_notice_category_filter(category: str | None) -> list[str] | None:
     return [normalized]
 
 
-def _normalize_notice_public_category(category: str | None) -> str:
+def _canonical_notice_category(category: str | None) -> str | None:
     cleaned = _normalize_optional_text(category)
     if cleaned is None:
-        return "general"
+        return None
     normalized = cleaned.lower()
     if normalized in {"employment", "career"}:
         return "employment"
     if normalized in {"general", "place"}:
         return "general"
-    if normalized in {"academic", "scholarship", "event", "facility", "library"}:
-        return normalized
+    return normalized
+
+
+def _normalize_notice_public_category(category: str | None) -> str:
+    canonical = _canonical_notice_category(category)
+    if canonical is None:
+        return "general"
+    if canonical in {"academic", "scholarship", "employment", "event", "facility", "library"}:
+        return canonical
     return "general"
+
+
+def _normalize_notice_preference_categories(categories: list[str]) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for category in categories:
+        canonical = _canonical_notice_category(category)
+        if canonical is None or canonical in seen:
+            continue
+        seen.add(canonical)
+        normalized.append(canonical)
+    return normalized
 
 
 def _canonicalize_notice_detail(
@@ -922,6 +941,82 @@ def _matches_partial_text_candidate(
         return False
     compact_text = _compact_text(cleaned).lower()
     return bool(compact_query) and compact_query.lower() in compact_text
+
+
+def _matches_prefix_text_candidate(
+    text: str | None,
+    *,
+    collapsed_query: str,
+    compact_query: str | None,
+) -> bool:
+    cleaned = _normalize_optional_text(text)
+    if cleaned is None:
+        return False
+    collapsed_text = _collapse_whitespace(cleaned).lower()
+    if collapsed_text.startswith(collapsed_query.lower()):
+        return True
+    if compact_query is None:
+        return False
+    compact_text = _compact_text(cleaned).lower()
+    return bool(compact_query) and compact_text.startswith(compact_query.lower())
+
+
+def _rank_course_search_candidate(
+    item: dict[str, Any],
+    *,
+    collapsed_query: str,
+    compact_query: str | None,
+) -> int | None:
+    code = str(item.get("code") or "")
+    title = str(item.get("title") or "")
+    professor = str(item.get("professor") or "")
+
+    if _matches_exact_text_candidate(
+        code,
+        collapsed_query=collapsed_query,
+        compact_query=compact_query,
+    ):
+        return 0
+    if _matches_prefix_text_candidate(
+        code,
+        collapsed_query=collapsed_query,
+        compact_query=compact_query,
+    ):
+        return 1
+    if _matches_exact_text_candidate(
+        title,
+        collapsed_query=collapsed_query,
+        compact_query=compact_query,
+    ):
+        return 2
+    if _matches_prefix_text_candidate(
+        title,
+        collapsed_query=collapsed_query,
+        compact_query=compact_query,
+    ):
+        return 3
+    if _matches_exact_text_candidate(
+        professor,
+        collapsed_query=collapsed_query,
+        compact_query=compact_query,
+    ):
+        return 4
+    if _matches_prefix_text_candidate(
+        professor,
+        collapsed_query=collapsed_query,
+        compact_query=compact_query,
+    ):
+        return 5
+    if any(
+        _matches_partial_text_candidate(
+            field,
+            collapsed_query=collapsed_query,
+            compact_query=compact_query,
+        )
+        for field in (code, title, professor)
+    ):
+        return 6
+    return None
 
 
 def _normalize_transport_mode(mode: str | None) -> str | None:
@@ -1602,7 +1697,11 @@ def _minutes_from_time_string(value: str) -> int | None:
         return None
     hour = int(match.group(1))
     minute = int(match.group(2))
-    if hour > 23 or minute > 59:
+    if minute > 59:
+        return None
+    if hour == 24:
+        return 24 * 60 if minute == 0 else None
+    if hour > 23:
         return None
     return hour * 60 + minute
 
@@ -1620,8 +1719,10 @@ def _extract_time_range(value: str) -> tuple[int, int] | None:
 
 def _is_in_time_range(current_minutes: int, time_range: tuple[int, int]) -> bool:
     start, end = time_range
-    if end <= start:
+    if end == start:
         return False
+    if end < start:
+        return current_minutes >= start or current_minutes < end
     return start <= current_minutes < end
 
 
@@ -1682,8 +1783,17 @@ def _find_day_specific_time_ranges(value: str, weekday: int) -> tuple[bool, list
                 continue
             found_any = True
             time_range = _extract_time_range(match.group(1))
-            if time_range and weekday in days:
-                matches.append(time_range)
+            if time_range:
+                start, end = time_range
+                if end > start:
+                    if weekday in days:
+                        matches.append(time_range)
+                else:
+                    if weekday in days:
+                        matches.append((start, 24 * 60))
+                    spillover_days = {((day + 1) % 7) for day in days}
+                    if weekday in spillover_days:
+                        matches.append((0, end))
             break
     return found_any, matches
 
@@ -2293,15 +2403,21 @@ def _notice_match_result(
 ) -> tuple[list[str], int]:
     reasons: list[str] = []
     score = 0
-    category = item["category"].lower()
-    labels = [label.lower() for label in item.get("labels", [])]
+    category = _canonical_notice_category(item.get("category")) or ""
+    labels = [
+        canonical_label
+        for label in item.get("labels", [])
+        if (canonical_label := _canonical_notice_category(label)) is not None
+    ]
     text = _joined_notice_text(item)
 
     category_matched = False
     for raw_category in preferences.categories:
-        normalized = raw_category.lower()
+        normalized = _canonical_notice_category(raw_category)
+        if normalized is None:
+            continue
         if normalized == category or normalized in labels:
-            reasons.append(f"category:{raw_category}")
+            reasons.append(f"category:{normalized}")
             category_matched = True
     if category_matched:
         score += 4
@@ -2506,13 +2622,26 @@ def search_courses(
     limit: int = 20,
 ) -> list[Course]:
     collapsed_query, compact_query = _normalized_query_variants(query)
+    if collapsed_query is None:
+        return [
+            Course.model_validate(item)
+            for item in repo.search_courses(
+                conn,
+                "",
+                year=year,
+                semester=semester,
+                period_start=period_start,
+                limit=limit,
+            )
+        ]
+
     queries = [collapsed_query or ""]
     if compact_query is not None and compact_query != queries[0]:
         queries.append(compact_query)
 
-    items: list[dict[str, Any]] = []
+    ranked_items: list[tuple[int, int, int, str, str, str, int, dict[str, Any]]] = []
     seen_ids: set[int] = set()
-    fetch_limit = max(limit * 2, limit)
+    order_index = 0
     for candidate_query in queries:
         for item in repo.search_courses(
             conn,
@@ -2520,18 +2649,34 @@ def search_courses(
             year=year,
             semester=semester,
             period_start=period_start,
-            limit=fetch_limit,
+            limit=None,
         ):
             item_id = int(item["id"])
             if item_id in seen_ids:
                 continue
             seen_ids.add(item_id)
-            items.append(item)
-            if len(items) == limit:
-                break
-        if len(items) == limit:
-            break
-    return [Course.model_validate(item) for item in items]
+            rank = _rank_course_search_candidate(
+                item,
+                collapsed_query=collapsed_query,
+                compact_query=compact_query,
+            )
+            if rank is None:
+                continue
+            ranked_items.append(
+                (
+                    rank,
+                    -int(item.get("year") or 0),
+                    -int(item.get("semester") or 0),
+                    _collapse_whitespace(str(item.get("title") or "")).lower(),
+                    str(item.get("code") or "").lower(),
+                    str(item.get("section") or "").lower(),
+                    order_index,
+                    item,
+                )
+            )
+            order_index += 1
+    ranked_items.sort(key=lambda item: item[:-1])
+    return [Course.model_validate(item[-1]) for item in ranked_items[:limit]]
 
 
 def search_restaurants(
@@ -3079,23 +3224,52 @@ def run_automation_tick(
     job_names: set[str] | None = None,
     now: datetime | None = None,
 ) -> list[SyncRun]:
+    settings = get_settings()
+    if not settings.automation_enabled:
+        logger.info("event=automation_tick_skipped reason=disabled")
+        return []
+
     selected = job_names or AUTOMATION_SYNC_TARGETS
     unknown = set(selected) - AUTOMATION_SYNC_TARGETS
     if unknown:
         raise InvalidRequestError(f"Unsupported automation job(s): {', '.join(sorted(unknown))}")
+
+    lock_conn = None
+    acquired_leader = False
+    if not bool(_OBSERVABILITY_STATE["automation"]["leader"]):
+        lock_conn = get_connection()
+        try:
+            if not try_acquire_automation_leader(lock_conn):
+                set_automation_leader(False)
+                logger.info("event=automation_tick_skipped reason=not_leader")
+                lock_conn.close()
+                return []
+            acquired_leader = True
+        except Exception:
+            lock_conn.close()
+            raise
+
     current = _coerce_datetime(now)
     due_targets: list[str] = []
-    with connection() as conn:
-        for target in ("snapshot", "library_seat_prewarm", "cache_cleanup"):
-            if target not in selected:
-                continue
-            if _is_automation_job_due(conn, target=target, now=current):
-                due_targets.append(target)
+    try:
+        with connection() as conn:
+            for target in ("snapshot", "library_seat_prewarm", "cache_cleanup"):
+                if target not in selected:
+                    continue
+                if _is_automation_job_due(conn, target=target, now=current):
+                    due_targets.append(target)
 
-    runs: list[SyncRun] = []
-    for target in due_targets:
-        runs.append(run_admin_sync(target=target, trigger="automation"))
-    return runs
+        runs: list[SyncRun] = []
+        for target in due_targets:
+            runs.append(run_admin_sync(target=target, trigger="automation"))
+        return runs
+    finally:
+        if acquired_leader and lock_conn is not None:
+            try:
+                release_automation_leader(lock_conn)
+            finally:
+                set_automation_leader(False)
+                lock_conn.close()
 
 
 def create_profile(conn: sqlite3.Connection, display_name: str = "") -> Profile:
@@ -3211,7 +3385,7 @@ def set_profile_notice_preferences(
     preferences: ProfileNoticePreferences,
 ) -> ProfileNoticePreferences:
     _ensure_profile(conn, profile_id)
-    categories = _unique_stripped(preferences.categories)
+    categories = _normalize_notice_preference_categories(preferences.categories)
     keywords = _unique_stripped(preferences.keywords)
     if not categories and not keywords:
         raise InvalidRequestError(
@@ -3256,9 +3430,13 @@ def list_profile_notices(
     limit: int = 10,
 ) -> list[MatchedNotice]:
     profile = _ensure_profile(conn, profile_id)
-    preferences = ProfileNoticePreferences.model_validate(
+    loaded_preferences = ProfileNoticePreferences.model_validate(
         repo.get_profile_notice_preferences(conn, profile_id)
         or {"categories": [], "keywords": []}
+    )
+    preferences = ProfileNoticePreferences(
+        categories=_normalize_notice_preference_categories(loaded_preferences.categories),
+        keywords=loaded_preferences.keywords,
     )
     interests = get_profile_interests(conn, profile_id)
     if _profile_notice_context_is_empty(profile, preferences, interests):
@@ -3277,7 +3455,13 @@ def list_profile_notices(
                 (
                     score,
                     MatchedNotice(
-                        notice=Notice.model_validate(item),
+                        notice=Notice.model_validate(
+                            {
+                                **item,
+                                "category": _canonical_notice_category(item.get("category"))
+                                or "general",
+                            }
+                        ),
                         matched_reasons=reasons,
                     ),
                 )

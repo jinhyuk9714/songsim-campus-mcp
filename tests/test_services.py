@@ -122,6 +122,35 @@ def _place_row(
     }
 
 
+def _course_row(
+    *,
+    year: int,
+    semester: int,
+    code: str,
+    title: str,
+    professor: str | None = "담당교수",
+    section: str = "01",
+    department: str = "테스트학과",
+    source_tag: str = "test",
+) -> dict:
+    return {
+        "year": year,
+        "semester": semester,
+        "code": code,
+        "title": title,
+        "professor": professor,
+        "department": department,
+        "section": section,
+        "day_of_week": "월",
+        "period_start": 1,
+        "period_end": 2,
+        "room": "M101",
+        "raw_schedule": "월1~2(M101)",
+        "source_tag": source_tag,
+        "last_synced_at": "2026-03-13T09:00:00+09:00",
+    }
+
+
 def test_get_class_periods_returns_ten_periods(app_env):
     init_db()
     seed_demo(force=True)
@@ -482,6 +511,80 @@ def test_search_courses_filters_by_period_start(app_env):
     assert courses
     assert [course.code for course in courses] == ["CSE401"]
     assert all(course.period_start == 7 for course in courses)
+
+
+def test_search_courses_prioritizes_exact_code_over_title_substring(app_env):
+    init_db()
+
+    with connection() as conn:
+        repo.replace_courses(
+            conn,
+            [
+                _course_row(year=2026, semester=1, code="EEE200", title="CSE101 프로젝트"),
+                _course_row(year=2026, semester=1, code="CSE101", title="알고리즘개론"),
+            ],
+        )
+        courses = search_courses(conn, query="CSE101", limit=5)
+
+    assert [course.code for course in courses] == ["CSE101", "EEE200"]
+
+
+def test_search_courses_prioritizes_code_prefix_over_exact_title(app_env):
+    init_db()
+
+    with connection() as conn:
+        repo.replace_courses(
+            conn,
+            [
+                _course_row(year=2026, semester=1, code="MAT100", title="CSE"),
+                _course_row(year=2026, semester=1, code="CSE210", title="프로그래밍실습"),
+            ],
+        )
+        courses = search_courses(conn, query="CSE", limit=5)
+
+    assert [course.code for course in courses] == ["CSE210", "MAT100"]
+
+
+def test_search_courses_prioritizes_title_and_professor_matches_deterministically(app_env):
+    init_db()
+
+    with connection() as conn:
+        repo.replace_courses(
+            conn,
+            [
+                _course_row(year=2026, semester=1, code="GEN900", title="고급자료분석"),
+                _course_row(year=2026, semester=1, code="CSE900", title="자료"),
+                _course_row(year=2026, semester=1, code="CSE901", title="자료구조"),
+                _course_row(
+                    year=2026,
+                    semester=1,
+                    code="HIS900",
+                    title="컴퓨터개론",
+                    professor="자료",
+                ),
+            ],
+        )
+        courses = search_courses(conn, query="자료", limit=10)
+
+    assert [course.code for course in courses] == ["CSE900", "CSE901", "HIS900", "GEN900"]
+
+
+def test_search_courses_uses_year_semester_and_title_tiebreak_for_equal_rank(app_env):
+    init_db()
+
+    with connection() as conn:
+        repo.replace_courses(
+            conn,
+            [
+                _course_row(year=2026, semester=1, code="DAT103", title="Data Structures"),
+                _course_row(year=2027, semester=1, code="DAT100", title="Data Mining"),
+                _course_row(year=2026, semester=1, code="DAT102", title="Data Analytics"),
+                _course_row(year=2026, semester=2, code="DAT101", title="Data Models"),
+            ],
+        )
+        courses = search_courses(conn, query="Data", limit=10)
+
+    assert [course.code for course in courses] == ["DAT100", "DAT101", "DAT102", "DAT103"]
 
 
 def test_load_place_alias_overrides_contract():
@@ -2222,6 +2325,10 @@ def test_find_nearby_restaurants_budget_max_requires_price_evidence(app_env):
     [
         ("중식 11:30 ~ 14:00", "2026-03-16T12:00:00+09:00", True),
         ("08:00-21:00", "2026-03-16T07:00:00+09:00", False),
+        ("상시 07:00~24:00", "2026-03-16T23:30:00+09:00", True),
+        ("23:00~02:00", "2026-03-16T23:30:00+09:00", True),
+        ("23:00~02:00", "2026-03-17T01:30:00+09:00", True),
+        ("토 23:00~02:00", "2026-03-22T01:30:00+09:00", True),
         ("평일 08:00~19:00 토 10:00~16:00 (일/공휴일휴무)", "2026-03-15T11:00:00+09:00", False),
         ("mon-fri 08:30-22:00", "2026-03-16T09:00:00+09:00", True),
         ("24시간 운영", "2026-03-15T03:00:00+09:00", True),

@@ -1258,6 +1258,84 @@ def test_courses_query_returns_expected_course(client):
     assert items[0]['title'] == '객체지향프로그래밍설계'
 
 
+def test_courses_endpoint_prioritizes_ranked_matches_over_general_substrings(client):
+    with connection() as conn:
+        replace_courses(
+            conn,
+            [
+                {
+                    "year": 2026,
+                    "semester": 1,
+                    "code": "GEN900",
+                    "title": "고급자료분석",
+                    "professor": "담당교수",
+                    "department": "테스트학과",
+                    "section": "01",
+                    "day_of_week": "월",
+                    "period_start": 1,
+                    "period_end": 2,
+                    "room": "M101",
+                    "raw_schedule": "월1~2(M101)",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "year": 2026,
+                    "semester": 1,
+                    "code": "CSE900",
+                    "title": "자료",
+                    "professor": "담당교수",
+                    "department": "테스트학과",
+                    "section": "01",
+                    "day_of_week": "월",
+                    "period_start": 1,
+                    "period_end": 2,
+                    "room": "M101",
+                    "raw_schedule": "월1~2(M101)",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "year": 2026,
+                    "semester": 1,
+                    "code": "CSE901",
+                    "title": "자료구조",
+                    "professor": "담당교수",
+                    "department": "테스트학과",
+                    "section": "01",
+                    "day_of_week": "월",
+                    "period_start": 1,
+                    "period_end": 2,
+                    "room": "M101",
+                    "raw_schedule": "월1~2(M101)",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "year": 2026,
+                    "semester": 1,
+                    "code": "HIS900",
+                    "title": "컴퓨터개론",
+                    "professor": "자료",
+                    "department": "테스트학과",
+                    "section": "01",
+                    "day_of_week": "월",
+                    "period_start": 1,
+                    "period_end": 2,
+                    "room": "M101",
+                    "raw_schedule": "월1~2(M101)",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+
+    response = client.get("/courses", params={"query": "자료", "limit": 4})
+
+    assert response.status_code == 200
+    assert [item["code"] for item in response.json()] == ["CSE900", "CSE901", "HIS900", "GEN900"]
+
+
 def test_nearby_restaurants_uses_origin(client):
     response = client.get(
         '/restaurants/nearby',
@@ -1596,6 +1674,47 @@ def test_nearby_restaurants_can_filter_open_now(client):
 
     assert response.status_code == 200
     assert response.json() == []
+
+
+def test_nearby_restaurants_can_filter_open_now_for_late_night_hours(client):
+    with connection() as conn:
+        replace_restaurants(
+            conn,
+            [
+                {
+                    "slug": "night-snack",
+                    "name": "야식분식",
+                    "category": "korean",
+                    "min_price": 7000,
+                    "max_price": 9000,
+                    "latitude": 37.4869,
+                    "longitude": 126.7999,
+                    "tags": ["한식"],
+                    "description": "야간 운영 테스트 식당",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                }
+            ],
+        )
+        update_place_opening_hours(
+            conn,
+            "central-library",
+            {"야식분식": "23:00~02:00"},
+            last_synced_at="2026-03-13T09:00:00+09:00",
+        )
+
+    response = client.get(
+        "/restaurants/nearby",
+        params={
+            "origin": "central-library",
+            "open_now": True,
+            "at": "2026-03-16T23:30:00+09:00",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()[0]["name"] == "야식분식"
+    assert response.json()[0]["open_now"] is True
 
 
 def test_nearby_restaurants_endpoint_reuses_kakao_cache(client, monkeypatch):
