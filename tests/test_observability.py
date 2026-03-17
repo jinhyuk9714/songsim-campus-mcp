@@ -220,6 +220,7 @@ def test_run_admin_sync_updates_observability_for_success_and_failure(
             "courses": 2,
             "notices": 3,
             "certificate_guides": 2,
+            "scholarship_guides": 5,
             "transport_guides": 4,
         }
 

@@ -17,6 +17,7 @@ JSON_COLUMNS = {
     "notices": {"labels_json": "labels"},
     "transport_guides": {"steps_json": "steps"},
     "certificate_guides": {"steps_json": "steps"},
+    "scholarship_guides": {"steps_json": "steps", "links_json": "links"},
     "academic_calendar": {"campuses_json": "campuses"},
     "profile_notice_preferences": {
         "categories_json": "categories",
@@ -36,6 +37,7 @@ JSON_DEFAULTS = {
     "raw_payload_json": {},
     "labels_json": [],
     "steps_json": [],
+    "links_json": [],
     "campuses_json": [],
     "categories_json": [],
     "keywords_json": [],
@@ -686,6 +688,30 @@ def replace_certificate_guides(conn: psycopg.Connection, rows: list[dict[str, An
     )
 
 
+def replace_scholarship_guides(conn: psycopg.Connection, rows: list[dict[str, Any]]) -> None:
+    conn.execute("TRUNCATE TABLE scholarship_guides RESTART IDENTITY CASCADE")
+    _executemany(
+        conn,
+        """
+        INSERT INTO scholarship_guides (
+            title, summary, steps_json, links_json, source_url, source_tag, last_synced_at
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """,
+        [
+            (
+                row["title"],
+                row.get("summary", ""),
+                Jsonb(row.get("steps", [])),
+                Jsonb(row.get("links", [])),
+                row.get("source_url"),
+                row.get("source_tag", "demo"),
+                row["last_synced_at"],
+            )
+            for row in rows
+        ],
+    )
+
+
 def replace_academic_calendar(conn: psycopg.Connection, rows: list[dict[str, Any]]) -> None:
     conn.execute("TRUNCATE TABLE academic_calendar RESTART IDENTITY CASCADE")
     _executemany(
@@ -867,6 +893,23 @@ def list_academic_calendar(
     return [_row_to_dict("academic_calendar", row) for row in rows]
 
 
+def list_scholarship_guides(
+    conn: psycopg.Connection,
+    *,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT *
+        FROM scholarship_guides
+        ORDER BY id, title
+        LIMIT %s
+        """,
+        (limit,),
+    ).fetchall()
+    return [_row_to_dict("scholarship_guides", row) for row in rows]
+
+
 def create_sync_run(
     conn: psycopg.Connection,
     *,
@@ -982,6 +1025,7 @@ def get_dataset_sync_state(conn: psycopg.Connection, table: str) -> dict[str, An
         "notices",
         "transport_guides",
         "certificate_guides",
+        "scholarship_guides",
         "academic_calendar",
         "campus_dining_menus",
     }

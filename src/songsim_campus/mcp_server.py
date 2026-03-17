@@ -36,6 +36,7 @@ from .schemas import (
     ProfileInterests,
     ProfileNoticePreferences,
     ProfileUpdateRequest,
+    ScholarshipGuide,
     TransportGuide,
 )
 from .seed import seed_demo
@@ -57,6 +58,7 @@ from .services import (
     list_estimated_empty_classrooms,
     list_latest_notices,
     list_profile_notices,
+    list_scholarship_guides,
     list_transport_guides,
     search_campus_dining_menus,
     search_courses,
@@ -251,6 +253,12 @@ def _serialize_public_certificate_guide(guide: CertificateGuide) -> dict[str, ob
     return payload
 
 
+def _serialize_public_scholarship_guide(guide: ScholarshipGuide) -> dict[str, object]:
+    payload = guide.model_dump()
+    payload["guide_summary"] = guide.summary or (guide.steps[0] if guide.steps else "")
+    return payload
+
+
 def _public_usage_guide() -> str:
     return "\n".join(
         [
@@ -315,14 +323,18 @@ def _public_usage_guide() -> str:
                 "10. Use tool_list_certificate_guides for 증명서 발급 안내 such as "
                 "재학증명서 발급 방법, 졸업증명서 발급 안내, or 인터넷 증명발급 questions."
             ),
-            "11. Use tool_list_latest_notices for latest notices; category is optional.",
             (
-                "12. Use tool_list_transport_guides for static subway or bus access "
+                "11. Use tool_list_scholarship_guides for 장학제도 baseline guidance such as "
+                "장학생 자격, 장학금 신청, 장학금 지급, or 장학제도 공식 문서 questions."
+            ),
+            "12. Use tool_list_latest_notices for latest notices; category is optional.",
+            (
+                "13. Use tool_list_transport_guides for static subway or bus access "
                 "guidance. You can pass query with natural-language cues like 지하철, "
                 "1호선, 역곡역, or 버스. 셔틀은 현재 지원하지 않아 빈 결과가 정상입니다."
             ),
             (
-                "13. Use songsim://notice-categories or /notice-categories when a user asks "
+                "14. Use songsim://notice-categories or /notice-categories when a user asks "
                 "which notice categories exist. Use songsim://class-periods, /periods, or "
                 "/gpt/periods when a user asks what a period number means."
             ),
@@ -335,6 +347,7 @@ def _public_usage_guide() -> str:
             "- 헬스장 어디야?",
             "- 편의점 어디 있어?",
             "- 최신 장학 공지 3개 보여줘",
+            "- 장학제도 안내 알려줘",
             "- 재학증명서 발급 안내 알려줘",
             "- 니콜스관인데 지금 예상 빈 강의실 있어?",
             "- 매머드커피 어디 있어?",
@@ -417,6 +430,16 @@ def build_mcp():
         with connection() as conn:
             return json.dumps(
                 [item.model_dump() for item in list_certificate_guides(conn, limit=50)],
+                ensure_ascii=False,
+                indent=2,
+            )
+
+    @mcp.resource("songsim://scholarship-guide")
+    def scholarship_guide_resource() -> str:
+        """Return the latest scholarship guides as JSON."""
+        with connection() as conn:
+            return json.dumps(
+                [item.model_dump() for item in list_scholarship_guides(conn, limit=50)],
                 ensure_ascii=False,
                 indent=2,
             )
@@ -821,6 +844,27 @@ def build_mcp():
             guides = list_certificate_guides(conn, limit=limit)
             if public_readonly:
                 return [_serialize_public_certificate_guide(item) for item in guides]
+            return [item.model_dump() for item in guides]
+
+    @mcp.tool(
+        description=(
+            (
+                "학교 장학제도 안내를 읽을 때 사용합니다. 장학생 자격, 장학금 신청, 장학금 지급, "
+                "장학금 지급 규정 같은 baseline 안내와 공식 문서 링크를 current snapshot으로 "
+                "돌려줍니다."
+            )
+            if public_readonly
+            else "학교 장학제도 안내 current snapshot을 가져옵니다."
+        ),
+        meta=tool_meta,
+    )
+    def tool_list_scholarship_guides(
+        limit: Annotated[int, Field(description="최대 결과 수. 기본값은 20입니다.")] = 20,
+    ):
+        with connection() as conn:
+            guides = list_scholarship_guides(conn, limit=limit)
+            if public_readonly:
+                return [_serialize_public_scholarship_guide(item) for item in guides]
             return [item.model_dump() for item in guides]
 
     @mcp.tool(

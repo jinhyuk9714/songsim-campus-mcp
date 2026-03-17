@@ -22,6 +22,7 @@ from songsim_campus.services import (
     refresh_campus_dining_menus_from_facilities_page,
     refresh_certificate_guides_from_certificate_page,
     refresh_facility_hours_from_facilities_page,
+    refresh_scholarship_guides_from_source,
     refresh_transport_guides_from_location_page,
 )
 from songsim_campus.settings import clear_settings_cache
@@ -264,6 +265,7 @@ def test_public_readonly_mode_exposes_gpt_actions_openapi(app_env, monkeypatch):
         "/courses",
         "/academic-calendar",
         "/certificate-guides",
+        "/scholarship-guides",
         "/notices",
         "/notice-categories",
         "/periods",
@@ -277,6 +279,7 @@ def test_public_readonly_mode_exposes_gpt_actions_openapi(app_env, monkeypatch):
     assert payload["paths"]["/courses"]["get"]["operationId"] == "searchCourses"
     assert payload["paths"]["/academic-calendar"]["get"]["operationId"] == "listAcademicCalendar"
     assert payload["paths"]["/certificate-guides"]["get"]["operationId"] == "listCertificateGuides"
+    assert payload["paths"]["/scholarship-guides"]["get"]["operationId"] == "listScholarshipGuides"
     course_parameters = payload["paths"]["/courses"]["get"]["parameters"]
     assert any(item["name"] == "period_start" for item in course_parameters)
     assert payload["paths"]["/notices"]["get"]["operationId"] == "listLatestNotices"
@@ -1273,6 +1276,7 @@ def test_admin_sync_dashboard_runs_snapshot_and_shows_recent_history(admin_clien
             "courses": 10,
             "notices": 4,
             "certificate_guides": 3,
+            "scholarship_guides": 4,
             "transport_guides": 2,
         }
 
@@ -1300,6 +1304,7 @@ def test_admin_sync_dashboard_runs_snapshot_and_shows_recent_history(admin_clien
     assert "snapshot" in page.text
     assert "success" in page.text
     assert "certificate_guides" in page.text
+    assert "scholarship_guides" in page.text
     assert "transport_guides" in page.text
 
 
@@ -1319,6 +1324,7 @@ def test_admin_observability_pages_render_runtime_state(admin_client, client, mo
             "courses": 10,
             "notices": 4,
             "certificate_guides": 3,
+            "scholarship_guides": 4,
             "transport_guides": 2,
         }
 
@@ -2133,6 +2139,30 @@ class ApiAcademicCalendarSource:
         ]
 
 
+class ApiScholarshipSource:
+    def fetch(self):
+        return "<scholarship></scholarship>"
+
+    def parse(self, html: str, *, fetched_at: str):
+        assert html == "<scholarship></scholarship>"
+        return [
+            {
+                "title": "공식 장학 문서",
+                "summary": "장학금 지급 규정과 신입생/재학생 장학제도 공식 문서 링크",
+                "steps": [],
+                "links": [
+                    {
+                        "label": "재학생 장학제도",
+                        "url": "https://www.catholic.ac.kr/_res/cuk/ko/etc/scholarship_songsim_251226-4pdf.pdf",
+                    }
+                ],
+                "source_url": "https://www.catholic.ac.kr/ko/support/scholarship_songsim.do",
+                "source_tag": "cuk_scholarship_guides",
+                "last_synced_at": fetched_at,
+            }
+        ]
+
+
 def test_place_detail_returns_merged_opening_hours(client):
     with connection() as conn:
         refresh_facility_hours_from_facilities_page(conn, source=ApiFacilitiesSource())
@@ -2301,6 +2331,33 @@ def test_academic_calendar_endpoint_returns_events(client):
             "campuses": ["성심", "성의", "성신"],
             "source_url": "https://www.catholic.ac.kr/ko/support/calendar2024_list.do",
             "source_tag": "cuk_academic_calendar",
+            "last_synced_at": items[0]["last_synced_at"],
+        }
+    ]
+
+
+def test_scholarship_guides_endpoint_returns_guides(client):
+    with connection() as conn:
+        refresh_scholarship_guides_from_source(conn, source=ApiScholarshipSource())
+
+    response = client.get("/scholarship-guides")
+    items = response.json()
+
+    assert response.status_code == 200
+    assert items == [
+        {
+            "id": 1,
+            "title": "공식 장학 문서",
+            "summary": "장학금 지급 규정과 신입생/재학생 장학제도 공식 문서 링크",
+            "steps": [],
+            "links": [
+                {
+                    "label": "재학생 장학제도",
+                    "url": "https://www.catholic.ac.kr/_res/cuk/ko/etc/scholarship_songsim_251226-4pdf.pdf",
+                }
+            ],
+            "source_url": "https://www.catholic.ac.kr/ko/support/scholarship_songsim.do",
+            "source_tag": "cuk_scholarship_guides",
             "last_synced_at": items[0]["last_synced_at"],
         }
     ]

@@ -33,6 +33,7 @@ from songsim_campus.services import (
     list_certificate_guides,
     list_estimated_empty_classrooms,
     list_latest_notices,
+    list_scholarship_guides,
     list_transport_guides,
     refresh_academic_calendar_from_source,
     refresh_campus_dining_menus_from_facilities_page,
@@ -42,6 +43,7 @@ from songsim_campus.services import (
     refresh_library_hours_from_library_page,
     refresh_notices_from_notice_board,
     refresh_places_from_campus_map,
+    refresh_scholarship_guides_from_source,
     refresh_transport_guides_from_location_page,
     search_campus_dining_menus,
     search_courses,
@@ -3511,6 +3513,31 @@ class FakeAcademicCalendarSource:
         ]
 
 
+class FakeScholarshipSource:
+    def fetch(self):
+        return "<scholarship></scholarship>"
+
+    def parse(self, html: str, *, fetched_at: str):
+        assert html == "<scholarship></scholarship>"
+        assert fetched_at == "2026-03-17T15:00:00+09:00"
+        return [
+            {
+                "title": "장학금 신청",
+                "summary": "홈페이지 공지사항 수시 게재하므로 장학별 해당 기간 내에 신청",
+                "steps": [
+                    (
+                        "구분: 교내 / 장학금 종류: 근로(A/B/C) 및 인턴십 / 신청기간: "
+                        "매 학기 초(3월/9월) / 수혜학기: 학기 말(7월 초/1월 초)"
+                    )
+                ],
+                "links": [],
+                "source_url": "https://www.catholic.ac.kr/ko/support/scholarship_songsim.do",
+                "source_tag": "cuk_scholarship_guides",
+                "last_synced_at": fetched_at,
+            }
+        ]
+
+
 def test_refresh_library_hours_merges_opening_hours_into_existing_place(app_env):
     init_db()
     seed_demo(force=True)
@@ -3661,6 +3688,60 @@ def test_refresh_academic_calendar_replaces_rows(app_env):
     assert events[0].title == "1학기 개시일"
     assert events[0].campuses == ["성심", "성의", "성신"]
     assert events[0].source_tag == "cuk_academic_calendar"
+
+
+def test_refresh_scholarship_guides_replaces_rows(app_env):
+    init_db()
+
+    with connection() as conn:
+        refresh_scholarship_guides_from_source(
+            conn,
+            source=FakeScholarshipSource(),
+            fetched_at="2026-03-17T15:00:00+09:00",
+        )
+        guides = list_scholarship_guides(conn)
+
+    assert len(guides) == 1
+    assert guides[0].title == "장학금 신청"
+    assert guides[0].source_url == "https://www.catholic.ac.kr/ko/support/scholarship_songsim.do"
+    assert guides[0].source_tag == "cuk_scholarship_guides"
+
+
+def test_list_scholarship_guides_preserves_snapshot_order_and_limit(app_env):
+    init_db()
+
+    with connection() as conn:
+        repo.replace_scholarship_guides(
+            conn,
+            [
+                {
+                    "title": "장학생 자격",
+                    "summary": "당해학기 정규학기 재학생",
+                    "steps": [],
+                    "links": [],
+                    "source_url": "https://www.catholic.ac.kr/ko/support/scholarship_songsim.do",
+                    "source_tag": "cuk_scholarship_guides",
+                    "last_synced_at": "2026-03-17T15:00:00+09:00",
+                },
+                {
+                    "title": "공식 장학 문서",
+                    "summary": "장학금 지급 규정과 공식 문서 링크",
+                    "steps": [],
+                    "links": [
+                        {
+                            "label": "재학생 장학제도",
+                            "url": "https://www.catholic.ac.kr/_res/cuk/ko/etc/scholarship_songsim_251226-4pdf.pdf",
+                        }
+                    ],
+                    "source_url": "https://www.catholic.ac.kr/ko/support/scholarship_songsim.do",
+                    "source_tag": "cuk_scholarship_guides",
+                    "last_synced_at": "2026-03-17T15:00:00+09:00",
+                },
+            ],
+        )
+        guides = list_scholarship_guides(conn, limit=1)
+
+    assert [item.title for item in guides] == ["장학생 자격"]
 
 
 def test_list_academic_calendar_defaults_to_current_academic_year_and_prioritizes_songsim(
@@ -3917,6 +3998,10 @@ def test_sync_official_snapshot_runs_opening_hours_before_courses_and_transport(
         lambda conn: call_order.append('certificate_guides') or [],
     )
     monkeypatch.setattr(
+        'songsim_campus.services.refresh_scholarship_guides_from_source',
+        lambda conn: call_order.append('scholarship_guides') or [],
+    )
+    monkeypatch.setattr(
         'songsim_campus.services.refresh_transport_guides_from_location_page',
         lambda conn: call_order.append('transport') or [],
     )
@@ -3934,9 +4019,11 @@ def test_sync_official_snapshot_runs_opening_hours_before_courses_and_transport(
         'notices',
         'academic_calendar',
         'certificate_guides',
+        'scholarship_guides',
         'transport',
     ]
     assert summary['dining_menus'] == 0
     assert summary['academic_calendar'] == 0
     assert summary['certificate_guides'] == 0
+    assert summary['scholarship_guides'] == 0
     assert summary['transport_guides'] == 0

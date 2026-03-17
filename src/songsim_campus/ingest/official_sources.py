@@ -138,6 +138,49 @@ def _collect_dl_pairs(root) -> list[tuple[str, str]]:
     return rows
 
 
+def _normalize_note_text(value: str | None) -> str:
+    return _clean_text(value).lstrip("*※ ").strip()
+
+
+def _extract_table_steps(table) -> list[str]:
+    grid = _extract_table_grid(table)
+    if len(grid) < 2:
+        return []
+    headers = [_clean_text(cell) for cell in grid[0]]
+    steps: list[str] = []
+    for row in grid[1:]:
+        normalized_row = [_clean_text(cell) for cell in row]
+        nonempty = [cell for cell in normalized_row if cell]
+        if not nonempty:
+            continue
+        unique_nonempty = _unique(nonempty)
+        if len(unique_nonempty) == 1:
+            note = _normalize_note_text(unique_nonempty[0])
+            if note:
+                steps.append(note)
+            continue
+        pairs: list[str] = []
+        for idx, header in enumerate(headers[: len(normalized_row)]):
+            value = normalized_row[idx]
+            if not header or not value:
+                continue
+            pairs.append(f"{header}: {value}")
+        if pairs:
+            steps.append(" / ".join(pairs))
+    return _unique(steps)
+
+
+def _extract_link_items(root, *, base_url: str) -> list[dict[str, str]]:
+    items: list[dict[str, str]] = []
+    for anchor in root.select("a[href]"):
+        label = _clean_text(anchor.get_text(" ", strip=True))
+        href = unescape(str(anchor.get("href") or "")).strip()
+        if not label or not href:
+            continue
+        items.append({"label": label, "url": urljoin(base_url, href)})
+    return items
+
+
 def _flatten_transport_steps(container) -> list[str]:
     steps: list[str] = []
     for item in container.select(".ul-type-dot li"):
@@ -881,6 +924,96 @@ class CertificateGuideSource:
     @staticmethod
     def _normalize_note(text: str) -> str:
         return text.lstrip("*※ ").strip()
+
+
+class ScholarshipGuideSource:
+    """Official static scholarship-guide parser for Songsim campus."""
+
+    SECTION_TITLES = (
+        "장학생 자격",
+        "장학생 종류",
+        "장학금 신청",
+        "장학금 지급",
+    )
+
+    def __init__(self, url: str):
+        self.url = url
+
+    def fetch(self) -> str:
+        response = httpx.get(self.url, timeout=20)
+        response.raise_for_status()
+        return response.text
+
+    def parse(self, html: str, *, fetched_at: str) -> list[dict]:
+        soup = BeautifulSoup(html, "html.parser")
+        root = soup.select_one(".content-box") or soup
+        boxes = root.find_all("div", class_="con-box", recursive=False)
+        rows_by_title: dict[str, dict] = {}
+
+        for box in boxes:
+            title_node = box.select_one(".h4-tit01")
+            title = _clean_text(title_node.get_text(" ", strip=True) if title_node else "")
+            if title in self.SECTION_TITLES:
+                row = self._parse_section_box(box, title=title, fetched_at=fetched_at)
+                if row is not None:
+                    rows_by_title[row["title"]] = row
+            elif title == "장학금 제도보기":
+                row = self._parse_document_box(box, fetched_at=fetched_at)
+                if row is not None:
+                    rows_by_title[row["title"]] = row
+
+        ordered_titles = [*self.SECTION_TITLES, "공식 장학 문서"]
+        return [rows_by_title[title] for title in ordered_titles if title in rows_by_title]
+
+    def _parse_section_box(self, box, *, title: str, fetched_at: str) -> dict | None:
+        summary = self._section_summary(box, title=title)
+        if not summary:
+            return None
+
+        steps: list[str] = []
+        for table in box.select("table"):
+            steps.extend(_extract_table_steps(table))
+        for note in box.select(".ul-type-dot li, .ul-type-normal li, .alert-txt"):
+            normalized = _normalize_note_text(note.get_text(" ", strip=True))
+            if normalized and normalized not in steps and normalized not in summary:
+                steps.append(normalized)
+
+        return {
+            "title": title,
+            "summary": summary,
+            "steps": _unique(steps),
+            "links": [],
+            "source_url": self.url,
+            "source_tag": "cuk_scholarship_guides",
+            "last_synced_at": fetched_at,
+        }
+
+    def _parse_document_box(self, box, *, fetched_at: str) -> dict | None:
+        links = _extract_link_items(box, base_url=self.url)
+        if not links:
+            return None
+        return {
+            "title": "공식 장학 문서",
+            "summary": "장학금 지급 규정과 신입생/재학생 장학제도 공식 문서 링크",
+            "steps": [],
+            "links": links,
+            "source_url": self.url,
+            "source_tag": "cuk_scholarship_guides",
+            "last_synced_at": fetched_at,
+        }
+
+    @staticmethod
+    def _section_summary(box, *, title: str) -> str:
+        if title == "장학생 종류":
+            caption = box.select_one("table caption span")
+            return _clean_text(caption.get_text(" ", strip=True) if caption else "")
+
+        summary_node = box.select_one(".con-p")
+        if summary_node is None:
+            return ""
+        if title == "장학금 신청":
+            return _clean_text(summary_node.get_text(" ", strip=True))
+        return _clean_text(summary_node.get_text(" ", strip=True))
 
 
 class AcademicCalendarSource:

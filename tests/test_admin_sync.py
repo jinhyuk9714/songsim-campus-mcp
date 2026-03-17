@@ -31,6 +31,7 @@ def test_run_admin_sync_records_success_history_for_snapshot(app_env, monkeypatc
             "courses": 5,
             "notices": 7,
             "certificate_guides": 2,
+            "scholarship_guides": 4,
             "transport_guides": 1,
         }
 
@@ -46,6 +47,7 @@ def test_run_admin_sync_records_success_history_for_snapshot(app_env, monkeypatc
         "courses": 5,
         "notices": 7,
         "certificate_guides": 2,
+        "scholarship_guides": 4,
         "transport_guides": 1,
     }
     assert run.error_text is None
@@ -88,6 +90,10 @@ def test_run_admin_sync_dispatches_target_specific_parameters(app_env, monkeypat
         seen["dining_menus"] = {"fetched_at": fetched_at}
         return []
 
+    def fake_scholarship_guides(conn, *, fetched_at: str | None = None, source=None):
+        seen["scholarship_guides"] = {"fetched_at": fetched_at}
+        return []
+
     def fake_library_seat_status(conn, *, fetched_at: str | None = None, source=None):
         seen["library_seat_status"] = {"fetched_at": fetched_at}
         return [
@@ -110,23 +116,30 @@ def test_run_admin_sync_dispatches_target_specific_parameters(app_env, monkeypat
         fake_dining_menus,
     )
     monkeypatch.setattr(
+        "songsim_campus.services.refresh_scholarship_guides_from_source",
+        fake_scholarship_guides,
+    )
+    monkeypatch.setattr(
         "songsim_campus.services.refresh_library_seat_status_cache",
         fake_library_seat_status,
     )
 
     places_run = run_admin_sync(target="places", campus="9")
     dining_run = run_admin_sync(target="dining_menus")
+    scholarship_run = run_admin_sync(target="scholarship_guides")
     library_run = run_admin_sync(target="library_seat_status")
     courses_run = run_admin_sync(target="courses", year=2026, semester=1)
     notices_run = run_admin_sync(target="notices", notice_pages=3)
 
     assert places_run.summary == {"places": 0}
     assert dining_run.summary == {"dining_menus": 0}
+    assert scholarship_run.summary == {"scholarship_guides": 0}
     assert library_run.summary == {"library_seat_status": 1}
     assert courses_run.summary == {"courses": 0}
     assert notices_run.summary == {"notices": 0}
     assert seen["places"] == {"campus": "9", "fetched_at": None}
     assert seen["dining_menus"] == {"fetched_at": None}
+    assert seen["scholarship_guides"] == {"fetched_at": None}
     assert seen["library_seat_status"] == {"fetched_at": None}
     assert seen["courses"] == {"year": 2026, "semester": 1, "fetched_at": None}
     assert seen["notices"] == {"pages": 3, "fetched_at": None}
@@ -224,10 +237,12 @@ def test_get_sync_dashboard_state_reports_row_counts_and_last_synced(app_env):
     assert datasets["courses"]["row_count"] > 0
     assert datasets["campus_dining_menus"]["row_count"] == 0
     assert datasets["certificate_guides"]["row_count"] == 0
+    assert datasets["scholarship_guides"]["row_count"] == 0
     assert datasets["notices"]["row_count"] > 0
     assert datasets["transport_guides"]["row_count"] == 0
     assert datasets["places"]["last_synced_at"] == "2026-03-13T09:00:00+09:00"
     assert datasets["campus_dining_menus"]["last_synced_at"] is None
     assert datasets["certificate_guides"]["last_synced_at"] is None
+    assert datasets["scholarship_guides"]["last_synced_at"] is None
     assert datasets["transport_guides"]["last_synced_at"] is None
     assert state["recent_runs"] == []

@@ -20,6 +20,7 @@ from songsim_campus.seed import seed_demo
 from songsim_campus.services import (
     refresh_academic_calendar_from_source,
     refresh_certificate_guides_from_certificate_page,
+    refresh_scholarship_guides_from_source,
     refresh_transport_guides_from_location_page,
 )
 from songsim_campus.settings import clear_settings_cache
@@ -82,6 +83,30 @@ class McpAcademicCalendarSource:
                 "campuses": ["성심", "성의", "성신"],
                 "source_url": "https://www.catholic.ac.kr/ko/support/calendar2024_list.do",
                 "source_tag": "cuk_academic_calendar",
+                "last_synced_at": fetched_at,
+            }
+        ]
+
+
+class McpScholarshipSource:
+    def fetch(self):
+        return "<scholarship></scholarship>"
+
+    def parse(self, html: str, *, fetched_at: str):
+        assert html == "<scholarship></scholarship>"
+        return [
+            {
+                "title": "공식 장학 문서",
+                "summary": "장학금 지급 규정과 신입생/재학생 장학제도 공식 문서 링크",
+                "steps": [],
+                "links": [
+                    {
+                        "label": "신입생(내국인) 장학제도",
+                        "url": "https://www.catholic.ac.kr/_res/cuk/ko/etc/scholarship_songsim_251226-2pdf.pdf",
+                    }
+                ],
+                "source_url": "https://www.catholic.ac.kr/ko/support/scholarship_songsim.do",
+                "source_tag": "cuk_scholarship_guides",
                 "last_synced_at": fetched_at,
             }
         ]
@@ -162,6 +187,28 @@ def test_mcp_academic_calendar_tool_and_resource_share_service_data(app_env):
 
     assert tool_payload["title"] == "1학기 개시일"
     assert resource_payload[0]["title"] == "1학기 개시일"
+
+
+def test_mcp_scholarship_tool_and_resource_share_service_data(app_env):
+    pytest.importorskip("mcp.server.fastmcp")
+    init_db()
+    seed_demo(force=True)
+    with connection() as conn:
+        refresh_scholarship_guides_from_source(conn, source=McpScholarshipSource())
+
+    async def main():
+        mcp = build_mcp()
+        tool_result = await mcp.call_tool("tool_list_scholarship_guides", {"limit": 10})
+        resource_result = await mcp.read_resource("songsim://scholarship-guide")
+        return tool_result, list(resource_result)
+
+    tool_result, resource_result = asyncio.run(main())
+
+    tool_payload = json.loads(tool_result[0].text)
+    resource_payload = json.loads(resource_result[0].content)
+
+    assert tool_payload["title"] == "공식 장학 문서"
+    assert resource_payload[0]["title"] == "공식 장학 문서"
 
 
 def test_mcp_transport_tool_accepts_query_and_mode_precedence(app_env, monkeypatch):
@@ -507,6 +554,7 @@ def test_mcp_public_readonly_mode_registers_only_read_only_tools(app_env, monkey
         "tool_search_courses",
         "tool_list_academic_calendar",
         "tool_list_certificate_guides",
+        "tool_list_scholarship_guides",
         "tool_get_class_periods",
         "tool_get_library_seat_status",
         "tool_list_estimated_empty_classrooms",
@@ -521,6 +569,7 @@ def test_mcp_public_readonly_mode_registers_only_read_only_tools(app_env, monkey
     assert "songsim://source-registry" in resource_uris
     assert "songsim://academic-calendar" in resource_uris
     assert "songsim://certificate-guide" in resource_uris
+    assert "songsim://scholarship-guide" in resource_uris
     assert "songsim://transport-guide" in resource_uris
 
     clear_settings_cache()
@@ -557,6 +606,7 @@ def test_mcp_public_readonly_mode_registers_prompts_and_extended_resources(app_e
         "songsim://source-registry",
         "songsim://academic-calendar",
         "songsim://certificate-guide",
+        "songsim://scholarship-guide",
         "songsim://transport-guide",
         "songsim://usage-guide",
         "songsim://place-categories",
@@ -605,6 +655,8 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
     assert "교수" in tools["tool_search_courses"]["description"]
     assert "학사일정" in tools["tool_list_academic_calendar"]["description"]
     assert "academic_year" in tools["tool_list_academic_calendar"]["description"]
+    assert "장학제도" in tools["tool_list_scholarship_guides"]["description"]
+    assert "공식 문서" in tools["tool_list_scholarship_guides"]["description"]
     assert "브랜드" in tools["tool_search_restaurants"]["description"]
     assert "매머드커피" in tools["tool_search_restaurants"]["description"]
     assert "학생식당 메뉴" in tools["tool_search_dining_menus"]["description"]
@@ -667,6 +719,9 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
     )
     assert "최대 결과 수" in (
         tools["tool_list_certificate_guides"]["inputSchema"]["properties"]["limit"]["description"]
+    )
+    assert "최대 결과 수" in (
+        tools["tool_list_scholarship_guides"]["inputSchema"]["properties"]["limit"]["description"]
     )
     assert "셔틀" in tools["tool_list_transport_guides"]["description"]
 
@@ -814,6 +869,7 @@ def test_mcp_public_usage_and_class_period_resources_are_readable(app_env, monke
     assert "tool_search_places" in usage_content
     assert "tool_search_restaurants" in usage_content
     assert "tool_list_academic_calendar" in usage_content
+    assert "tool_list_scholarship_guides" in usage_content
     assert "tool_list_estimated_empty_classrooms" in usage_content
     assert "실시간" in usage_content
     assert "tool_find_nearby_restaurants" in usage_content

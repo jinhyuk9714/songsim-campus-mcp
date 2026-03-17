@@ -97,6 +97,17 @@ class CertificateGuide(BaseModel):
     last_synced_at: str
 
 
+class ScholarshipGuide(BaseModel):
+    id: int
+    title: str
+    summary: str = ""
+    steps: list[str] = Field(default_factory=list)
+    links: list[dict[str, str]] = Field(default_factory=list)
+    source_url: str | None = None
+    source_tag: str = "demo"
+    last_synced_at: str
+
+
 class AcademicCalendarEvent(BaseModel):
     id: int
     academic_year: int

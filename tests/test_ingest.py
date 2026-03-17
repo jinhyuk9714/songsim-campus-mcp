@@ -13,6 +13,7 @@ from songsim_campus.ingest.official_sources import (
     LibraryHoursSource,
     LibrarySeatStatusSource,
     NoticeSource,
+    ScholarshipGuideSource,
     TransportGuideSource,
     classify_notice_category,
 )
@@ -371,6 +372,75 @@ def test_academic_calendar_parser_normalizes_kst_dates_and_campuses():
     assert winter["academic_year"] == 2026
     assert winter["start_date"] == "2027-01-05"
     assert winter["end_date"] == "2027-01-07"
+
+
+def test_scholarship_guide_parser_extracts_sections_and_official_links():
+    source = ScholarshipGuideSource("https://www.catholic.ac.kr/ko/support/scholarship_songsim.do")
+
+    rows = source.parse(
+        _fixture("scholarship_songsim.html"),
+        fetched_at="2026-03-17T17:00:00+09:00",
+    )
+
+    assert [row["title"] for row in rows] == [
+        "장학생 자격",
+        "장학생 종류",
+        "장학금 신청",
+        "장학금 지급",
+        "공식 장학 문서",
+    ]
+
+    qualification = rows[0]
+    assert qualification["summary"] == (
+        "당해학기 정규학기 재학생으로, 각 장학금별 선발 기준에 부합하는 자"
+    )
+    assert qualification["steps"] == []
+    assert qualification["links"] == []
+
+    scholarship_types = rows[1]
+    assert scholarship_types["summary"] == "장학금 재원, 지급 목적, 비고로 구성된 표"
+    assert scholarship_types["steps"][0].startswith("장학금 재원: 교내 / 지급 목적: 등록금성")
+    assert scholarship_types["steps"][-1] == "생활비성 장학 : 등록금 범위와 관계없이 수혜 가능"
+
+    application = rows[2]
+    assert application["summary"] == "홈페이지 공지사항 수시 게재하므로 장학별 해당 기간 내에 신청"
+    assert any(
+        "구분: 교내 / 장학금 종류: 근로(A/B/C) 및 인턴십" in step
+        for step in application["steps"]
+    )
+    assert any("상기 외 교내장학금" in step for step in application["steps"])
+
+    payout = rows[3]
+    assert payout["summary"].startswith("등록금 고지서 감면의 원칙")
+    assert payout["steps"] == [
+        (
+            "장학금 수령 계좌 등록 : 학생 본인 명의의 계좌정보 등록"
+            "(트리니티-학사정보-학적-신상정보수정-기타<은행명/계좌번호/예금주>)"
+        )
+    ]
+
+    documents = rows[4]
+    assert documents["summary"] == "장학금 지급 규정과 신입생/재학생 장학제도 공식 문서 링크"
+    assert documents["steps"] == []
+    assert documents["links"] == [
+        {
+            "label": "장학금 지급 규정 보기",
+            "url": "http://rule.catholic.ac.kr:8080/lmxsrv/law/lawFullView.srv?SEQ=176&SEQ_HISTORY=2307",
+        },
+        {
+            "label": "신입생(내국인) 장학제도",
+            "url": "https://www.catholic.ac.kr/_res/cuk/ko/etc/scholarship_songsim_251226-2pdf.pdf",
+        },
+        {
+            "label": "신입생(외국인) 장학제도",
+            "url": "https://www.catholic.ac.kr/_res/cuk/ko/etc/scholarship_songsim_251226-3pdf.pdf",
+        },
+        {
+            "label": "재학생 장학제도",
+            "url": "https://www.catholic.ac.kr/_res/cuk/ko/etc/scholarship_songsim_251226-4pdf.pdf",
+        },
+    ]
+    assert all(row["source_tag"] == "cuk_scholarship_guides" for row in rows)
 
 
 def test_kakao_place_detail_parser_normalizes_weekdays_breaks_and_holidays():

@@ -37,6 +37,7 @@ from .ingest.official_sources import (
     LibraryHoursSource,
     LibrarySeatStatusSource,
     NoticeSource,
+    ScholarshipGuideSource,
     TransportGuideSource,
     classify_notice_category,
 )
@@ -70,6 +71,7 @@ from .schemas import (
     ProfileUpdateRequest,
     Restaurant,
     RestaurantSearchResult,
+    ScholarshipGuide,
     SyncObservability,
     SyncRun,
     TransportGuide,
@@ -85,6 +87,7 @@ LIBRARY_SEAT_STATUS_SOURCE_URL = "http://203.229.203.240/8080/Domian5.asp"
 FACILITIES_SOURCE_URL = "https://www.catholic.ac.kr/ko/campuslife/restaurant.do"
 TRANSPORT_SOURCE_URL = "https://www.catholic.ac.kr/ko/about/location_songsim.do"
 CERTIFICATE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/certificate.do"
+SCHOLARSHIP_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/scholarship_songsim.do"
 ACADEMIC_CALENDAR_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/calendar2024_list.do"
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 CAMPUS_WALK_GRAPH_PATH = DATA_DIR / "campus_walk_graph.json"
@@ -101,6 +104,7 @@ SYNC_DATASET_TABLES = (
     "notices",
     "academic_calendar",
     "certificate_guides",
+    "scholarship_guides",
     "transport_guides",
 )
 PUBLIC_READY_REQUIRED_DATASETS = frozenset(
@@ -116,6 +120,7 @@ ADMIN_SYNC_TARGETS = {
     "courses",
     "notices",
     "academic_calendar",
+    "scholarship_guides",
     "transport_guides",
 }
 AUTOMATION_SYNC_TARGETS = {"snapshot", "library_seat_prewarm", "cache_cleanup"}
@@ -3250,6 +3255,17 @@ def list_certificate_guides(
     ]
 
 
+def list_scholarship_guides(
+    conn: sqlite3.Connection,
+    limit: int = 20,
+) -> list[ScholarshipGuide]:
+    normalized_limit = max(1, min(limit, 50))
+    return [
+        ScholarshipGuide.model_validate(item)
+        for item in repo.list_scholarship_guides(conn, limit=normalized_limit)
+    ]
+
+
 def list_academic_calendar(
     conn: sqlite3.Connection,
     *,
@@ -3393,6 +3409,8 @@ def _run_admin_sync_target(
         }
     if target == "academic_calendar":
         return {"academic_calendar": len(refresh_academic_calendar_from_source(conn))}
+    if target == "scholarship_guides":
+        return {"scholarship_guides": len(refresh_scholarship_guides_from_source(conn))}
     if target == "transport_guides":
         return {"transport_guides": len(refresh_transport_guides_from_location_page(conn))}
     if target == "cache_cleanup":
@@ -5076,6 +5094,22 @@ def refresh_certificate_guides_from_certificate_page(
     ]
 
 
+def refresh_scholarship_guides_from_source(
+    conn: sqlite3.Connection,
+    *,
+    source: ScholarshipGuideSource | Any | None = None,
+    fetched_at: str | None = None,
+) -> list[ScholarshipGuide]:
+    source = source or ScholarshipGuideSource(SCHOLARSHIP_GUIDE_SOURCE_URL)
+    synced_at = fetched_at or _now_iso()
+    rows = source.parse(source.fetch(), fetched_at=synced_at)
+    repo.replace_scholarship_guides(conn, rows)
+    return [
+        ScholarshipGuide.model_validate(item)
+        for item in repo.list_scholarship_guides(conn, limit=max(len(rows), 1))
+    ]
+
+
 def sync_official_snapshot(
     conn: sqlite3.Connection,
     *,
@@ -5105,6 +5139,7 @@ def sync_official_snapshot(
     )
     academic_calendar = refresh_academic_calendar_from_source(conn)
     certificate_guides = refresh_certificate_guides_from_certificate_page(conn)
+    scholarship_guides = refresh_scholarship_guides_from_source(conn)
     transport_guides = refresh_transport_guides_from_location_page(conn)
     return {
         "places": len(places),
@@ -5113,6 +5148,7 @@ def sync_official_snapshot(
         "notices": len(notices),
         "academic_calendar": len(academic_calendar),
         "certificate_guides": len(certificate_guides),
+        "scholarship_guides": len(scholarship_guides),
         "transport_guides": len(transport_guides),
     }
 
