@@ -35,6 +35,7 @@ from songsim_campus.services import (
     list_latest_notices,
     list_scholarship_guides,
     list_transport_guides,
+    list_wifi_guides,
     refresh_academic_calendar_from_source,
     refresh_campus_dining_menus_from_facilities_page,
     refresh_certificate_guides_from_certificate_page,
@@ -45,6 +46,7 @@ from songsim_campus.services import (
     refresh_places_from_campus_map,
     refresh_scholarship_guides_from_source,
     refresh_transport_guides_from_location_page,
+    refresh_wifi_guides_from_source,
     search_campus_dining_menus,
     search_courses,
     search_places,
@@ -3538,6 +3540,28 @@ class FakeScholarshipSource:
         ]
 
 
+class FakeWifiGuideSource:
+    def fetch(self):
+        return "<wifi></wifi>"
+
+    def parse(self, html: str, *, fetched_at: str):
+        assert html == "<wifi></wifi>"
+        assert fetched_at == "2026-03-17T15:00:00+09:00"
+        return [
+            {
+                "building_name": "니콜스관",
+                "ssids": ["catholic_univ", "강의실 호실명 (ex: N301)"],
+                "steps": [
+                    "무선랜 안테나 검색 후 신호가 강한 SSID 선택 (최초 접속 시 보안키 입력)",
+                    "K관, A관(안드레아관) 보안키 : catholic!!(교내 동일)",
+                ],
+                "source_url": "https://www.catholic.ac.kr/ko/campuslife/wifi.do",
+                "source_tag": "cuk_wifi_guides",
+                "last_synced_at": fetched_at,
+            }
+        ]
+
+
 def test_refresh_library_hours_merges_opening_hours_into_existing_place(app_env):
     init_db()
     seed_demo(force=True)
@@ -3705,6 +3729,54 @@ def test_refresh_scholarship_guides_replaces_rows(app_env):
     assert guides[0].title == "장학금 신청"
     assert guides[0].source_url == "https://www.catholic.ac.kr/ko/support/scholarship_songsim.do"
     assert guides[0].source_tag == "cuk_scholarship_guides"
+
+
+def test_refresh_wifi_guides_replaces_rows(app_env):
+    init_db()
+
+    with connection() as conn:
+        refresh_wifi_guides_from_source(
+            conn,
+            source=FakeWifiGuideSource(),
+            fetched_at="2026-03-17T15:00:00+09:00",
+        )
+        guides = list_wifi_guides(conn)
+
+    assert len(guides) == 1
+    assert guides[0].building_name == "니콜스관"
+    assert guides[0].ssids == ["catholic_univ", "강의실 호실명 (ex: N301)"]
+    assert guides[0].source_url == "https://www.catholic.ac.kr/ko/campuslife/wifi.do"
+    assert guides[0].source_tag == "cuk_wifi_guides"
+
+
+def test_list_wifi_guides_preserves_snapshot_order_and_limit(app_env):
+    init_db()
+
+    with connection() as conn:
+        repo.replace_wifi_guides(
+            conn,
+            [
+                {
+                    "building_name": "니콜스관",
+                    "ssids": ["catholic_univ"],
+                    "steps": ["SSID 선택"],
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/wifi.do",
+                    "source_tag": "cuk_wifi_guides",
+                    "last_synced_at": "2026-03-17T15:00:00+09:00",
+                },
+                {
+                    "building_name": "그 외 건물",
+                    "ssids": ["catholic_univ", "catholic_건물명"],
+                    "steps": ["SSID 선택"],
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/wifi.do",
+                    "source_tag": "cuk_wifi_guides",
+                    "last_synced_at": "2026-03-17T15:00:00+09:00",
+                },
+            ],
+        )
+        guides = list_wifi_guides(conn, limit=1)
+
+    assert [item.building_name for item in guides] == ["니콜스관"]
 
 
 def test_list_scholarship_guides_preserves_snapshot_order_and_limit(app_env):
@@ -4002,6 +4074,10 @@ def test_sync_official_snapshot_runs_opening_hours_before_courses_and_transport(
         lambda conn: call_order.append('scholarship_guides') or [],
     )
     monkeypatch.setattr(
+        'songsim_campus.services.refresh_wifi_guides_from_source',
+        lambda conn: call_order.append('wifi_guides') or [],
+    )
+    monkeypatch.setattr(
         'songsim_campus.services.refresh_transport_guides_from_location_page',
         lambda conn: call_order.append('transport') or [],
     )
@@ -4020,10 +4096,12 @@ def test_sync_official_snapshot_runs_opening_hours_before_courses_and_transport(
         'academic_calendar',
         'certificate_guides',
         'scholarship_guides',
+        'wifi_guides',
         'transport',
     ]
     assert summary['dining_menus'] == 0
     assert summary['academic_calendar'] == 0
     assert summary['certificate_guides'] == 0
     assert summary['scholarship_guides'] == 0
+    assert summary['wifi_guides'] == 0
     assert summary['transport_guides'] == 0

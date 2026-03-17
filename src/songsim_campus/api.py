@@ -48,6 +48,7 @@ from .schemas import (
     RestaurantSearchResult,
     ScholarshipGuide,
     TransportGuide,
+    WifiGuide,
 )
 from .seed import seed_demo
 from .services import (
@@ -75,6 +76,7 @@ from .services import (
     list_restaurants,
     list_scholarship_guides,
     list_transport_guides,
+    list_wifi_guides,
     release_automation_leader,
     run_admin_sync,
     run_automation_tick,
@@ -135,6 +137,14 @@ GPT_ACTION_PATHS: dict[str, dict[str, str]] = {
         "description": (
             "List the current Songsim scholarship baseline guides and official scholarship "
             "document links."
+        ),
+    },
+    "/wifi-guides": {
+        "operationId": "listWifiGuides",
+        "summary": "List campus wifi guides",
+        "description": (
+            "List the current Songsim campus wifi SSIDs and building-level connection "
+            "guidance."
         ),
     },
     "/notice-categories": {
@@ -600,6 +610,7 @@ def create_app() -> FastAPI:
             },
             {"title": "academic_calendar", "fields": []},
             {"title": "scholarship_guides", "fields": []},
+            {"title": "wifi_guides", "fields": []},
             {"title": "transport_guides", "fields": []},
         ]
 
@@ -817,6 +828,7 @@ def create_app() -> FastAPI:
             "2026학년도 3월 학사일정 보여줘",
             "재학증명서 발급 안내 알려줘",
             "장학제도 안내 알려줘",
+            "니콜스관 WIFI 안내 알려줘",
             "니콜스관인데 지금 예상 빈 강의실 있어?",
             "중앙도서관 근처 밥집 추천해줘",
             "최신 장학 공지 보여줘",
@@ -969,6 +981,7 @@ def create_app() -> FastAPI:
             <li><code>/academic-calendar</code> current academic calendar events</li>
             <li><code>/certificate-guides</code> certificate issuance guides</li>
             <li><code>/scholarship-guides</code> scholarship baseline guides</li>
+            <li><code>/wifi-guides</code> campus wifi SSIDs and connection steps</li>
             <li>
               <code>/classrooms/empty</code> official realtime classrooms first,
               estimated fallback
@@ -1489,6 +1502,13 @@ def create_app() -> FastAPI:
     ) -> list[ScholarshipGuide]:
         with connection() as conn:
             return list_scholarship_guides(conn, limit=limit)
+
+    @app.get("/wifi-guides", response_model=list[WifiGuide])
+    def wifi_guides(
+        limit: int = Query(default=20, ge=1, le=50),
+    ) -> list[WifiGuide]:
+        with connection() as conn:
+            return list_wifi_guides(conn, limit=limit)
 
     @app.get("/library-seats", response_model=LibrarySeatStatusResponse)
     def library_seats(

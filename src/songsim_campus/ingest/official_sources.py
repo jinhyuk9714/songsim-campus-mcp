@@ -181,6 +181,12 @@ def _extract_link_items(root, *, base_url: str) -> list[dict[str, str]]:
     return items
 
 
+def _split_csv_items(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return _unique([_clean_text(item) for item in value.split(",")])
+
+
 def _flatten_transport_steps(container) -> list[str]:
     steps: list[str] = []
     for item in container.select(".ul-type-dot li"):
@@ -1014,6 +1020,70 @@ class ScholarshipGuideSource:
         if title == "장학금 신청":
             return _clean_text(summary_node.get_text(" ", strip=True))
         return _clean_text(summary_node.get_text(" ", strip=True))
+
+
+class WifiGuideSource:
+    """Official static wifi-guide parser for Songsim campus."""
+
+    def __init__(self, url: str):
+        self.url = url
+
+    def fetch(self) -> str:
+        response = httpx.get(self.url, timeout=20)
+        response.raise_for_status()
+        return response.text
+
+    def parse(self, html: str, *, fetched_at: str) -> list[dict]:
+        soup = BeautifulSoup(html, "html.parser")
+        root = soup.select_one(".content-box") or soup
+        table = root.select_one("table")
+        if table is None:
+            return []
+
+        rows: list[dict] = []
+        shared_steps: list[str] = []
+        for tr in table.select("tr"):
+            cells = tr.find_all(["th", "td"], recursive=False)
+            if len(cells) < 2:
+                continue
+
+            building_name = _clean_text(cells[0].get_text(" ", strip=True))
+            if not building_name or building_name == "건물명":
+                continue
+
+            ssids = _split_csv_items(cells[1].get_text(" ", strip=True))
+            if not ssids:
+                continue
+
+            steps = self._extract_steps(cells[2]) if len(cells) > 2 else []
+            if steps:
+                shared_steps = steps
+            elif shared_steps:
+                steps = list(shared_steps)
+
+            rows.append(
+                {
+                    "building_name": building_name,
+                    "ssids": ssids,
+                    "steps": steps,
+                    "source_url": self.url,
+                    "source_tag": "cuk_wifi_guides",
+                    "last_synced_at": fetched_at,
+                }
+            )
+        return rows
+
+    @staticmethod
+    def _extract_steps(cell) -> list[str]:
+        steps = [
+            _normalize_note_text(item.get_text(" ", strip=True))
+            for item in cell.select("li")
+            if _normalize_note_text(item.get_text(" ", strip=True))
+        ]
+        if steps:
+            return _unique(steps)
+        fallback = _normalize_note_text(cell.get_text(" ", strip=True))
+        return [fallback] if fallback else []
 
 
 class AcademicCalendarSource:

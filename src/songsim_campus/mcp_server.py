@@ -38,6 +38,7 @@ from .schemas import (
     ProfileUpdateRequest,
     ScholarshipGuide,
     TransportGuide,
+    WifiGuide,
 )
 from .seed import seed_demo
 from .services import (
@@ -60,6 +61,7 @@ from .services import (
     list_profile_notices,
     list_scholarship_guides,
     list_transport_guides,
+    list_wifi_guides,
     search_campus_dining_menus,
     search_courses,
     search_places,
@@ -259,6 +261,12 @@ def _serialize_public_scholarship_guide(guide: ScholarshipGuide) -> dict[str, ob
     return payload
 
 
+def _serialize_public_wifi_guide(guide: WifiGuide) -> dict[str, object]:
+    payload = guide.model_dump()
+    payload["guide_summary"] = ", ".join(guide.ssids) if guide.ssids else ""
+    return payload
+
+
 def _public_usage_guide() -> str:
     return "\n".join(
         [
@@ -267,7 +275,8 @@ def _public_usage_guide() -> str:
             "This server is read-only.",
             (
                 "Available: places, courses, academic calendar, certificate guides, "
-                "notices, nearby restaurants, transport guides."
+                "scholarship guides, wifi guides, notices, nearby restaurants, "
+                "transport guides."
             ),
             "Unavailable: profile, timetable, notice preferences, meal personalization, admin.",
             "",
@@ -327,14 +336,18 @@ def _public_usage_guide() -> str:
                 "11. Use tool_list_scholarship_guides for 장학제도 baseline guidance such as "
                 "장학생 자격, 장학금 신청, 장학금 지급, or 장학제도 공식 문서 questions."
             ),
-            "12. Use tool_list_latest_notices for latest notices; category is optional.",
             (
-                "13. Use tool_list_transport_guides for static subway or bus access "
+                "12. Use tool_list_wifi_guides for campus wifi guidance such as 니콜스관 "
+                "SSID, 중앙도서관 와이파이, or 무선랜 접속 방법 questions."
+            ),
+            "13. Use tool_list_latest_notices for latest notices; category is optional.",
+            (
+                "14. Use tool_list_transport_guides for static subway or bus access "
                 "guidance. You can pass query with natural-language cues like 지하철, "
                 "1호선, 역곡역, or 버스. 셔틀은 현재 지원하지 않아 빈 결과가 정상입니다."
             ),
             (
-                "14. Use songsim://notice-categories or /notice-categories when a user asks "
+                "15. Use songsim://notice-categories or /notice-categories when a user asks "
                 "which notice categories exist. Use songsim://class-periods, /periods, or "
                 "/gpt/periods when a user asks what a period number means."
             ),
@@ -348,6 +361,7 @@ def _public_usage_guide() -> str:
             "- 편의점 어디 있어?",
             "- 최신 장학 공지 3개 보여줘",
             "- 장학제도 안내 알려줘",
+            "- 니콜스관 WIFI 안내 알려줘",
             "- 재학증명서 발급 안내 알려줘",
             "- 니콜스관인데 지금 예상 빈 강의실 있어?",
             "- 매머드커피 어디 있어?",
@@ -440,6 +454,16 @@ def build_mcp():
         with connection() as conn:
             return json.dumps(
                 [item.model_dump() for item in list_scholarship_guides(conn, limit=50)],
+                ensure_ascii=False,
+                indent=2,
+            )
+
+    @mcp.resource("songsim://wifi-guide")
+    def wifi_guide_resource() -> str:
+        """Return the latest wifi guides as JSON."""
+        with connection() as conn:
+            return json.dumps(
+                [item.model_dump() for item in list_wifi_guides(conn, limit=50)],
                 ensure_ascii=False,
                 indent=2,
             )
@@ -865,6 +889,26 @@ def build_mcp():
             guides = list_scholarship_guides(conn, limit=limit)
             if public_readonly:
                 return [_serialize_public_scholarship_guide(item) for item in guides]
+            return [item.model_dump() for item in guides]
+
+    @mcp.tool(
+        description=(
+            (
+                "학교 무선랜서비스 안내를 읽을 때 사용합니다. 건물별 SSID와 무선랜 접속 방법을 "
+                "current snapshot으로 돌려줍니다."
+            )
+            if public_readonly
+            else "학교 무선랜서비스 안내 current snapshot을 가져옵니다."
+        ),
+        meta=tool_meta,
+    )
+    def tool_list_wifi_guides(
+        limit: Annotated[int, Field(description="최대 결과 수. 기본값은 20입니다.")] = 20,
+    ):
+        with connection() as conn:
+            guides = list_wifi_guides(conn, limit=limit)
+            if public_readonly:
+                return [_serialize_public_wifi_guide(item) for item in guides]
             return [item.model_dump() for item in guides]
 
     @mcp.tool(

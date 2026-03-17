@@ -18,6 +18,7 @@ JSON_COLUMNS = {
     "transport_guides": {"steps_json": "steps"},
     "certificate_guides": {"steps_json": "steps"},
     "scholarship_guides": {"steps_json": "steps", "links_json": "links"},
+    "wifi_guides": {"ssids_json": "ssids", "steps_json": "steps"},
     "academic_calendar": {"campuses_json": "campuses"},
     "profile_notice_preferences": {
         "categories_json": "categories",
@@ -38,6 +39,7 @@ JSON_DEFAULTS = {
     "labels_json": [],
     "steps_json": [],
     "links_json": [],
+    "ssids_json": [],
     "campuses_json": [],
     "categories_json": [],
     "keywords_json": [],
@@ -712,6 +714,29 @@ def replace_scholarship_guides(conn: psycopg.Connection, rows: list[dict[str, An
     )
 
 
+def replace_wifi_guides(conn: psycopg.Connection, rows: list[dict[str, Any]]) -> None:
+    conn.execute("TRUNCATE TABLE wifi_guides RESTART IDENTITY CASCADE")
+    _executemany(
+        conn,
+        """
+        INSERT INTO wifi_guides (
+            building_name, ssids_json, steps_json, source_url, source_tag, last_synced_at
+        ) VALUES (%s, %s, %s, %s, %s, %s)
+        """,
+        [
+            (
+                row["building_name"],
+                Jsonb(row.get("ssids", [])),
+                Jsonb(row.get("steps", [])),
+                row.get("source_url"),
+                row.get("source_tag", "demo"),
+                row["last_synced_at"],
+            )
+            for row in rows
+        ],
+    )
+
+
 def replace_academic_calendar(conn: psycopg.Connection, rows: list[dict[str, Any]]) -> None:
     conn.execute("TRUNCATE TABLE academic_calendar RESTART IDENTITY CASCADE")
     _executemany(
@@ -910,6 +935,23 @@ def list_scholarship_guides(
     return [_row_to_dict("scholarship_guides", row) for row in rows]
 
 
+def list_wifi_guides(
+    conn: psycopg.Connection,
+    *,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT *
+        FROM wifi_guides
+        ORDER BY id, building_name
+        LIMIT %s
+        """,
+        (limit,),
+    ).fetchall()
+    return [_row_to_dict("wifi_guides", row) for row in rows]
+
+
 def create_sync_run(
     conn: psycopg.Connection,
     *,
@@ -1026,6 +1068,7 @@ def get_dataset_sync_state(conn: psycopg.Connection, table: str) -> dict[str, An
         "transport_guides",
         "certificate_guides",
         "scholarship_guides",
+        "wifi_guides",
         "academic_calendar",
         "campus_dining_menus",
     }

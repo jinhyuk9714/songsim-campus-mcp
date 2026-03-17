@@ -15,6 +15,7 @@ from songsim_campus.ingest.official_sources import (
     NoticeSource,
     ScholarshipGuideSource,
     TransportGuideSource,
+    WifiGuideSource,
     classify_notice_category,
 )
 
@@ -441,6 +442,41 @@ def test_scholarship_guide_parser_extracts_sections_and_official_links():
         },
     ]
     assert all(row["source_tag"] == "cuk_scholarship_guides" for row in rows)
+
+
+def test_wifi_guide_parser_extracts_buildings_ssids_and_shared_steps():
+    source = WifiGuideSource("https://www.catholic.ac.kr/ko/campuslife/wifi.do")
+
+    rows = source.parse(
+        _fixture("wifi.html"),
+        fetched_at="2026-03-17T19:00:00+09:00",
+    )
+
+    assert [row["building_name"] for row in rows] == [
+        "니콜스관",
+        "미카엘관",
+        "베리타스관(중앙도서관)",
+        "그 외 건물",
+    ]
+
+    first = rows[0]
+    assert first["ssids"] == ["catholic_univ", "강의실 호실명 (ex: N301)"]
+    assert first["steps"] == [
+        "무선랜 안테나 검색 후 신호가 강한 SSID 선택 (최초 접속 시 보안키 입력)",
+        "K관, A관(안드레아관) 보안키 : catholic!!(교내 동일)",
+        "그외 건물 보안키 : 1234567890 (교내 동일)",
+    ]
+    assert first["source_url"] == "https://www.catholic.ac.kr/ko/campuslife/wifi.do"
+    assert first["source_tag"] == "cuk_wifi_guides"
+
+    annex = rows[1]
+    assert annex["ssids"] == ["catholic_mica"]
+    assert annex["steps"] == first["steps"]
+
+    fallback = rows[-1]
+    assert fallback["building_name"] == "그 외 건물"
+    assert fallback["ssids"] == ["catholic_univ", "catholic_건물명", "사무실 호실명"]
+    assert fallback["steps"] == first["steps"]
 
 
 def test_kakao_place_detail_parser_normalizes_weekdays_breaks_and_holidays():

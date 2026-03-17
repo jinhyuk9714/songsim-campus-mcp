@@ -24,6 +24,7 @@ from songsim_campus.services import (
     refresh_facility_hours_from_facilities_page,
     refresh_scholarship_guides_from_source,
     refresh_transport_guides_from_location_page,
+    refresh_wifi_guides_from_source,
 )
 from songsim_campus.settings import clear_settings_cache
 
@@ -266,6 +267,7 @@ def test_public_readonly_mode_exposes_gpt_actions_openapi(app_env, monkeypatch):
         "/academic-calendar",
         "/certificate-guides",
         "/scholarship-guides",
+        "/wifi-guides",
         "/notices",
         "/notice-categories",
         "/periods",
@@ -280,6 +282,7 @@ def test_public_readonly_mode_exposes_gpt_actions_openapi(app_env, monkeypatch):
     assert payload["paths"]["/academic-calendar"]["get"]["operationId"] == "listAcademicCalendar"
     assert payload["paths"]["/certificate-guides"]["get"]["operationId"] == "listCertificateGuides"
     assert payload["paths"]["/scholarship-guides"]["get"]["operationId"] == "listScholarshipGuides"
+    assert payload["paths"]["/wifi-guides"]["get"]["operationId"] == "listWifiGuides"
     course_parameters = payload["paths"]["/courses"]["get"]["parameters"]
     assert any(item["name"] == "period_start" for item in course_parameters)
     assert payload["paths"]["/notices"]["get"]["operationId"] == "listLatestNotices"
@@ -2163,6 +2166,27 @@ class ApiScholarshipSource:
         ]
 
 
+class ApiWifiGuideSource:
+    def fetch(self):
+        return "<wifi></wifi>"
+
+    def parse(self, html: str, *, fetched_at: str):
+        assert html == "<wifi></wifi>"
+        return [
+            {
+                "building_name": "니콜스관",
+                "ssids": ["catholic_univ", "강의실 호실명 (ex: N301)"],
+                "steps": [
+                    "무선랜 안테나 검색 후 신호가 강한 SSID 선택 (최초 접속 시 보안키 입력)",
+                    "K관, A관(안드레아관) 보안키 : catholic!!(교내 동일)",
+                ],
+                "source_url": "https://www.catholic.ac.kr/ko/campuslife/wifi.do",
+                "source_tag": "cuk_wifi_guides",
+                "last_synced_at": fetched_at,
+            }
+        ]
+
+
 def test_place_detail_returns_merged_opening_hours(client):
     with connection() as conn:
         refresh_facility_hours_from_facilities_page(conn, source=ApiFacilitiesSource())
@@ -2358,6 +2382,30 @@ def test_scholarship_guides_endpoint_returns_guides(client):
             ],
             "source_url": "https://www.catholic.ac.kr/ko/support/scholarship_songsim.do",
             "source_tag": "cuk_scholarship_guides",
+            "last_synced_at": items[0]["last_synced_at"],
+        }
+    ]
+
+
+def test_wifi_guides_endpoint_returns_guides(client):
+    with connection() as conn:
+        refresh_wifi_guides_from_source(conn, source=ApiWifiGuideSource())
+
+    response = client.get("/wifi-guides")
+    items = response.json()
+
+    assert response.status_code == 200
+    assert items == [
+        {
+            "id": 1,
+            "building_name": "니콜스관",
+            "ssids": ["catholic_univ", "강의실 호실명 (ex: N301)"],
+            "steps": [
+                "무선랜 안테나 검색 후 신호가 강한 SSID 선택 (최초 접속 시 보안키 입력)",
+                "K관, A관(안드레아관) 보안키 : catholic!!(교내 동일)",
+            ],
+            "source_url": "https://www.catholic.ac.kr/ko/campuslife/wifi.do",
+            "source_tag": "cuk_wifi_guides",
             "last_synced_at": items[0]["last_synced_at"],
         }
     ]

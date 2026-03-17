@@ -39,6 +39,7 @@ from .ingest.official_sources import (
     NoticeSource,
     ScholarshipGuideSource,
     TransportGuideSource,
+    WifiGuideSource,
     classify_notice_category,
 )
 from .schemas import (
@@ -75,6 +76,7 @@ from .schemas import (
     SyncObservability,
     SyncRun,
     TransportGuide,
+    WifiGuide,
 )
 from .settings import get_settings
 
@@ -88,6 +90,7 @@ FACILITIES_SOURCE_URL = "https://www.catholic.ac.kr/ko/campuslife/restaurant.do"
 TRANSPORT_SOURCE_URL = "https://www.catholic.ac.kr/ko/about/location_songsim.do"
 CERTIFICATE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/certificate.do"
 SCHOLARSHIP_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/scholarship_songsim.do"
+WIFI_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/campuslife/wifi.do"
 ACADEMIC_CALENDAR_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/calendar2024_list.do"
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 CAMPUS_WALK_GRAPH_PATH = DATA_DIR / "campus_walk_graph.json"
@@ -105,6 +108,7 @@ SYNC_DATASET_TABLES = (
     "academic_calendar",
     "certificate_guides",
     "scholarship_guides",
+    "wifi_guides",
     "transport_guides",
 )
 PUBLIC_READY_REQUIRED_DATASETS = frozenset(
@@ -121,6 +125,7 @@ ADMIN_SYNC_TARGETS = {
     "notices",
     "academic_calendar",
     "scholarship_guides",
+    "wifi_guides",
     "transport_guides",
 }
 AUTOMATION_SYNC_TARGETS = {"snapshot", "library_seat_prewarm", "cache_cleanup"}
@@ -3266,6 +3271,17 @@ def list_scholarship_guides(
     ]
 
 
+def list_wifi_guides(
+    conn: sqlite3.Connection,
+    limit: int = 20,
+) -> list[WifiGuide]:
+    normalized_limit = max(1, min(limit, 50))
+    return [
+        WifiGuide.model_validate(item)
+        for item in repo.list_wifi_guides(conn, limit=normalized_limit)
+    ]
+
+
 def list_academic_calendar(
     conn: sqlite3.Connection,
     *,
@@ -3411,6 +3427,8 @@ def _run_admin_sync_target(
         return {"academic_calendar": len(refresh_academic_calendar_from_source(conn))}
     if target == "scholarship_guides":
         return {"scholarship_guides": len(refresh_scholarship_guides_from_source(conn))}
+    if target == "wifi_guides":
+        return {"wifi_guides": len(refresh_wifi_guides_from_source(conn))}
     if target == "transport_guides":
         return {"transport_guides": len(refresh_transport_guides_from_location_page(conn))}
     if target == "cache_cleanup":
@@ -5110,6 +5128,22 @@ def refresh_scholarship_guides_from_source(
     ]
 
 
+def refresh_wifi_guides_from_source(
+    conn: sqlite3.Connection,
+    *,
+    source: WifiGuideSource | Any | None = None,
+    fetched_at: str | None = None,
+) -> list[WifiGuide]:
+    source = source or WifiGuideSource(WIFI_GUIDE_SOURCE_URL)
+    synced_at = fetched_at or _now_iso()
+    rows = source.parse(source.fetch(), fetched_at=synced_at)
+    repo.replace_wifi_guides(conn, rows)
+    return [
+        WifiGuide.model_validate(item)
+        for item in repo.list_wifi_guides(conn, limit=max(len(rows), 1))
+    ]
+
+
 def sync_official_snapshot(
     conn: sqlite3.Connection,
     *,
@@ -5140,6 +5174,7 @@ def sync_official_snapshot(
     academic_calendar = refresh_academic_calendar_from_source(conn)
     certificate_guides = refresh_certificate_guides_from_certificate_page(conn)
     scholarship_guides = refresh_scholarship_guides_from_source(conn)
+    wifi_guides = refresh_wifi_guides_from_source(conn)
     transport_guides = refresh_transport_guides_from_location_page(conn)
     return {
         "places": len(places),
@@ -5149,6 +5184,7 @@ def sync_official_snapshot(
         "academic_calendar": len(academic_calendar),
         "certificate_guides": len(certificate_guides),
         "scholarship_guides": len(scholarship_guides),
+        "wifi_guides": len(wifi_guides),
         "transport_guides": len(transport_guides),
     }
 
