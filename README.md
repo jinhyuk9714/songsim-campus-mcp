@@ -9,17 +9,19 @@
 ## 공개 사용 방식
 
 - Remote MCP: ChatGPT, Claude, Codex 같은 클라이언트에서 직접 연결
-- HTTP API: 장소, 과목, 공지, 식당, 교통 안내 조회
+- HTTP API: 장소, 과목, 학사일정, 증명발급, 장학제도, 공지, 식당, WIFI, 교통 안내 조회
 - Shared GPT: ChatGPT GPT Builder에서 GPT 전용 v2 Actions schema로 붙여 `chatgpt.com/g/...` 링크로 공개
 - Local full mode: profile, timetable, admin sync, observability, automation 운영
 
 공개 MCP 사용 패턴은 이 순서를 기준으로 보면 됩니다.
 
 1. `songsim://usage-guide` 같은 resource로 공개 surface를 먼저 확인
-2. place / course / notice / restaurant / transport prompt로 첫 tool 선택
+2. place / course / academic calendar / notice / restaurant / transport prompt로 첫 tool 선택
 3. 해당 tool로 실제 조회
 
 강의실 공실은 공식 실시간 source가 있으면 그것을 우선 사용하고, 공개 배포에서 실시간 coverage가 없으면 시간표 기준 예상 공실로 자동 폴백합니다.
+
+대표 companion HTTP endpoint는 `/academic-calendar`, `/certificate-guides`, `/scholarship-guides`, `/wifi-guides`, `/places`, `/courses`, `/notices`, `/dining-menus`, `/restaurants/nearby`, `/transport`입니다.
 
 ## 대표 MCP 테스트 질문
 
@@ -38,6 +40,10 @@
 - `정문 기준 빈 강의실 보여줘`
 - `7교시가 몇 시야`
 - `7교시에 시작하는 과목 찾아줘`
+- `2026학년도 3월 학사일정 보여줘`
+- `재학증명서 발급 안내 알려줘`
+- `장학제도 안내 알려줘`
+- `니콜스관 WIFI 안내 알려줘`
 - `장학 공지 최신순으로 3개 보여줘`
 - `최신 취업 공지 3개 보여줘`
 - `매머드커피 어디 있어?`
@@ -77,7 +83,11 @@
 - 생활 시설명으로 관련 건물 후보 검색
 - 강의 시간표 검색
 - 교시 ↔ 실제 시간 변환
+- 학사일정 조회
+- 증명발급 안내 조회
+- 장학제도 안내 조회
 - 주변 맛집 추천
+- 건물별 WIFI 안내 조회
 - 공지 조회
 - HTTP API와 GPT Actions는 같은 데이터를 얇게 재노출
 
@@ -250,6 +260,10 @@ uv run songsim-mcp --transport streamable-http
 ```bash
 curl 'http://127.0.0.1:8000/places?query=도서관'
 curl 'http://127.0.0.1:8000/courses?query=객체지향&year=2026&semester=1'
+curl 'http://127.0.0.1:8000/academic-calendar?academic_year=2026&month=3'
+curl 'http://127.0.0.1:8000/certificate-guides'
+curl 'http://127.0.0.1:8000/scholarship-guides'
+curl 'http://127.0.0.1:8000/wifi-guides'
 curl 'http://127.0.0.1:8000/notice-categories'
 curl 'http://127.0.0.1:8000/periods'
 curl 'http://127.0.0.1:8000/library-seats'
@@ -282,6 +296,7 @@ SONGSIM_ADMIN_ENABLED=true uv run songsim-api
 브랜드 direct search는 `origin`이 없어도 동작하고, 먼저 캠퍼스에 가까운 후보를 찾습니다. 근처에 없으면 더 가까운 외부 지점을 보여줄 수 있습니다. `스타벅스`, `커피빈`, `투썸`, `빽다방`처럼 long-tail 브랜드도 direct search로 먼저 확인합니다.
 교내 공식 학식 3곳의 이번 주 메뉴는 `/dining-menus`와 `/gpt/dining-menus`로 조회할 수 있습니다. 현재는 주간 메뉴 텍스트와 원본 PDF 링크를 함께 반환하고, `오늘 메뉴`나 `내일 메뉴`도 이번 주 메뉴 기준으로 안내합니다.
 중앙도서관 열람실 좌석은 `/library-seats`와 `/gpt/library-seats`로 best-effort 실시간 조회할 수 있습니다. public API automation이 켜져 있으면 5분 간격 prewarm으로 짧은 stale cache를 먼저 채우고, source가 응답하지 않으면 stale cache 또는 unavailable note로 안전하게 폴백합니다.
+학사일정은 `/academic-calendar`, 증명발급 안내는 `/certificate-guides`, 장학제도는 `/scholarship-guides`, WIFI 안내는 `/wifi-guides`로 바로 조회할 수 있습니다.
 공지 카테고리 설명은 `/notice-categories` 또는 `songsim://notice-categories`로 바로 읽을 수 있고, 교시표는 `/periods`, `/gpt/periods`, `songsim://class-periods`로 바로 확인할 수 있습니다. 교시 기반 과목 조회는 `/courses?year=2026&semester=1&period_start=7`처럼 direct filter로도 처리할 수 있습니다.
 
 ## 대표 MCP 테스트 질문
@@ -295,6 +310,10 @@ SONGSIM_ADMIN_ENABLED=true uv run songsim-api
 - `김수환관 지금 비어 있는 강의실 있어?`
 - `N관 기준으로 오늘 비어 있는 강의실 보여줘`
 - `2026년 1학기 객체지향 과목 찾아줘`
+- `2026학년도 3월 학사일정 보여줘`
+- `재학증명서 발급 방법 알려줘`
+- `장학제도 안내 알려줘`
+- `니콜스관 WIFI 안내 알려줘`
 - `김가톨 교수 수업 알려줘`
 - `최신 학사 공지 2개 보여줘`
 - `장학 공지 최신순으로 3개 보여줘`
