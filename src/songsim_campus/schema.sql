@@ -158,6 +158,17 @@ CREATE TABLE IF NOT EXISTS scholarship_guides (
     last_synced_at TIMESTAMPTZ NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS leave_of_absence_guides (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL DEFAULT '',
+    steps_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    links_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    source_url TEXT,
+    source_tag TEXT NOT NULL DEFAULT 'demo',
+    last_synced_at TIMESTAMPTZ NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS wifi_guides (
     id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     building_name TEXT NOT NULL,
@@ -269,6 +280,7 @@ ON library_seat_status_cache(last_synced_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notices_published_at ON notices(published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_transport_guides_mode ON transport_guides(mode);
 CREATE INDEX IF NOT EXISTS idx_certificate_guides_title ON certificate_guides(title);
+CREATE INDEX IF NOT EXISTS idx_leave_of_absence_guides_title ON leave_of_absence_guides(title);
 CREATE INDEX IF NOT EXISTS idx_scholarship_guides_title ON scholarship_guides(title);
 CREATE INDEX IF NOT EXISTS idx_wifi_guides_building_name ON wifi_guides(building_name);
 CREATE INDEX IF NOT EXISTS idx_academic_calendar_year_start_date

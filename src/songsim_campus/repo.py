@@ -17,6 +17,7 @@ JSON_COLUMNS = {
     "notices": {"labels_json": "labels"},
     "transport_guides": {"steps_json": "steps"},
     "certificate_guides": {"steps_json": "steps"},
+    "leave_of_absence_guides": {"steps_json": "steps", "links_json": "links"},
     "scholarship_guides": {"steps_json": "steps", "links_json": "links"},
     "wifi_guides": {"ssids_json": "ssids", "steps_json": "steps"},
     "academic_calendar": {"campuses_json": "campuses"},
@@ -690,6 +691,30 @@ def replace_certificate_guides(conn: psycopg.Connection, rows: list[dict[str, An
     )
 
 
+def replace_leave_of_absence_guides(conn: psycopg.Connection, rows: list[dict[str, Any]]) -> None:
+    conn.execute("TRUNCATE TABLE leave_of_absence_guides RESTART IDENTITY CASCADE")
+    _executemany(
+        conn,
+        """
+        INSERT INTO leave_of_absence_guides (
+            title, summary, steps_json, links_json, source_url, source_tag, last_synced_at
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """,
+        [
+            (
+                row["title"],
+                row.get("summary", ""),
+                Jsonb(row.get("steps", [])),
+                Jsonb(row.get("links", [])),
+                row.get("source_url"),
+                row.get("source_tag", "demo"),
+                row["last_synced_at"],
+            )
+            for row in rows
+        ],
+    )
+
+
 def replace_scholarship_guides(conn: psycopg.Connection, rows: list[dict[str, Any]]) -> None:
     conn.execute("TRUNCATE TABLE scholarship_guides RESTART IDENTITY CASCADE")
     _executemany(
@@ -881,6 +906,23 @@ def list_certificate_guides(
     return [_row_to_dict("certificate_guides", row) for row in rows]
 
 
+def list_leave_of_absence_guides(
+    conn: psycopg.Connection,
+    *,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT *
+        FROM leave_of_absence_guides
+        ORDER BY id, title
+        LIMIT %s
+        """,
+        (limit,),
+    ).fetchall()
+    return [_row_to_dict("leave_of_absence_guides", row) for row in rows]
+
+
 def list_academic_calendar(
     conn: psycopg.Connection,
     *,
@@ -1067,6 +1109,7 @@ def get_dataset_sync_state(conn: psycopg.Connection, table: str) -> dict[str, An
         "notices",
         "transport_guides",
         "certificate_guides",
+        "leave_of_absence_guides",
         "scholarship_guides",
         "wifi_guides",
         "academic_calendar",

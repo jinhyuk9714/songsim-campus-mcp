@@ -34,6 +34,7 @@ from .ingest.official_sources import (
     CampusMapSource,
     CertificateGuideSource,
     CourseCatalogSource,
+    LeaveOfAbsenceGuideSource,
     LibraryHoursSource,
     LibrarySeatStatusSource,
     NoticeSource,
@@ -53,6 +54,7 @@ from .schemas import (
     EmptyClassroomBuilding,
     EstimatedEmptyClassroom,
     EstimatedEmptyClassroomResponse,
+    LeaveOfAbsenceGuide,
     LibrarySeatStatus,
     LibrarySeatStatusResponse,
     MatchedCourse,
@@ -89,6 +91,7 @@ LIBRARY_SEAT_STATUS_SOURCE_URL = "http://203.229.203.240/8080/Domian5.asp"
 FACILITIES_SOURCE_URL = "https://www.catholic.ac.kr/ko/campuslife/restaurant.do"
 TRANSPORT_SOURCE_URL = "https://www.catholic.ac.kr/ko/about/location_songsim.do"
 CERTIFICATE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/certificate.do"
+LEAVE_OF_ABSENCE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/leave_of_absence.do"
 SCHOLARSHIP_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/scholarship_songsim.do"
 WIFI_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/campuslife/wifi.do"
 ACADEMIC_CALENDAR_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/calendar2024_list.do"
@@ -107,6 +110,7 @@ SYNC_DATASET_TABLES = (
     "notices",
     "academic_calendar",
     "certificate_guides",
+    "leave_of_absence_guides",
     "scholarship_guides",
     "wifi_guides",
     "transport_guides",
@@ -124,6 +128,7 @@ ADMIN_SYNC_TARGETS = {
     "courses",
     "notices",
     "academic_calendar",
+    "leave_of_absence_guides",
     "scholarship_guides",
     "wifi_guides",
     "transport_guides",
@@ -3260,6 +3265,17 @@ def list_certificate_guides(
     ]
 
 
+def list_leave_of_absence_guides(
+    conn: sqlite3.Connection,
+    limit: int = 20,
+) -> list[LeaveOfAbsenceGuide]:
+    normalized_limit = max(1, min(limit, 50))
+    return [
+        LeaveOfAbsenceGuide.model_validate(item)
+        for item in repo.list_leave_of_absence_guides(conn, limit=normalized_limit)
+    ]
+
+
 def list_scholarship_guides(
     conn: sqlite3.Connection,
     limit: int = 20,
@@ -3425,6 +3441,8 @@ def _run_admin_sync_target(
         }
     if target == "academic_calendar":
         return {"academic_calendar": len(refresh_academic_calendar_from_source(conn))}
+    if target == "leave_of_absence_guides":
+        return {"leave_of_absence_guides": len(refresh_leave_of_absence_guides_from_source(conn))}
     if target == "scholarship_guides":
         return {"scholarship_guides": len(refresh_scholarship_guides_from_source(conn))}
     if target == "wifi_guides":
@@ -5112,6 +5130,22 @@ def refresh_certificate_guides_from_certificate_page(
     ]
 
 
+def refresh_leave_of_absence_guides_from_source(
+    conn: sqlite3.Connection,
+    *,
+    source: LeaveOfAbsenceGuideSource | Any | None = None,
+    fetched_at: str | None = None,
+) -> list[LeaveOfAbsenceGuide]:
+    source = source or LeaveOfAbsenceGuideSource(LEAVE_OF_ABSENCE_SOURCE_URL)
+    synced_at = fetched_at or _now_iso()
+    rows = source.parse(source.fetch(), fetched_at=synced_at)
+    repo.replace_leave_of_absence_guides(conn, rows)
+    return [
+        LeaveOfAbsenceGuide.model_validate(item)
+        for item in repo.list_leave_of_absence_guides(conn, limit=max(len(rows), 1))
+    ]
+
+
 def refresh_scholarship_guides_from_source(
     conn: sqlite3.Connection,
     *,
@@ -5173,6 +5207,7 @@ def sync_official_snapshot(
     )
     academic_calendar = refresh_academic_calendar_from_source(conn)
     certificate_guides = refresh_certificate_guides_from_certificate_page(conn)
+    leave_of_absence_guides = refresh_leave_of_absence_guides_from_source(conn)
     scholarship_guides = refresh_scholarship_guides_from_source(conn)
     wifi_guides = refresh_wifi_guides_from_source(conn)
     transport_guides = refresh_transport_guides_from_location_page(conn)
@@ -5183,6 +5218,7 @@ def sync_official_snapshot(
         "notices": len(notices),
         "academic_calendar": len(academic_calendar),
         "certificate_guides": len(certificate_guides),
+        "leave_of_absence_guides": len(leave_of_absence_guides),
         "scholarship_guides": len(scholarship_guides),
         "wifi_guides": len(wifi_guides),
         "transport_guides": len(transport_guides),

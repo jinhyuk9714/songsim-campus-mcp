@@ -28,6 +28,7 @@ from .schemas import (
     GptNoticeResult,
     GptPlaceResult,
     GptRestaurantSearchResult,
+    LeaveOfAbsenceGuide,
     LibrarySeatStatusResponse,
     MatchedCourse,
     MatchedNotice,
@@ -72,6 +73,7 @@ from .services import (
     list_certificate_guides,
     list_estimated_empty_classrooms,
     list_latest_notices,
+    list_leave_of_absence_guides,
     list_profile_notices,
     list_restaurants,
     list_scholarship_guides,
@@ -130,6 +132,14 @@ GPT_ACTION_PATHS: dict[str, dict[str, str]] = {
         "operationId": "listCertificateGuides",
         "summary": "List certificate issuance guides",
         "description": "List the current Songsim certificate issuance guides and notices.",
+    },
+    "/leave-of-absence-guides": {
+        "operationId": "listLeaveOfAbsenceGuides",
+        "summary": "List leave-of-absence guides",
+        "description": (
+            "List the current Songsim leave-of-absence guidance, submission cases, "
+            "and official FAQ or forms links."
+        ),
     },
     "/scholarship-guides": {
         "operationId": "listScholarshipGuides",
@@ -609,6 +619,7 @@ def create_app() -> FastAPI:
                 ],
             },
             {"title": "academic_calendar", "fields": []},
+            {"title": "leave_of_absence_guides", "fields": []},
             {"title": "scholarship_guides", "fields": []},
             {"title": "wifi_guides", "fields": []},
             {"title": "transport_guides", "fields": []},
@@ -989,6 +1000,7 @@ def create_app() -> FastAPI:
             <li><code>/courses</code> public course offerings</li>
             <li><code>/academic-calendar</code> current academic calendar events</li>
             <li><code>/certificate-guides</code> certificate issuance guides</li>
+            <li><code>/leave-of-absence-guides</code> leave-of-absence application guides</li>
             <li><code>/scholarship-guides</code> scholarship baseline guides</li>
             <li><code>/wifi-guides</code> campus wifi SSIDs and connection steps</li>
             <li><code>/library-seats</code> central-library seat status</li>
@@ -1507,6 +1519,13 @@ def create_app() -> FastAPI:
     ) -> list[CertificateGuide]:
         with connection() as conn:
             return list_certificate_guides(conn, limit=limit)
+
+    @app.get("/leave-of-absence-guides", response_model=list[LeaveOfAbsenceGuide])
+    def leave_of_absence_guides(
+        limit: int = Query(default=20, ge=1, le=50),
+    ) -> list[LeaveOfAbsenceGuide]:
+        with connection() as conn:
+            return list_leave_of_absence_guides(conn, limit=limit)
 
     @app.get("/scholarship-guides", response_model=list[ScholarshipGuide])
     def scholarship_guides(

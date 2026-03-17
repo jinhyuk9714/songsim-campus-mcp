@@ -10,6 +10,7 @@ from songsim_campus.ingest.official_sources import (
     CampusMapSource,
     CertificateGuideSource,
     CourseCatalogSource,
+    LeaveOfAbsenceGuideSource,
     LibraryHoursSource,
     LibrarySeatStatusSource,
     NoticeSource,
@@ -347,6 +348,90 @@ def test_certificate_parser_extracts_guides_summaries_and_steps():
     )
     assert "업무를 중단" in stopped_mail["summary"]
     assert stopped_mail["steps"][-1] == "문의: 학생지원팀 02-2164-4732"
+
+
+def test_leave_of_absence_parser_extracts_sections_steps_and_links():
+    source = LeaveOfAbsenceGuideSource("https://www.catholic.ac.kr/ko/support/leave_of_absence.do")
+
+    rows = source.parse(
+        _fixture("leave_of_absence.html"),
+        fetched_at="2026-03-17T20:00:00+09:00",
+    )
+
+    assert [row["title"] for row in rows] == [
+        "신청방법",
+        "휴학상담 안내",
+        "다음의 경우 학사지원팀에 직접 방문 제출",
+        "휴학 시기에 따른 등록금 반환 기준",
+    ]
+
+    application = rows[0]
+    assert (
+        application["summary"]
+        == "Trinity 신청 (학사정보 → 학적/졸업) → 휴학상담 → 휴학신청 승인 → 휴학최종 승인"
+    )
+    assert application["steps"] == [
+        "STEP 1: Trinity 신청 (학사정보 → 학적/졸업) (학생)",
+        "STEP 2: 휴학상담 (지도교수)",
+        "STEP 3: 휴학신청 승인 (학과장)",
+        "STEP 4: 휴학최종 승인 (학사지원팀)",
+    ]
+    assert application["links"] == [
+        {
+            "label": "휴복학 FAQ (다운로드)",
+            "url": "https://www.catholic.ac.kr/cms/etcResourceDown.do?site=fake&key=fake",
+        }
+    ]
+
+    consultation = rows[1]
+    assert (
+        consultation["summary"]
+        == "상담을 위한 지도교수 확인과 상담일정 조율 후 휴학관련 문의처를 확인합니다."
+    )
+    assert consultation["steps"] == [
+        "상담을 위한 지도교수 확인 : 트리니티 → AI코디 → 통합상담 → 교수상담",
+        "상담일정 조율 안내 : 트리니티 → 학사정보에서 휴학 신청 후 지도교수에게 메일 발송",
+        "휴학관련 주요 문의처",
+        "휴학관련 주요 문의처: 지도교수 상담 : 소속 학과/학부 사무실 문의",
+        "휴학관련 주요 문의처: 휴학관련 상담 : 학사지원팀 문의(02-2164-4288)",
+    ]
+
+    direct_visit = rows[2]
+    assert (
+        direct_visit["summary"]
+        == "군 휴학, 질병 휴학 등 예외적인 경우에는 학사지원팀 방문 제출이 필요합니다."
+    )
+    assert direct_visit["steps"] == [
+        "군 휴학: 입대 1주일 전, 입영통지서를 지참하여 방문 제출",
+        (
+            "군 휴학: 전역 후 일반휴학을 계속할 경우, 전역증과 일반휴학원을 지참하여 "
+            "학사지원팀 방문 제출"
+        ),
+        "질병 휴학: 일반휴학원 및 4주 이상 진단서 지참하여 방문 신청",
+        "질병 휴학: 첫 학기에도 신청 가능하며, 학기 중 질병휴학 시 등록금 이월 가능",
+        "모든 휴학원은(군휴학 제외) 지도교수님 상담 및 교수님 서명 필수",
+    ]
+    assert direct_visit["links"] == [
+        {
+            "label": "각종서식",
+            "url": "https://www.catholic.ac.kr/ko/about/various-forms.do",
+        }
+    ]
+
+    refund = rows[3]
+    assert (
+        refund["summary"]
+        == "휴학 시점에 따라 수업료 전액, 5/6, 2/3 또는 미반환 기준이 적용됩니다."
+    )
+    assert (
+        refund["steps"][0]
+        == "휴학시점: 추가등록기간 / 반환금액: 수업료 전액 / 대상 휴학: 일반, 군, 질병, 육아"
+    )
+    assert (
+        refund["steps"][-1]
+        == "휴학시점: 학기개시일 부터 90일 초과 / 반환금액: 없음 / 대상 휴학: 군, 질병, 육아"
+    )
+    assert all(row["source_tag"] == "cuk_leave_of_absence_guides" for row in rows)
 
 
 def test_academic_calendar_parser_normalizes_kst_dates_and_campuses():

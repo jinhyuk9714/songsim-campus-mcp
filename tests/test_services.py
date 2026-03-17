@@ -33,6 +33,7 @@ from songsim_campus.services import (
     list_certificate_guides,
     list_estimated_empty_classrooms,
     list_latest_notices,
+    list_leave_of_absence_guides,
     list_scholarship_guides,
     list_transport_guides,
     list_wifi_guides,
@@ -41,6 +42,7 @@ from songsim_campus.services import (
     refresh_certificate_guides_from_certificate_page,
     refresh_courses_from_subject_search,
     refresh_facility_hours_from_facilities_page,
+    refresh_leave_of_absence_guides_from_source,
     refresh_library_hours_from_library_page,
     refresh_notices_from_notice_board,
     refresh_places_from_campus_map,
@@ -3492,6 +3494,31 @@ class FakeCertificateSource:
         ]
 
 
+class FakeLeaveOfAbsenceSource:
+    def fetch(self):
+        return "<leave></leave>"
+
+    def parse(self, html: str, *, fetched_at: str):
+        assert html == "<leave></leave>"
+        assert fetched_at == "2026-03-17T15:00:00+09:00"
+        return [
+            {
+                "title": "신청방법",
+                "summary": "Trinity 신청 → 휴학상담 → 휴학신청 승인 → 휴학최종 승인",
+                "steps": ["STEP 1: Trinity 신청 (학생)"],
+                "links": [
+                    {
+                        "label": "휴복학 FAQ (다운로드)",
+                        "url": "https://www.catholic.ac.kr/cms/etcResourceDown.do?site=fake&key=fake",
+                    }
+                ],
+                "source_url": "https://www.catholic.ac.kr/ko/support/leave_of_absence.do",
+                "source_tag": "cuk_leave_of_absence_guides",
+                "last_synced_at": fetched_at,
+            }
+        ]
+
+
 class FakeAcademicCalendarSource:
     def fetch_range(self, *, start_date: str, end_date: str):
         assert start_date == "2026-03-01"
@@ -3694,6 +3721,23 @@ def test_refresh_certificate_guides_replaces_rows(app_env):
     assert guides[0].title == "인터넷 증명발급"
     assert guides[0].source_url == "https://catholic.certpia.com/"
     assert guides[0].source_tag == "cuk_certificate_guides"
+
+
+def test_refresh_leave_of_absence_guides_replaces_rows(app_env):
+    init_db()
+
+    with connection() as conn:
+        refresh_leave_of_absence_guides_from_source(
+            conn,
+            source=FakeLeaveOfAbsenceSource(),
+            fetched_at="2026-03-17T15:00:00+09:00",
+        )
+        guides = list_leave_of_absence_guides(conn)
+
+    assert len(guides) == 1
+    assert guides[0].title == "신청방법"
+    assert guides[0].links[0]["label"] == "휴복학 FAQ (다운로드)"
+    assert guides[0].source_tag == "cuk_leave_of_absence_guides"
 
 
 def test_refresh_academic_calendar_replaces_rows(app_env):
@@ -4070,6 +4114,10 @@ def test_sync_official_snapshot_runs_opening_hours_before_courses_and_transport(
         lambda conn: call_order.append('certificate_guides') or [],
     )
     monkeypatch.setattr(
+        'songsim_campus.services.refresh_leave_of_absence_guides_from_source',
+        lambda conn: call_order.append('leave_of_absence_guides') or [],
+    )
+    monkeypatch.setattr(
         'songsim_campus.services.refresh_scholarship_guides_from_source',
         lambda conn: call_order.append('scholarship_guides') or [],
     )
@@ -4095,6 +4143,7 @@ def test_sync_official_snapshot_runs_opening_hours_before_courses_and_transport(
         'notices',
         'academic_calendar',
         'certificate_guides',
+        'leave_of_absence_guides',
         'scholarship_guides',
         'wifi_guides',
         'transport',
@@ -4102,6 +4151,7 @@ def test_sync_official_snapshot_runs_opening_hours_before_courses_and_transport(
     assert summary['dining_menus'] == 0
     assert summary['academic_calendar'] == 0
     assert summary['certificate_guides'] == 0
+    assert summary['leave_of_absence_guides'] == 0
     assert summary['scholarship_guides'] == 0
     assert summary['wifi_guides'] == 0
     assert summary['transport_guides'] == 0

@@ -22,6 +22,7 @@ from songsim_campus.services import (
     refresh_campus_dining_menus_from_facilities_page,
     refresh_certificate_guides_from_certificate_page,
     refresh_facility_hours_from_facilities_page,
+    refresh_leave_of_absence_guides_from_source,
     refresh_scholarship_guides_from_source,
     refresh_transport_guides_from_location_page,
     refresh_wifi_guides_from_source,
@@ -266,6 +267,7 @@ def test_public_readonly_mode_exposes_gpt_actions_openapi(app_env, monkeypatch):
         "/courses",
         "/academic-calendar",
         "/certificate-guides",
+        "/leave-of-absence-guides",
         "/scholarship-guides",
         "/wifi-guides",
         "/notices",
@@ -281,6 +283,10 @@ def test_public_readonly_mode_exposes_gpt_actions_openapi(app_env, monkeypatch):
     assert payload["paths"]["/courses"]["get"]["operationId"] == "searchCourses"
     assert payload["paths"]["/academic-calendar"]["get"]["operationId"] == "listAcademicCalendar"
     assert payload["paths"]["/certificate-guides"]["get"]["operationId"] == "listCertificateGuides"
+    assert (
+        payload["paths"]["/leave-of-absence-guides"]["get"]["operationId"]
+        == "listLeaveOfAbsenceGuides"
+    )
     assert payload["paths"]["/scholarship-guides"]["get"]["operationId"] == "listScholarshipGuides"
     assert payload["paths"]["/wifi-guides"]["get"]["operationId"] == "listWifiGuides"
     course_parameters = payload["paths"]["/courses"]["get"]["parameters"]
@@ -1279,6 +1285,7 @@ def test_admin_sync_dashboard_runs_snapshot_and_shows_recent_history(admin_clien
             "courses": 10,
             "notices": 4,
             "certificate_guides": 3,
+            "leave_of_absence_guides": 2,
             "scholarship_guides": 4,
             "transport_guides": 2,
         }
@@ -1307,6 +1314,7 @@ def test_admin_sync_dashboard_runs_snapshot_and_shows_recent_history(admin_clien
     assert "snapshot" in page.text
     assert "success" in page.text
     assert "certificate_guides" in page.text
+    assert "leave_of_absence_guides" in page.text
     assert "scholarship_guides" in page.text
     assert "transport_guides" in page.text
 
@@ -1327,6 +1335,7 @@ def test_admin_observability_pages_render_runtime_state(admin_client, client, mo
             "courses": 10,
             "notices": 4,
             "certificate_guides": 3,
+            "leave_of_absence_guides": 2,
             "scholarship_guides": 4,
             "transport_guides": 2,
         }
@@ -2120,6 +2129,30 @@ class ApiCertificateSource:
         ]
 
 
+class ApiLeaveOfAbsenceSource:
+    def fetch(self):
+        return "<leave></leave>"
+
+    def parse(self, html: str, *, fetched_at: str):
+        assert html == "<leave></leave>"
+        return [
+            {
+                "title": "신청방법",
+                "summary": "Trinity 신청 → 휴학상담 → 휴학신청 승인 → 휴학최종 승인",
+                "steps": ["STEP 1: Trinity 신청 (학생)"],
+                "links": [
+                    {
+                        "label": "휴복학 FAQ (다운로드)",
+                        "url": "https://www.catholic.ac.kr/cms/etcResourceDown.do?site=fake&key=fake",
+                    }
+                ],
+                "source_url": "https://www.catholic.ac.kr/ko/support/leave_of_absence.do",
+                "source_tag": "cuk_leave_of_absence_guides",
+                "last_synced_at": fetched_at,
+            }
+        ]
+
+
 class ApiAcademicCalendarSource:
     def fetch_range(self, *, start_date: str, end_date: str):
         assert start_date == "2026-03-01"
@@ -2328,6 +2361,33 @@ def test_certificate_guides_endpoint_returns_guides(client):
             ],
             "source_url": "https://catholic.certpia.com/",
             "source_tag": "cuk_certificate_guides",
+            "last_synced_at": items[0]["last_synced_at"],
+        }
+    ]
+
+
+def test_leave_of_absence_guides_endpoint_returns_guides(client):
+    with connection() as conn:
+        refresh_leave_of_absence_guides_from_source(conn, source=ApiLeaveOfAbsenceSource())
+
+    response = client.get("/leave-of-absence-guides")
+    items = response.json()
+
+    assert response.status_code == 200
+    assert items == [
+        {
+            "id": 1,
+            "title": "신청방법",
+            "summary": "Trinity 신청 → 휴학상담 → 휴학신청 승인 → 휴학최종 승인",
+            "steps": ["STEP 1: Trinity 신청 (학생)"],
+            "links": [
+                {
+                    "label": "휴복학 FAQ (다운로드)",
+                    "url": "https://www.catholic.ac.kr/cms/etcResourceDown.do?site=fake&key=fake",
+                }
+            ],
+            "source_url": "https://www.catholic.ac.kr/ko/support/leave_of_absence.do",
+            "source_tag": "cuk_leave_of_absence_guides",
             "last_synced_at": items[0]["last_synced_at"],
         }
     ]

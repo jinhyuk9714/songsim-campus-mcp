@@ -109,6 +109,7 @@ def test_mcp_oauth_metadata_and_initialize_flow(app_env, monkeypatch):
         "tool_search_courses",
         "tool_list_academic_calendar",
         "tool_list_certificate_guides",
+        "tool_list_leave_of_absence_guides",
         "tool_list_scholarship_guides",
         "tool_list_wifi_guides",
         "tool_get_class_periods",

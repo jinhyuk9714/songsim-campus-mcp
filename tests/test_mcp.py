@@ -20,6 +20,7 @@ from songsim_campus.seed import seed_demo
 from songsim_campus.services import (
     refresh_academic_calendar_from_source,
     refresh_certificate_guides_from_certificate_page,
+    refresh_leave_of_absence_guides_from_source,
     refresh_scholarship_guides_from_source,
     refresh_transport_guides_from_location_page,
     refresh_wifi_guides_from_source,
@@ -62,6 +63,30 @@ class McpCertificateSource:
                 ],
                 "source_url": "https://catholic.certpia.com/",
                 "source_tag": "cuk_certificate_guides",
+                "last_synced_at": fetched_at,
+            }
+        ]
+
+
+class McpLeaveOfAbsenceSource:
+    def fetch(self):
+        return "<leave></leave>"
+
+    def parse(self, html: str, *, fetched_at: str):
+        assert html == "<leave></leave>"
+        return [
+            {
+                "title": "신청방법",
+                "summary": "Trinity 신청 → 휴학상담 → 휴학신청 승인 → 휴학최종 승인",
+                "steps": ["STEP 1: Trinity 신청 (학생)"],
+                "links": [
+                    {
+                        "label": "휴복학 FAQ (다운로드)",
+                        "url": "https://www.catholic.ac.kr/cms/etcResourceDown.do?site=fake&key=fake",
+                    }
+                ],
+                "source_url": "https://www.catholic.ac.kr/ko/support/leave_of_absence.do",
+                "source_tag": "cuk_leave_of_absence_guides",
                 "last_synced_at": fetched_at,
             }
         ]
@@ -180,6 +205,28 @@ def test_mcp_certificate_tool_and_resource_share_service_data(app_env):
 
     assert tool_payload["title"] == "인터넷 증명발급"
     assert resource_payload[0]["title"] == "인터넷 증명발급"
+
+
+def test_mcp_leave_of_absence_tool_and_resource_share_service_data(app_env):
+    pytest.importorskip("mcp.server.fastmcp")
+    init_db()
+    seed_demo(force=True)
+    with connection() as conn:
+        refresh_leave_of_absence_guides_from_source(conn, source=McpLeaveOfAbsenceSource())
+
+    async def main():
+        mcp = build_mcp()
+        tool_result = await mcp.call_tool("tool_list_leave_of_absence_guides", {"limit": 10})
+        resource_result = await mcp.read_resource("songsim://leave-of-absence-guide")
+        return tool_result, list(resource_result)
+
+    tool_result, resource_result = asyncio.run(main())
+
+    tool_payload = json.loads(tool_result[0].text)
+    resource_payload = json.loads(resource_result[0].content)
+
+    assert tool_payload["title"] == "신청방법"
+    assert resource_payload[0]["title"] == "신청방법"
 
 
 def test_mcp_academic_calendar_tool_and_resource_share_service_data(app_env):
@@ -598,6 +645,7 @@ def test_mcp_public_readonly_mode_registers_only_read_only_tools(app_env, monkey
         "tool_search_courses",
         "tool_list_academic_calendar",
         "tool_list_certificate_guides",
+        "tool_list_leave_of_absence_guides",
         "tool_list_scholarship_guides",
         "tool_list_wifi_guides",
         "tool_get_class_periods",
@@ -614,6 +662,7 @@ def test_mcp_public_readonly_mode_registers_only_read_only_tools(app_env, monkey
     assert "songsim://source-registry" in resource_uris
     assert "songsim://academic-calendar" in resource_uris
     assert "songsim://certificate-guide" in resource_uris
+    assert "songsim://leave-of-absence-guide" in resource_uris
     assert "songsim://scholarship-guide" in resource_uris
     assert "songsim://wifi-guide" in resource_uris
     assert "songsim://transport-guide" in resource_uris
@@ -652,6 +701,7 @@ def test_mcp_public_readonly_mode_registers_prompts_and_extended_resources(app_e
         "songsim://source-registry",
         "songsim://academic-calendar",
         "songsim://certificate-guide",
+        "songsim://leave-of-absence-guide",
         "songsim://scholarship-guide",
         "songsim://wifi-guide",
         "songsim://transport-guide",
@@ -922,6 +972,7 @@ def test_mcp_public_usage_and_class_period_resources_are_readable(app_env, monke
     assert "tool_search_restaurants" in usage_content
     assert "tool_list_academic_calendar" in usage_content
     assert "tool_list_scholarship_guides" in usage_content
+    assert "tool_list_leave_of_absence_guides" in usage_content
     assert "tool_list_wifi_guides" in usage_content
     assert "tool_list_estimated_empty_classrooms" in usage_content
     assert "실시간" in usage_content

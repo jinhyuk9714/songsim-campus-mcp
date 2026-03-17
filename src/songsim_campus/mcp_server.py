@@ -23,6 +23,7 @@ from .schemas import (
     CampusDiningMenu,
     CertificateGuide,
     Course,
+    LeaveOfAbsenceGuide,
     McpCoordinates,
     McpNearbyRestaurantResult,
     McpNoticeResult,
@@ -58,6 +59,7 @@ from .services import (
     list_certificate_guides,
     list_estimated_empty_classrooms,
     list_latest_notices,
+    list_leave_of_absence_guides,
     list_profile_notices,
     list_scholarship_guides,
     list_transport_guides,
@@ -255,6 +257,12 @@ def _serialize_public_certificate_guide(guide: CertificateGuide) -> dict[str, ob
     return payload
 
 
+def _serialize_public_leave_of_absence_guide(guide: LeaveOfAbsenceGuide) -> dict[str, object]:
+    payload = guide.model_dump()
+    payload["guide_summary"] = guide.summary or (guide.steps[0] if guide.steps else "")
+    return payload
+
+
 def _serialize_public_scholarship_guide(guide: ScholarshipGuide) -> dict[str, object]:
     payload = guide.model_dump()
     payload["guide_summary"] = guide.summary or (guide.steps[0] if guide.steps else "")
@@ -275,8 +283,9 @@ def _public_usage_guide() -> str:
             "This server is read-only.",
             (
                 "Available: places, courses, academic calendar, certificate guides, "
-                "scholarship guides, wifi guides, notices, dining menus, library seats, "
-                "empty classrooms, nearby restaurants, restaurant search, transport guides."
+                "leave-of-absence guides, scholarship guides, wifi guides, notices, "
+                "dining menus, library seats, empty classrooms, nearby restaurants, "
+                "restaurant search, transport guides."
             ),
             "Use these public read-only tools for student information questions first.",
             "",
@@ -329,21 +338,25 @@ def _public_usage_guide() -> str:
                 "재학증명서 발급 방법, 졸업증명서 발급 안내, or 인터넷 증명발급 questions."
             ),
             (
-                "11. Use tool_list_scholarship_guides for 장학제도 baseline guidance such as "
+                "11. Use tool_list_leave_of_absence_guides for 휴학 안내 such as 휴학 신청방법, "
+                "군휴학, 질병휴학, 등록금 반환 기준, or 휴복학 FAQ questions."
+            ),
+            (
+                "12. Use tool_list_scholarship_guides for 장학제도 baseline guidance such as "
                 "장학생 자격, 장학금 신청, 장학금 지급, or 장학제도 공식 문서 questions."
             ),
             (
-                "12. Use tool_list_wifi_guides for campus wifi guidance such as 니콜스관 "
+                "13. Use tool_list_wifi_guides for campus wifi guidance such as 니콜스관 "
                 "SSID, 중앙도서관 와이파이, or 무선랜 접속 방법 questions."
             ),
-            "13. Use tool_list_latest_notices for latest notices; category is optional.",
+            "14. Use tool_list_latest_notices for latest notices; category is optional.",
             (
-                "14. Use tool_list_transport_guides for static subway or bus access "
+                "15. Use tool_list_transport_guides for static subway or bus access "
                 "guidance. You can pass query with natural-language cues like 지하철, "
                 "1호선, 역곡역, or 버스. 셔틀은 현재 지원하지 않아 빈 결과가 정상입니다."
             ),
             (
-                "15. Optional reference resources exist for notice categories and class periods "
+                "16. Optional reference resources exist for notice categories and class periods "
                 "when you need them."
             ),
             "",
@@ -356,6 +369,8 @@ def _public_usage_guide() -> str:
             "- 편의점 어디 있어?",
             "- 최신 장학 공지 3개 보여줘",
             "- 장학제도 안내 알려줘",
+            "- 휴학 신청방법 알려줘",
+            "- 군휴학 제출 안내 알려줘",
             "- 니콜스관 WIFI 안내 알려줘",
             "- 재학증명서 발급 안내 알려줘",
             "- 니콜스관인데 지금 예상 빈 강의실 있어?",
@@ -394,9 +409,9 @@ def build_mcp():
         "Songsim Campus MCP",
         instructions=(
             "Use this read-only Songsim campus info server to answer student questions "
-            "about places, courses, academic calendar, notices, certificate and scholarship "
-            "guides, wifi guides, dining, nearby restaurants, library seats, empty "
-            "classrooms, and transport."
+            "about places, courses, academic calendar, notices, certificate, "
+            "leave-of-absence, and scholarship guides, wifi guides, dining, nearby "
+            "restaurants, library seats, empty classrooms, and transport."
         ),
         website_url=settings.public_http_url or None,
         host=settings.app_host,
@@ -441,6 +456,16 @@ def build_mcp():
         with connection() as conn:
             return json.dumps(
                 [item.model_dump() for item in list_certificate_guides(conn, limit=50)],
+                ensure_ascii=False,
+                indent=2,
+            )
+
+    @mcp.resource("songsim://leave-of-absence-guide")
+    def leave_of_absence_guide_resource() -> str:
+        """Return the latest leave-of-absence guides as JSON."""
+        with connection() as conn:
+            return json.dumps(
+                [item.model_dump() for item in list_leave_of_absence_guides(conn, limit=50)],
                 ensure_ascii=False,
                 indent=2,
             )
@@ -865,6 +890,27 @@ def build_mcp():
             guides = list_certificate_guides(conn, limit=limit)
             if public_readonly:
                 return [_serialize_public_certificate_guide(item) for item in guides]
+            return [item.model_dump() for item in guides]
+
+    @mcp.tool(
+        description=(
+            (
+                "학교 휴학 안내를 읽을 때 사용합니다. 휴학 신청방법, 군휴학, 질병휴학, "
+                "직접 방문 제출 대상, 등록금 반환 기준, 휴복학 FAQ 같은 정적 안내를 "
+                "current snapshot으로 돌려줍니다."
+            )
+            if public_readonly
+            else "학교 휴학 안내 current snapshot을 가져옵니다."
+        ),
+        meta=tool_meta,
+    )
+    def tool_list_leave_of_absence_guides(
+        limit: Annotated[int, Field(description="최대 결과 수. 기본값은 20입니다.")] = 20,
+    ):
+        with connection() as conn:
+            guides = list_leave_of_absence_guides(conn, limit=limit)
+            if public_readonly:
+                return [_serialize_public_leave_of_absence_guide(item) for item in guides]
             return [item.model_dump() for item in guides]
 
     @mcp.tool(

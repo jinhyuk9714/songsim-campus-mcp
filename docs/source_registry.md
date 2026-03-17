@@ -12,6 +12,7 @@
 | cuk_facilities | 공식 | https://www.catholic.ac.kr/ko/campuslife/restaurant.do | 중간 | implemented | 식당/편의시설 운영시간을 위치 기준으로 기존 place의 `opening_hours`에 병합하고, 공식 학식 3곳의 주간 메뉴 PDF 링크와 추출 텍스트를 `campus_dining_menus` current snapshot으로 동기화 |
 | cuk_transport | 공식 | https://www.catholic.ac.kr/ko/about/location_songsim.do | 중간 | implemented | 성심교정 정적 교통 안내를 `transport_guides`로 정규화 |
 | cuk_certificate_guides | 공식 | https://www.catholic.ac.kr/ko/support/certificate.do | 중간 | implemented | 증명서 발급 정적 안내를 `certificate_guides` current snapshot으로 정규화 |
+| cuk_leave_of_absence_guides | 공식 | https://www.catholic.ac.kr/ko/support/leave_of_absence.do | 중간 | implemented | 휴학 안내 정적 페이지를 `leave_of_absence_guides` current snapshot으로 정규화 |
 | cuk_scholarship_guides | 공식 | https://www.catholic.ac.kr/ko/support/scholarship_songsim.do | 중간 | implemented | 장학제도 안내 HTML과 공식 문서 링크를 `scholarship_guides` current snapshot으로 정규화 |
 | cuk_wifi_guides | 공식 | https://www.catholic.ac.kr/ko/campuslife/wifi.do | 중간 | implemented | 무선랜서비스 HTML 표를 `wifi_guides` current snapshot으로 정규화 |
 | cuk_academic_calendar | 공식 | https://www.catholic.ac.kr/ko/support/calendar2024_list.do | 중간 | implemented | 공개 JSON feed(`mode=getCalendarData`)를 `academic_calendar` current snapshot으로 정규화 |

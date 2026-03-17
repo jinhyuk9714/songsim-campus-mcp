@@ -932,6 +932,167 @@ class CertificateGuideSource:
         return text.lstrip("*※ ").strip()
 
 
+class LeaveOfAbsenceGuideSource:
+    """Official static leave-of-absence guide parser for Songsim campus."""
+
+    SECTION_TITLES = (
+        "신청방법",
+        "휴학상담 안내",
+        "다음의 경우 학사지원팀에 직접 방문 제출",
+        "휴학 시기에 따른 등록금 반환 기준",
+    )
+
+    def __init__(self, url: str):
+        self.url = url
+
+    def fetch(self) -> str:
+        response = httpx.get(self.url, timeout=20)
+        response.raise_for_status()
+        return response.text
+
+    def parse(self, html: str, *, fetched_at: str) -> list[dict]:
+        soup = BeautifulSoup(html, "html.parser")
+        root = soup.select_one(".content-box.leaveAb") or soup.select_one(".content-box") or soup
+        boxes = root.find_all("div", class_="con-box", recursive=False)
+        rows_by_title: dict[str, dict] = {}
+
+        for box in boxes:
+            title_node = box.select_one(".h4-tit01")
+            title = _clean_text(title_node.get_text(" ", strip=True) if title_node else "")
+            if not title:
+                continue
+            if title == "신청방법":
+                rows_by_title[title] = self._parse_application_box(box, fetched_at=fetched_at)
+            elif title == "휴학상담 안내":
+                rows_by_title[title] = self._parse_consultation_box(box, fetched_at=fetched_at)
+            elif title == "다음의 경우 학사지원팀에 직접 방문 제출":
+                rows_by_title[title] = self._parse_direct_visit_box(box, fetched_at=fetched_at)
+            elif title == "휴학 시기에 따른 등록금 반환 기준":
+                rows_by_title[title] = self._parse_refund_box(box, fetched_at=fetched_at)
+
+        return [rows_by_title[title] for title in self.SECTION_TITLES if title in rows_by_title]
+
+    def _parse_application_box(self, box, *, fetched_at: str) -> dict:
+        step_infos: list[str] = []
+        steps: list[str] = []
+        for item in box.select(".step-wrap .step-box"):
+            step_num = _clean_text(item.select_one(".step-num").get_text(" ", strip=True))
+            step_info = _clean_text(item.select_one(".step-info").get_text(" ", strip=True))
+            actor_nodes = item.find_all("p", recursive=False)
+            actor = _clean_text(actor_nodes[-1].get_text(" ", strip=True) if actor_nodes else "")
+            if step_info:
+                step_infos.append(step_info)
+            if step_num and step_info:
+                detail = f"{step_num}: {step_info}"
+                if actor:
+                    detail += f" ({actor})"
+                steps.append(detail)
+        return {
+            "title": "신청방법",
+            "summary": " → ".join(step_infos),
+            "steps": steps,
+            "links": _extract_link_items(box.select_one(".link-box") or box, base_url=self.url),
+            "source_url": self.url,
+            "source_tag": "cuk_leave_of_absence_guides",
+            "last_synced_at": fetched_at,
+        }
+
+    def _parse_consultation_box(self, box, *, fetched_at: str) -> dict:
+        steps = self._extract_nested_list_steps(box.select_one(".ul-type-dot"))
+        return {
+            "title": "휴학상담 안내",
+            "summary": (
+                "상담을 위한 지도교수 확인과 상담일정 조율 후 휴학관련 문의처를 확인합니다."
+            ),
+            "steps": steps,
+            "links": [],
+            "source_url": self.url,
+            "source_tag": "cuk_leave_of_absence_guides",
+            "last_synced_at": fetched_at,
+        }
+
+    def _parse_direct_visit_box(self, box, *, fetched_at: str) -> dict:
+        subsection_titles: list[str] = []
+        steps: list[str] = []
+        for section in box.select(".con-box02"):
+            subtitle_node = section.select_one(".h5-tit01")
+            subtitle = _clean_text(subtitle_node.get_text(" ", strip=True) if subtitle_node else "")
+            if subtitle:
+                subsection_titles.append(subtitle)
+            for item in self._extract_nested_list_steps(section.select_one(".ul-type-dot")):
+                if subtitle:
+                    steps.append(f"{subtitle}: {item}")
+                else:
+                    steps.append(item)
+        for note in box.select(".alert-txt li, .alert-txt p"):
+            text = _normalize_note_text(note.get_text(" ", strip=True))
+            if text and text not in steps:
+                steps.append(text)
+        title_preview = ", ".join(subsection_titles[:2])
+        summary = (
+            f"{title_preview} 등 예외적인 경우에는 학사지원팀 방문 제출이 필요합니다."
+            if title_preview
+            else "예외적인 경우에는 학사지원팀 방문 제출이 필요합니다."
+        )
+        return {
+            "title": "다음의 경우 학사지원팀에 직접 방문 제출",
+            "summary": summary,
+            "steps": _unique(steps),
+            "links": _extract_link_items(box.select_one(".link-box") or box, base_url=self.url),
+            "source_url": self.url,
+            "source_tag": "cuk_leave_of_absence_guides",
+            "last_synced_at": fetched_at,
+        }
+
+    def _parse_refund_box(self, box, *, fetched_at: str) -> dict:
+        table = box.select_one("table")
+        steps = _extract_table_steps(table) if table is not None else []
+        return {
+            "title": "휴학 시기에 따른 등록금 반환 기준",
+            "summary": "휴학 시점에 따라 수업료 전액, 5/6, 2/3 또는 미반환 기준이 적용됩니다.",
+            "steps": steps,
+            "links": [],
+            "source_url": self.url,
+            "source_tag": "cuk_leave_of_absence_guides",
+            "last_synced_at": fetched_at,
+        }
+
+    @staticmethod
+    def _extract_nested_list_steps(list_node) -> list[str]:
+        if list_node is None:
+            return []
+        steps: list[str] = []
+        for item in list_node.find_all("li", recursive=False):
+            main_text = LeaveOfAbsenceGuideSource._direct_list_text(item)
+            if main_text:
+                steps.append(main_text)
+            for nested_list in item.find_all("ul", recursive=False):
+                for nested_item in nested_list.find_all("li", recursive=False):
+                    nested_text = _normalize_note_text(nested_item.get_text(" ", strip=True))
+                    if not nested_text:
+                        continue
+                    if main_text:
+                        steps.append(f"{main_text.rstrip(':')}: {nested_text}")
+                    else:
+                        steps.append(nested_text)
+        return _unique(steps)
+
+    @staticmethod
+    def _direct_list_text(item) -> str:
+        parts: list[str] = []
+        for child in item.contents:
+            if getattr(child, "name", None) == "ul":
+                continue
+            text = _clean_text(
+                str(child)
+                if isinstance(child, str)
+                else child.get_text(" ", strip=True)
+            )
+            if text:
+                parts.append(text)
+        return _normalize_note_text(" ".join(parts))
+
+
 class ScholarshipGuideSource:
     """Official static scholarship-guide parser for Songsim campus."""
 
