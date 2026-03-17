@@ -98,6 +98,9 @@ def test_mcp_oauth_metadata_and_initialize_flow(app_env, monkeypatch):
     assert scoped_metadata.json() == root_metadata.json()
     assert initialize.status_code == 200
     assert initialize.json()["result"]["serverInfo"]["name"] == "Songsim Campus MCP"
+    assert "read-only Songsim campus info server" in initialize.json()["result"]["instructions"]
+    assert "academic calendar" in initialize.json()["result"]["instructions"]
+    assert "wifi guides" in initialize.json()["result"]["instructions"]
     assert session_id
     assert list_tools.status_code == 200
     assert {tool["name"] for tool in list_tools.json()["result"]["tools"]} == {

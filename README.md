@@ -89,7 +89,7 @@
 - 주변 맛집 추천
 - 건물별 WIFI 안내 조회
 - 공지 조회
-- HTTP API와 GPT Actions는 같은 데이터를 얇게 재노출
+- HTTP API는 같은 데이터를 얇게 재노출하고, GPT Actions는 필요할 때만 얹는 선택적 포장층
 
 ## 왜 이 스택인가
 
@@ -246,7 +246,7 @@ streamable HTTP:
 uv run songsim-mcp --transport streamable-http
 ```
 
-공개 MCP에서 기본으로 노출되는 resource:
+공개 MCP에서 학생용으로 먼저 보면 좋은 resource:
 
 - `songsim://usage-guide`
 - `songsim://academic-calendar`
@@ -254,6 +254,8 @@ uv run songsim-mcp --transport streamable-http
 - `songsim://scholarship-guide`
 - `songsim://wifi-guide`
 - `songsim://transport-guide`
+
+필요하면 `songsim://place-categories`, `songsim://notice-categories`, `songsim://class-periods` 같은 메타데이터 helper resource도 추가로 쓸 수 있습니다.
 
 ## 학생용 공개 예시
 

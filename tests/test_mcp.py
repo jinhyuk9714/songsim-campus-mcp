@@ -927,7 +927,7 @@ def test_mcp_public_usage_and_class_period_resources_are_readable(app_env, monke
     assert "실시간" in usage_content
     assert "tool_find_nearby_restaurants" in usage_content
     assert "예상 공실" in usage_content
-    assert "profile" in usage_content
+    assert "student information questions first" in usage_content
     assert "중도" in usage_content
     assert "가까운 후보를 먼저" in usage_content
     assert "매머드커피" in usage_content

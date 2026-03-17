@@ -278,7 +278,7 @@ def _public_usage_guide() -> str:
                 "scholarship guides, wifi guides, notices, dining menus, library seats, "
                 "empty classrooms, nearby restaurants, restaurant search, transport guides."
             ),
-            "Unavailable: profile, timetable, notice preferences, meal personalization, admin.",
+            "Use these public read-only tools for student information questions first.",
             "",
             "Recommended flow:",
             "1. Read songsim://usage-guide when you need the public MCP capability overview.",
@@ -343,8 +343,8 @@ def _public_usage_guide() -> str:
                 "1호선, 역곡역, or 버스. 셔틀은 현재 지원하지 않아 빈 결과가 정상입니다."
             ),
             (
-                "15. Advanced metadata helpers exist for notice categories and class periods "
-                "when you need them, but they are not the main student entry flow."
+                "15. Optional reference resources exist for notice categories and class periods "
+                "when you need them."
             ),
             "",
             "Example questions:",
@@ -393,8 +393,10 @@ def build_mcp():
     mcp = FastMCP(
         "Songsim Campus MCP",
         instructions=(
-            "Use this server to answer Songsim campus questions about places, courses, "
-            "notices, nearby restaurants, and transport."
+            "Use this read-only Songsim campus info server to answer student questions "
+            "about places, courses, academic calendar, notices, certificate and scholarship "
+            "guides, wifi guides, dining, nearby restaurants, library seats, empty "
+            "classrooms, and transport."
         ),
         website_url=settings.public_http_url or None,
         host=settings.app_host,
@@ -420,7 +422,7 @@ def build_mcp():
 
     @mcp.resource("songsim://source-registry")
     def source_registry() -> str:
-        """Return the current source registry and ingestion plan."""
+        """Return the official source registry reference."""
         return (DOCS_DIR / "source_registry.md").read_text(encoding="utf-8")
 
     @mcp.resource("songsim://transport-guide")

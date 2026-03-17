@@ -1008,8 +1008,9 @@ def create_app() -> FastAPI:
           <ul>
             <li>Read <code>songsim://usage-guide</code> for the public MCP rules</li>
             <li>
-              Use prompts to pick the first tool for places, empty classrooms,
-              notices, restaurants, or transport
+              Use prompts to pick the first tool for places, courses, academic
+              calendar, notices, guides, dining, library seats, classrooms,
+              restaurants, or transport
             </li>
             <li>Call tools after the prompt narrows the correct public read-only flow</li>
           </ul>
