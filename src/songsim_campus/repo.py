@@ -16,6 +16,7 @@ JSON_COLUMNS = {
     },
     "notices": {"labels_json": "labels"},
     "transport_guides": {"steps_json": "steps"},
+    "certificate_guides": {"steps_json": "steps"},
     "profile_notice_preferences": {
         "categories_json": "categories",
         "keywords_json": "keywords",
@@ -660,6 +661,29 @@ def replace_transport_guides(conn: psycopg.Connection, rows: list[dict[str, Any]
     )
 
 
+def replace_certificate_guides(conn: psycopg.Connection, rows: list[dict[str, Any]]) -> None:
+    conn.execute("TRUNCATE TABLE certificate_guides RESTART IDENTITY CASCADE")
+    _executemany(
+        conn,
+        """
+        INSERT INTO certificate_guides (
+            title, summary, steps_json, source_url, source_tag, last_synced_at
+        ) VALUES (%s, %s, %s, %s, %s, %s)
+        """,
+        [
+            (
+                row["title"],
+                row.get("summary", ""),
+                Jsonb(row.get("steps", [])),
+                row.get("source_url"),
+                row.get("source_tag", "demo"),
+                row["last_synced_at"],
+            )
+            for row in rows
+        ],
+    )
+
+
 def replace_campus_dining_menus(conn: psycopg.Connection, rows: list[dict[str, Any]]) -> None:
     conn.execute("TRUNCATE TABLE campus_dining_menus")
     _executemany(
@@ -759,6 +783,23 @@ def list_transport_guides(
     params.append(limit)
     rows = conn.execute(sql, params).fetchall()
     return [_row_to_dict("transport_guides", row) for row in rows]
+
+
+def list_certificate_guides(
+    conn: psycopg.Connection,
+    *,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT *
+        FROM certificate_guides
+        ORDER BY id, title
+        LIMIT %s
+        """,
+        (limit,),
+    ).fetchall()
+    return [_row_to_dict("certificate_guides", row) for row in rows]
 
 
 def create_sync_run(
@@ -870,7 +911,14 @@ def get_latest_sync_run(
 
 
 def get_dataset_sync_state(conn: psycopg.Connection, table: str) -> dict[str, Any]:
-    allowed = {"places", "courses", "notices", "transport_guides", "campus_dining_menus"}
+    allowed = {
+        "places",
+        "courses",
+        "notices",
+        "transport_guides",
+        "certificate_guides",
+        "campus_dining_menus",
+    }
     if table not in allowed:
         raise ValueError(f"Unsupported dataset table: {table}")
     row = conn.execute(

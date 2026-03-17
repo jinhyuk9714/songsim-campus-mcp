@@ -15,6 +15,7 @@ from songsim_campus.repo import (
 )
 from songsim_campus.services import (
     refresh_campus_dining_menus_from_facilities_page,
+    refresh_certificate_guides_from_certificate_page,
     refresh_facility_hours_from_facilities_page,
     refresh_transport_guides_from_location_page,
 )
@@ -105,6 +106,7 @@ def test_public_readonly_mode_exposes_gpt_actions_openapi(app_env, monkeypatch):
     assert set(payload["paths"]) == {
         "/places",
         "/courses",
+        "/certificate-guides",
         "/notices",
         "/notice-categories",
         "/periods",
@@ -116,6 +118,7 @@ def test_public_readonly_mode_exposes_gpt_actions_openapi(app_env, monkeypatch):
     }
     assert payload["paths"]["/places"]["get"]["operationId"] == "searchPlaces"
     assert payload["paths"]["/courses"]["get"]["operationId"] == "searchCourses"
+    assert payload["paths"]["/certificate-guides"]["get"]["operationId"] == "listCertificateGuides"
     course_parameters = payload["paths"]["/courses"]["get"]["parameters"]
     assert any(item["name"] == "period_start" for item in course_parameters)
     assert payload["paths"]["/notices"]["get"]["operationId"] == "listLatestNotices"
@@ -1107,7 +1110,13 @@ def test_admin_sync_dashboard_runs_snapshot_and_shows_recent_history(admin_clien
         assert year == 2026
         assert semester == 1
         assert notice_pages == 2
-        return {"places": 5, "courses": 10, "notices": 4, "transport_guides": 2}
+        return {
+            "places": 5,
+            "courses": 10,
+            "notices": 4,
+            "certificate_guides": 3,
+            "transport_guides": 2,
+        }
 
     monkeypatch.setattr("songsim_campus.services.sync_official_snapshot", fake_snapshot)
 
@@ -1132,6 +1141,7 @@ def test_admin_sync_dashboard_runs_snapshot_and_shows_recent_history(admin_clien
     assert "Automation Status" in page.text
     assert "snapshot" in page.text
     assert "success" in page.text
+    assert "certificate_guides" in page.text
     assert "transport_guides" in page.text
 
 
@@ -1146,7 +1156,13 @@ def test_admin_observability_pages_render_runtime_state(admin_client, client, mo
         semester: int | None = None,
         notice_pages: int | None = None,
     ):
-        return {"places": 5, "courses": 10, "notices": 4, "transport_guides": 2}
+        return {
+            "places": 5,
+            "courses": 10,
+            "notices": 4,
+            "certificate_guides": 3,
+            "transport_guides": 2,
+        }
 
     def broken_transport(conn, *, fetched_at: str | None = None, source=None):
         raise RuntimeError("transport sync exploded")
@@ -1916,6 +1932,27 @@ class ApiTransportSource:
         ]
 
 
+class ApiCertificateSource:
+    def fetch(self):
+        return "<certificate></certificate>"
+
+    def parse(self, html: str, *, fetched_at: str):
+        assert html == "<certificate></certificate>"
+        return [
+            {
+                "title": "인터넷 증명발급",
+                "summary": "인터넷 증명신청 및 발급",
+                "steps": [
+                    "수수료: 발급 : 국문 / 영문 1,000원(1매)",
+                    "유의사항: 영문증명서의 경우 영문 성명이 없으면 증명 발급이 되지 않음",
+                ],
+                "source_url": "https://catholic.certpia.com/",
+                "source_tag": "cuk_certificate_guides",
+                "last_synced_at": fetched_at,
+            }
+        ]
+
+
 def test_place_detail_returns_merged_opening_hours(client):
     with connection() as conn:
         refresh_facility_hours_from_facilities_page(conn, source=ApiFacilitiesSource())
@@ -2034,6 +2071,30 @@ def test_transport_endpoint_returns_guides(client):
             'source_url': 'https://www.catholic.ac.kr/ko/about/location_songsim.do',
             'source_tag': 'cuk_transport',
             'last_synced_at': items[0]['last_synced_at'],
+        }
+    ]
+
+
+def test_certificate_guides_endpoint_returns_guides(client):
+    with connection() as conn:
+        refresh_certificate_guides_from_certificate_page(conn, source=ApiCertificateSource())
+
+    response = client.get("/certificate-guides")
+    items = response.json()
+
+    assert response.status_code == 200
+    assert items == [
+        {
+            "id": 1,
+            "title": "인터넷 증명발급",
+            "summary": "인터넷 증명신청 및 발급",
+            "steps": [
+                "수수료: 발급 : 국문 / 영문 1,000원(1매)",
+                "유의사항: 영문증명서의 경우 영문 성명이 없으면 증명 발급이 되지 않음",
+            ],
+            "source_url": "https://catholic.certpia.com/",
+            "source_tag": "cuk_certificate_guides",
+            "last_synced_at": items[0]["last_synced_at"],
         }
     ]
 

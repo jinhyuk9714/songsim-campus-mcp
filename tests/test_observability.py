@@ -183,7 +183,13 @@ def test_run_admin_sync_updates_observability_for_success_and_failure(
         semester: int | None = None,
         notice_pages: int | None = None,
     ):
-        return {"places": 1, "courses": 2, "notices": 3, "transport_guides": 4}
+        return {
+            "places": 1,
+            "courses": 2,
+            "notices": 3,
+            "certificate_guides": 2,
+            "transport_guides": 4,
+        }
 
     def broken_transport(conn, *, fetched_at: str | None = None, source=None):
         raise RuntimeError("transport sync exploded")

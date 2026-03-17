@@ -30,6 +30,7 @@ from .ingest.kakao_places import (
 from .ingest.official_sources import (
     CampusFacilitiesSource,
     CampusMapSource,
+    CertificateGuideSource,
     CourseCatalogSource,
     LibraryHoursSource,
     LibrarySeatStatusSource,
@@ -42,6 +43,7 @@ from .schemas import (
     AutomationObservability,
     CacheObservability,
     CampusDiningMenu,
+    CertificateGuide,
     Course,
     EmptyClassroomBuilding,
     EstimatedEmptyClassroom,
@@ -79,6 +81,7 @@ LIBRARY_HOURS_SOURCE_URL = "https://library.catholic.ac.kr/webcontent/info/45"
 LIBRARY_SEAT_STATUS_SOURCE_URL = "http://203.229.203.240/8080/Domian5.asp"
 FACILITIES_SOURCE_URL = "https://www.catholic.ac.kr/ko/campuslife/restaurant.do"
 TRANSPORT_SOURCE_URL = "https://www.catholic.ac.kr/ko/about/location_songsim.do"
+CERTIFICATE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/certificate.do"
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 CAMPUS_WALK_GRAPH_PATH = DATA_DIR / "campus_walk_graph.json"
 PERSONALIZATION_RULES_PATH = DATA_DIR / "personalization_rules.json"
@@ -87,7 +90,14 @@ PLACE_FACILITY_KEYWORDS_PATH = DATA_DIR / "place_facility_keywords.json"
 PLACE_SHORT_QUERY_PREFERENCES_PATH = DATA_DIR / "place_short_query_preferences.json"
 RESTAURANT_SEARCH_ALIASES_PATH = DATA_DIR / "restaurant_search_aliases.json"
 RESTAURANT_SEARCH_NOISE_TERMS_PATH = DATA_DIR / "restaurant_search_noise_terms.json"
-SYNC_DATASET_TABLES = ("places", "campus_dining_menus", "courses", "notices", "transport_guides")
+SYNC_DATASET_TABLES = (
+    "places",
+    "campus_dining_menus",
+    "courses",
+    "notices",
+    "certificate_guides",
+    "transport_guides",
+)
 ADMIN_SYNC_TARGETS = {
     "snapshot",
     "places",
@@ -2988,6 +2998,16 @@ def list_latest_notices(
     ]
 
 
+def list_certificate_guides(
+    conn: sqlite3.Connection,
+    limit: int = 20,
+) -> list[CertificateGuide]:
+    return [
+        CertificateGuide.model_validate(item)
+        for item in repo.list_certificate_guides(conn, limit=limit)
+    ]
+
+
 def list_transport_guides(
     conn: sqlite3.Connection,
     mode: str | None = None,
@@ -4744,6 +4764,22 @@ def refresh_transport_guides_from_location_page(
     ]
 
 
+def refresh_certificate_guides_from_certificate_page(
+    conn: sqlite3.Connection,
+    *,
+    source: CertificateGuideSource | Any | None = None,
+    fetched_at: str | None = None,
+) -> list[CertificateGuide]:
+    source = source or CertificateGuideSource(CERTIFICATE_SOURCE_URL)
+    synced_at = fetched_at or _now_iso()
+    rows = source.parse(source.fetch(), fetched_at=synced_at)
+    repo.replace_certificate_guides(conn, rows)
+    return [
+        CertificateGuide.model_validate(item)
+        for item in repo.list_certificate_guides(conn, limit=max(len(rows), 1))
+    ]
+
+
 def sync_official_snapshot(
     conn: sqlite3.Connection,
     *,
@@ -4771,12 +4807,14 @@ def sync_official_snapshot(
         conn,
         pages=notice_pages or settings.official_notice_pages,
     )
+    certificate_guides = refresh_certificate_guides_from_certificate_page(conn)
     transport_guides = refresh_transport_guides_from_location_page(conn)
     return {
         "places": len(places),
         "dining_menus": len(dining_menus),
         "courses": len(courses),
         "notices": len(notices),
+        "certificate_guides": len(certificate_guides),
         "transport_guides": len(transport_guides),
     }
 

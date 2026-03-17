@@ -7,6 +7,7 @@ from songsim_campus.ingest.kakao_places import parse_place_detail_opening_hours
 from songsim_campus.ingest.official_sources import (
     CampusFacilitiesSource,
     CampusMapSource,
+    CertificateGuideSource,
     CourseCatalogSource,
     LibraryHoursSource,
     LibrarySeatStatusSource,
@@ -314,6 +315,35 @@ def test_transport_parser_extracts_modes_summaries_and_steps():
     bus = next(item for item in rows if item["title"] == "시내버스")
     assert bus["mode"] == "bus"
     assert bus["steps"][-1] == "후문 기준 : [금강맨션] 정류장 하차"
+
+
+def test_certificate_parser_extracts_guides_summaries_and_steps():
+    source = CertificateGuideSource("https://www.catholic.ac.kr/ko/support/certificate.do")
+
+    rows = source.parse(
+        _fixture("certificate_page.html"),
+        fetched_at="2026-03-17T15:00:00+09:00",
+    )
+
+    issued = next(item for item in rows if item["title"] == "발급증명")
+    assert "재학" in issued["summary"]
+    assert issued["steps"] == []
+
+    kiosk = next(item for item in rows if item["title"] == "무인발급(자동증명발급기)")
+    assert kiosk["summary"] == "학생지원팀(니콜스관 N109호) 앞 / 24시간"
+    assert "수수료: 국문 / 영문 1,000원(1매) * 신용카드, 체크카드 가능" in kiosk["steps"]
+    assert "학부 92학번 이전 입학생은 영문증명서 발급이 불가합니다." in kiosk["steps"]
+
+    internet = next(item for item in rows if item["title"] == "인터넷 증명발급")
+    assert "인터넷 증명신청 및 발급" in internet["summary"]
+    assert internet["source_url"] == "https://catholic.certpia.com/"
+    assert any("유의사항:" in step for step in internet["steps"])
+
+    stopped_mail = next(
+        item for item in rows if item["title"] == "우편(국내·외) 증명 발송 업무 중단 안내"
+    )
+    assert "업무를 중단" in stopped_mail["summary"]
+    assert stopped_mail["steps"][-1] == "문의: 학생지원팀 02-2164-4732"
 
 
 def test_kakao_place_detail_parser_normalizes_weekdays_breaks_and_holidays():

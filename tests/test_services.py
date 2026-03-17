@@ -29,10 +29,12 @@ from songsim_campus.services import (
     get_notice_categories,
     get_place,
     investigate_course_query_coverage,
+    list_certificate_guides,
     list_estimated_empty_classrooms,
     list_latest_notices,
     list_transport_guides,
     refresh_campus_dining_menus_from_facilities_page,
+    refresh_certificate_guides_from_certificate_page,
     refresh_courses_from_subject_search,
     refresh_facility_hours_from_facilities_page,
     refresh_library_hours_from_library_page,
@@ -3462,6 +3464,28 @@ class FakeTransportSource:
         ]
 
 
+class FakeCertificateSource:
+    def fetch(self):
+        return "<certificate></certificate>"
+
+    def parse(self, html: str, *, fetched_at: str):
+        assert html == "<certificate></certificate>"
+        assert fetched_at == "2026-03-17T15:00:00+09:00"
+        return [
+            {
+                "title": "인터넷 증명발급",
+                "summary": "인터넷 증명신청 및 발급",
+                "steps": [
+                    "수수료: 발급 : 국문 / 영문 1,000원(1매)",
+                    "유의사항: 영문증명서의 경우 영문 성명이 없으면 증명 발급이 되지 않음",
+                ],
+                "source_url": "https://catholic.certpia.com/",
+                "source_tag": "cuk_certificate_guides",
+                "last_synced_at": fetched_at,
+            }
+        ]
+
+
 def test_refresh_library_hours_merges_opening_hours_into_existing_place(app_env):
     init_db()
     seed_demo(force=True)
@@ -3577,6 +3601,23 @@ def test_refresh_transport_guides_replaces_rows(app_env):
     assert guides[0].mode == 'subway'
     assert guides[0].title == '1호선'
     assert guides[0].source_tag == 'cuk_transport'
+
+
+def test_refresh_certificate_guides_replaces_rows(app_env):
+    init_db()
+
+    with connection() as conn:
+        refresh_certificate_guides_from_certificate_page(
+            conn,
+            source=FakeCertificateSource(),
+            fetched_at="2026-03-17T15:00:00+09:00",
+        )
+        guides = list_certificate_guides(conn)
+
+    assert len(guides) == 1
+    assert guides[0].title == "인터넷 증명발급"
+    assert guides[0].source_url == "https://catholic.certpia.com/"
+    assert guides[0].source_tag == "cuk_certificate_guides"
 
 
 def test_list_transport_guides_infers_mode_from_query_and_normalizes_spacing(app_env):
@@ -3731,6 +3772,10 @@ def test_sync_official_snapshot_runs_opening_hours_before_courses_and_transport(
         lambda conn, pages=None: call_order.append('notices') or [],
     )
     monkeypatch.setattr(
+        'songsim_campus.services.refresh_certificate_guides_from_certificate_page',
+        lambda conn: call_order.append('certificate_guides') or [],
+    )
+    monkeypatch.setattr(
         'songsim_campus.services.refresh_transport_guides_from_location_page',
         lambda conn: call_order.append('transport') or [],
     )
@@ -3746,7 +3791,9 @@ def test_sync_official_snapshot_runs_opening_hours_before_courses_and_transport(
         'dining_menus',
         'courses',
         'notices',
+        'certificate_guides',
         'transport',
     ]
     assert summary['dining_menus'] == 0
+    assert summary['certificate_guides'] == 0
     assert summary['transport_guides'] == 0

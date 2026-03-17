@@ -21,6 +21,7 @@ from .mcp_oauth import (
 )
 from .schemas import (
     CampusDiningMenu,
+    CertificateGuide,
     Course,
     McpCoordinates,
     McpNearbyRestaurantResult,
@@ -51,6 +52,7 @@ from .services import (
     get_profile_interests,
     get_profile_meal_recommendations,
     get_profile_timetable,
+    list_certificate_guides,
     list_estimated_empty_classrooms,
     list_latest_notices,
     list_profile_notices,
@@ -242,13 +244,22 @@ def _serialize_public_transport_guide(guide: TransportGuide) -> dict[str, object
     return payload
 
 
+def _serialize_public_certificate_guide(guide: CertificateGuide) -> dict[str, object]:
+    payload = guide.model_dump()
+    payload["guide_summary"] = guide.summary or (guide.steps[0] if guide.steps else "")
+    return payload
+
+
 def _public_usage_guide() -> str:
     return "\n".join(
         [
             "Songsim public MCP usage guide",
             "",
             "This server is read-only.",
-            "Available: places, courses, notices, nearby restaurants, transport guides.",
+            (
+                "Available: places, courses, certificate guides, notices, nearby "
+                "restaurants, transport guides."
+            ),
             "Unavailable: profile, timetable, notice preferences, meal personalization, admin.",
             "",
             "Recommended flow:",
@@ -295,14 +306,18 @@ def _public_usage_guide() -> str:
                 "중앙도서관 좌석 현황, or 제1자유열람실 남은 좌석 questions. "
                 "This is a best-effort live lookup with stale fallback."
             ),
-            "9. Use tool_list_latest_notices for latest notices; category is optional.",
             (
-                "10. Use tool_list_transport_guides for static subway or bus access "
+                "9. Use tool_list_certificate_guides for 증명서 발급 안내 such as "
+                "재학증명서 발급 방법, 졸업증명서 발급 안내, or 인터넷 증명발급 questions."
+            ),
+            "10. Use tool_list_latest_notices for latest notices; category is optional.",
+            (
+                "11. Use tool_list_transport_guides for static subway or bus access "
                 "guidance. You can pass query with natural-language cues like 지하철, "
                 "1호선, 역곡역, or 버스. 셔틀은 현재 지원하지 않아 빈 결과가 정상입니다."
             ),
             (
-                "11. Use songsim://notice-categories or /notice-categories when a user asks "
+                "12. Use songsim://notice-categories or /notice-categories when a user asks "
                 "which notice categories exist. Use songsim://class-periods, /periods, or "
                 "/gpt/periods when a user asks what a period number means."
             ),
@@ -315,6 +330,7 @@ def _public_usage_guide() -> str:
             "- 헬스장 어디야?",
             "- 편의점 어디 있어?",
             "- 최신 장학 공지 3개 보여줘",
+            "- 재학증명서 발급 안내 알려줘",
             "- 니콜스관인데 지금 예상 빈 강의실 있어?",
             "- 매머드커피 어디 있어?",
             "- 스타벅스 있어?",
@@ -386,6 +402,16 @@ def build_mcp():
         with connection() as conn:
             return json.dumps(
                 [item.model_dump() for item in list_transport_guides(conn, limit=50)],
+                ensure_ascii=False,
+                indent=2,
+            )
+
+    @mcp.resource("songsim://certificate-guide")
+    def certificate_guide_resource() -> str:
+        """Return the latest certificate guides as JSON."""
+        with connection() as conn:
+            return json.dumps(
+                [item.model_dump() for item in list_certificate_guides(conn, limit=50)],
                 ensure_ascii=False,
                 indent=2,
             )
@@ -697,6 +723,25 @@ def build_mcp():
                 "This tool is for subway and bus access guidance, not live routing. "
                 "셔틀 is not currently supported, so an empty result (빈 결과) is normal."
             )
+
+    @mcp.tool(
+        description=(
+            "학교 증명서 발급 안내를 읽을 때 사용합니다. "
+            "재학증명서, 졸업증명서, 인터넷 증명발급, FAX 민원, 무인발급기 같은 "
+            "정적 발급 안내를 현재 스냅샷 기준으로 돌려줍니다."
+            if public_readonly
+            else "학교 증명서 발급 안내 current snapshot을 가져옵니다."
+        ),
+        meta=tool_meta,
+    )
+    def tool_list_certificate_guides(
+        limit: Annotated[int, Field(description="최대 결과 수. 기본값은 20입니다.")] = 20,
+    ):
+        with connection() as conn:
+            guides = list_certificate_guides(conn, limit=limit)
+            if public_readonly:
+                return [_serialize_public_certificate_guide(item) for item in guides]
+            return [item.model_dump() for item in guides]
 
     @mcp.tool(
         description=(

@@ -128,7 +128,13 @@ def test_run_automation_tick_records_snapshot_run_as_automation(app_env, monkeyp
         semester: int | None = None,
         notice_pages: int | None = None,
     ):
-        return {"places": 5, "courses": 10, "notices": 4, "transport_guides": 2}
+        return {
+            "places": 5,
+            "courses": 10,
+            "notices": 4,
+            "certificate_guides": 3,
+            "transport_guides": 2,
+        }
 
     monkeypatch.setattr("songsim_campus.services.sync_official_snapshot", fake_snapshot)
 
@@ -142,6 +148,7 @@ def test_run_automation_tick_records_snapshot_run_as_automation(app_env, monkeyp
         "places": 5,
         "courses": 10,
         "notices": 4,
+        "certificate_guides": 3,
         "transport_guides": 2,
     }
     with connection() as conn:

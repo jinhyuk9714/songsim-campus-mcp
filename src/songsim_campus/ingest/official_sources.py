@@ -105,6 +105,20 @@ def _collect_dl_fields(root) -> dict[str, str]:
     return fields
 
 
+def _collect_dl_pairs(root) -> list[tuple[str, str]]:
+    rows: list[tuple[str, str]] = []
+    for dl in root.select("dl"):
+        label = dl.find("dt")
+        value = dl.find("dd")
+        if not label or not value:
+            continue
+        key = _clean_text(label.get_text()).replace(":", "").strip()
+        normalized = _clean_text(value.get_text(" ", strip=True))
+        if key and normalized:
+            rows.append((key, normalized))
+    return rows
+
+
 def _flatten_transport_steps(container) -> list[str]:
     steps: list[str] = []
     for item in container.select(".ul-type-dot li"):
@@ -698,6 +712,156 @@ class TransportGuideSource:
                     }
                 )
         return rows
+
+
+class CertificateGuideSource:
+    """Official static certificate-guide parser for Songsim campus."""
+
+    def __init__(self, url: str):
+        self.url = url
+
+    def fetch(self) -> str:
+        response = httpx.get(self.url, timeout=20)
+        response.raise_for_status()
+        return response.text
+
+    def parse(self, html: str, *, fetched_at: str) -> list[dict]:
+        soup = BeautifulSoup(html, "html.parser")
+        root = soup.select_one(".content-box.cert") or soup
+        rows: list[dict] = []
+
+        title_node = next(
+            (
+                node
+                for node in root.select(".con-box .h4-tit01")
+                if _clean_text(node.get_text()) == "발급증명"
+            ),
+            None,
+        )
+        if title_node:
+            summary_node = title_node.find_next_sibling("div")
+            summary = _clean_text(summary_node.get_text(" ", strip=True) if summary_node else "")
+            if summary:
+                rows.append(
+                    {
+                        "title": "발급증명",
+                        "summary": summary,
+                        "steps": [],
+                        "source_url": self.url,
+                        "source_tag": "cuk_certificate_guides",
+                        "last_synced_at": fetched_at,
+                    }
+                )
+
+        for box in root.select(".box-wrap .border-box"):
+            row = self._parse_simple_box(box, fetched_at=fetched_at)
+            if row is not None:
+                rows.append(row)
+
+        internet_box = root.select_one(".border-box.box4")
+        if internet_box is not None:
+            internet_row = self._parse_internet_box(internet_box, fetched_at=fetched_at)
+            if internet_row is not None:
+                rows.append(internet_row)
+
+            bg_boxes = internet_box.select(".bg-box")
+            if len(bg_boxes) > 1:
+                stopped_row = self._parse_mail_stop_box(bg_boxes[1], fetched_at=fetched_at)
+                if stopped_row is not None:
+                    rows.append(stopped_row)
+        return rows
+
+    def _parse_simple_box(self, box, *, fetched_at: str) -> dict | None:
+        title = _clean_text(
+            box.select_one(".box-tit").get_text() if box.select_one(".box-tit") else ""
+        )
+        if not title:
+            return None
+        pairs = _collect_dl_pairs(box)
+        if not pairs:
+            return None
+        summary = self._build_summary(title, pairs)
+        steps = [f"{label}: {value}" for label, value in pairs]
+        steps.extend(
+            self._normalize_note(_clean_text(node.get_text(" ", strip=True)))
+            for node in box.select(".alert-txt")
+            if _clean_text(node.get_text(" ", strip=True))
+        )
+        return {
+            "title": title,
+            "summary": summary,
+            "steps": steps,
+            "source_url": self.url,
+            "source_tag": "cuk_certificate_guides",
+            "last_synced_at": fetched_at,
+        }
+
+    def _parse_internet_box(self, box, *, fetched_at: str) -> dict | None:
+        title_wrap = box.find("div", class_="box-tit-wrap")
+        title = _clean_text(title_wrap.get_text(" ", strip=True) if title_wrap else "")
+        info_box = box.select_one(".bg-box .info-box")
+        if not title or info_box is None:
+            return None
+        pairs = _collect_dl_pairs(info_box)
+        summary = next((value for label, value in pairs if label == "신청방법"), "")
+        steps = [f"{label}: {value}" for label, value in pairs if label != "신청방법"]
+        steps.extend(
+            self._normalize_note(_clean_text(node.get_text(" ", strip=True)))
+            for node in info_box.select(".alert-txt")
+            if _clean_text(node.get_text(" ", strip=True))
+        )
+        link = info_box.select_one("a[href]")
+        source_url = urljoin(self.url, unescape(link.get("href", ""))) if link else self.url
+        return {
+            "title": title,
+            "summary": summary,
+            "steps": steps,
+            "source_url": source_url,
+            "source_tag": "cuk_certificate_guides",
+            "last_synced_at": fetched_at,
+        }
+
+    def _parse_mail_stop_box(self, box, *, fetched_at: str) -> dict | None:
+        title = _clean_text(
+            box.select_one(".box-tit").get_text() if box.select_one(".box-tit") else ""
+        )
+        info_box = box.select_one(".info-box")
+        if not title or info_box is None:
+            return None
+        summary_node = info_box.find("dd")
+        summary = _clean_text(summary_node.get_text(" ", strip=True) if summary_node else "")
+        pairs = _collect_dl_pairs(info_box)
+        steps = [f"{label}: {value}" for label, value in pairs]
+        for note in info_box.select(".alert-txt"):
+            text = _clean_text(note.get_text(" ", strip=True))
+            if not text:
+                continue
+            if "관련 문의" in text:
+                text = text.replace("※ 관련 문의 :", "문의:").replace("※ 관련 문의:", "문의:")
+            steps.append(text)
+        link = info_box.select_one("a[href]")
+        source_url = urljoin(self.url, unescape(link.get("href", ""))) if link else self.url
+        return {
+            "title": title,
+            "summary": summary,
+            "steps": steps,
+            "source_url": source_url,
+            "source_tag": "cuk_certificate_guides",
+            "last_synced_at": fetched_at,
+        }
+
+    @staticmethod
+    def _build_summary(title: str, pairs: list[tuple[str, str]]) -> str:
+        field_map = {label: value for label, value in pairs}
+        if "발급장소" in field_map and "이용시간" in field_map:
+            return f"{field_map['발급장소']} / {field_map['이용시간']}"
+        if "신청방법" in field_map:
+            return field_map["신청방법"]
+        return pairs[0][1] if pairs else title
+
+    @staticmethod
+    def _normalize_note(text: str) -> str:
+        return text.lstrip("*※ ").strip()
 
 
 class NoticeSource:

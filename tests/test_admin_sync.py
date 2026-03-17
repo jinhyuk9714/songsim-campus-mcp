@@ -25,7 +25,14 @@ def test_run_admin_sync_records_success_history_for_snapshot(app_env, monkeypatc
         assert year == 2026
         assert semester == 1
         assert notice_pages == 2
-        return {"places": 3, "dining_menus": 3, "courses": 5, "notices": 7, "transport_guides": 1}
+        return {
+            "places": 3,
+            "dining_menus": 3,
+            "courses": 5,
+            "notices": 7,
+            "certificate_guides": 2,
+            "transport_guides": 1,
+        }
 
     monkeypatch.setattr("songsim_campus.services.sync_official_snapshot", fake_snapshot)
 
@@ -38,6 +45,7 @@ def test_run_admin_sync_records_success_history_for_snapshot(app_env, monkeypatc
         "dining_menus": 3,
         "courses": 5,
         "notices": 7,
+        "certificate_guides": 2,
         "transport_guides": 1,
     }
     assert run.error_text is None
@@ -215,9 +223,11 @@ def test_get_sync_dashboard_state_reports_row_counts_and_last_synced(app_env):
     assert datasets["places"]["row_count"] == 5
     assert datasets["courses"]["row_count"] > 0
     assert datasets["campus_dining_menus"]["row_count"] == 0
+    assert datasets["certificate_guides"]["row_count"] == 0
     assert datasets["notices"]["row_count"] > 0
     assert datasets["transport_guides"]["row_count"] == 0
     assert datasets["places"]["last_synced_at"] == "2026-03-13T09:00:00+09:00"
     assert datasets["campus_dining_menus"]["last_synced_at"] is None
+    assert datasets["certificate_guides"]["last_synced_at"] is None
     assert datasets["transport_guides"]["last_synced_at"] is None
     assert state["recent_runs"] == []

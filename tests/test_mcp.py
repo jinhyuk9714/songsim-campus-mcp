@@ -17,7 +17,10 @@ from songsim_campus.repo import (
     update_place_opening_hours,
 )
 from songsim_campus.seed import seed_demo
-from songsim_campus.services import refresh_transport_guides_from_location_page
+from songsim_campus.services import (
+    refresh_certificate_guides_from_certificate_page,
+    refresh_transport_guides_from_location_page,
+)
 from songsim_campus.settings import clear_settings_cache
 
 
@@ -36,6 +39,27 @@ class McpTransportSource:
                 'source_url': 'https://www.catholic.ac.kr/ko/about/location_songsim.do',
                 'source_tag': 'cuk_transport',
                 'last_synced_at': fetched_at,
+            }
+        ]
+
+
+class McpCertificateSource:
+    def fetch(self):
+        return "<certificate></certificate>"
+
+    def parse(self, html: str, *, fetched_at: str):
+        assert html == "<certificate></certificate>"
+        return [
+            {
+                "title": "인터넷 증명발급",
+                "summary": "인터넷 증명신청 및 발급",
+                "steps": [
+                    "수수료: 발급 : 국문 / 영문 1,000원(1매)",
+                    "유의사항: 영문증명서의 경우 영문 성명이 없으면 증명 발급이 되지 않음",
+                ],
+                "source_url": "https://catholic.certpia.com/",
+                "source_tag": "cuk_certificate_guides",
+                "last_synced_at": fetched_at,
             }
         ]
 
@@ -64,6 +88,28 @@ def test_mcp_transport_tool_and_resource_share_service_data(app_env):
 
     assert tool_payload['title'] == '1호선'
     assert resource_payload[0]['title'] == '1호선'
+
+
+def test_mcp_certificate_tool_and_resource_share_service_data(app_env):
+    pytest.importorskip("mcp.server.fastmcp")
+    init_db()
+    seed_demo(force=True)
+    with connection() as conn:
+        refresh_certificate_guides_from_certificate_page(conn, source=McpCertificateSource())
+
+    async def main():
+        mcp = build_mcp()
+        tool_result = await mcp.call_tool("tool_list_certificate_guides", {"limit": 10})
+        resource_result = await mcp.read_resource("songsim://certificate-guide")
+        return tool_result, list(resource_result)
+
+    tool_result, resource_result = asyncio.run(main())
+
+    tool_payload = json.loads(tool_result[0].text)
+    resource_payload = json.loads(resource_result[0].content)
+
+    assert tool_payload["title"] == "인터넷 증명발급"
+    assert resource_payload[0]["title"] == "인터넷 증명발급"
 
 
 def test_mcp_transport_tool_accepts_query_and_mode_precedence(app_env, monkeypatch):
@@ -407,6 +453,7 @@ def test_mcp_public_readonly_mode_registers_only_read_only_tools(app_env, monkey
         "tool_search_places",
         "tool_get_place",
         "tool_search_courses",
+        "tool_list_certificate_guides",
         "tool_get_class_periods",
         "tool_get_library_seat_status",
         "tool_list_estimated_empty_classrooms",
@@ -419,6 +466,7 @@ def test_mcp_public_readonly_mode_registers_only_read_only_tools(app_env, monkey
     assert "tool_create_profile" not in tool_names
     assert "tool_get_profile_notices" not in tool_names
     assert "songsim://source-registry" in resource_uris
+    assert "songsim://certificate-guide" in resource_uris
     assert "songsim://transport-guide" in resource_uris
 
     clear_settings_cache()
@@ -452,6 +500,7 @@ def test_mcp_public_readonly_mode_registers_prompts_and_extended_resources(app_e
     }
     assert set(resource_uris) >= {
         "songsim://source-registry",
+        "songsim://certificate-guide",
         "songsim://transport-guide",
         "songsim://usage-guide",
         "songsim://place-categories",
@@ -517,6 +566,8 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
     assert "walk_minutes" in tools["tool_find_nearby_restaurants"]["description"]
     assert "카테고리" in tools["tool_list_latest_notices"]["description"]
     assert "optional" in tools["tool_list_latest_notices"]["description"]
+    assert "증명서" in tools["tool_list_certificate_guides"]["description"]
+    assert "발급 안내" in tools["tool_list_certificate_guides"]["description"]
     assert "지하철" in tools["tool_list_transport_guides"]["description"]
     assert "버스" in tools["tool_list_transport_guides"]["description"]
 
@@ -552,6 +603,9 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
     )
     assert "역곡역" in (
         tools["tool_list_transport_guides"]["inputSchema"]["properties"]["query"]["description"]
+    )
+    assert "최대 결과 수" in (
+        tools["tool_list_certificate_guides"]["inputSchema"]["properties"]["limit"]["description"]
     )
     assert "셔틀" in tools["tool_list_transport_guides"]["description"]
 

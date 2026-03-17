@@ -16,6 +16,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from .db import connection, get_connection, init_db
 from .schemas import (
     CampusDiningMenu,
+    CertificateGuide,
     Course,
     EstimatedEmptyClassroomResponse,
     GptCampusDiningMenuResult,
@@ -64,6 +65,7 @@ from .services import (
     get_profile_timetable,
     get_readiness_snapshot,
     get_sync_dashboard_state,
+    list_certificate_guides,
     list_estimated_empty_classrooms,
     list_latest_notices,
     list_profile_notices,
@@ -109,6 +111,11 @@ GPT_ACTION_PATHS: dict[str, dict[str, str]] = {
         "operationId": "listLatestNotices",
         "summary": "List latest public notices",
         "description": "List the latest public Songsim campus notices.",
+    },
+    "/certificate-guides": {
+        "operationId": "listCertificateGuides",
+        "summary": "List certificate issuance guides",
+        "description": "List the current Songsim certificate issuance guides and notices.",
     },
     "/notice-categories": {
         "operationId": "listNoticeCategories",
@@ -785,6 +792,7 @@ def create_app() -> FastAPI:
         example_prompts = [
             "성심교정 중앙도서관 위치 알려줘",
             "2026년 1학기 객체지향 과목 찾아줘",
+            "재학증명서 발급 안내 알려줘",
             "니콜스관인데 지금 예상 빈 강의실 있어?",
             "중앙도서관 근처 밥집 추천해줘",
             "최신 장학 공지 보여줘",
@@ -934,6 +942,7 @@ def create_app() -> FastAPI:
           <ul>
             <li><code>/places</code> campus places and landmarks</li>
             <li><code>/courses</code> public course offerings</li>
+            <li><code>/certificate-guides</code> certificate issuance guides</li>
             <li>
               <code>/classrooms/empty</code> official realtime classrooms first,
               estimated fallback
@@ -1421,6 +1430,13 @@ def create_app() -> FastAPI:
     @app.get("/periods", response_model=list[Period])
     def periods() -> list[Period]:
         return get_class_periods()
+
+    @app.get("/certificate-guides", response_model=list[CertificateGuide])
+    def certificate_guides(
+        limit: int = Query(default=20, ge=1, le=50),
+    ) -> list[CertificateGuide]:
+        with connection() as conn:
+            return list_certificate_guides(conn, limit=limit)
 
     @app.get("/library-seats", response_model=LibrarySeatStatusResponse)
     def library_seats(

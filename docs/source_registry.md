@@ -11,6 +11,7 @@
 | cuk_library_seat_status | 공식 외부 링크 | http://203.229.203.240/8080/Domian5.asp | 높음 | implemented | 중앙도서관 열람실 좌석 현황을 query-time live fetch로 best-effort 조회하고, `library_seat_status_cache`에 짧은 TTL current snapshot을 유지합니다. public API automation은 5분 간격 prewarm으로 cache를 예열하고, source failure 시 15분 이내 stale cache를 우선 반환합니다. |
 | cuk_facilities | 공식 | https://www.catholic.ac.kr/ko/campuslife/restaurant.do | 중간 | implemented | 식당/편의시설 운영시간을 위치 기준으로 기존 place의 `opening_hours`에 병합하고, 공식 학식 3곳의 주간 메뉴 PDF 링크와 추출 텍스트를 `campus_dining_menus` current snapshot으로 동기화 |
 | cuk_transport | 공식 | https://www.catholic.ac.kr/ko/about/location_songsim.do | 중간 | implemented | 성심교정 정적 교통 안내를 `transport_guides`로 정규화 |
+| cuk_certificate_guides | 공식 | https://www.catholic.ac.kr/ko/support/certificate.do | 중간 | implemented | 증명서 발급 정적 안내를 `certificate_guides` current snapshot으로 정규화 |
 | kakao_local | 외부 API | https://developers.kakao.com/docs/latest/ko/local/common | 높음 | implemented | API 키가 있으면 `/restaurants/nearby`와 개인화 식사 추천에서 lazy cache 기반 실시간 장소 검색 사용 |
 | kakao_place_detail | 외부 웹 | https://place.map.kakao.com/ | 중간 | implemented | Kakao place detail `panel3` 공개 흐름에서 영업시간을 best-effort로 가져와 `restaurant_hours_cache`에 lazy cache 저장 |
 

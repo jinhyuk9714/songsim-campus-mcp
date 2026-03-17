@@ -137,6 +137,16 @@ CREATE TABLE IF NOT EXISTS transport_guides (
     last_synced_at TIMESTAMPTZ NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS certificate_guides (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL DEFAULT '',
+    steps_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    source_url TEXT,
+    source_tag TEXT NOT NULL DEFAULT 'demo',
+    last_synced_at TIMESTAMPTZ NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS campus_dining_menus (
     venue_slug TEXT PRIMARY KEY,
     venue_name TEXT NOT NULL,
@@ -225,6 +235,7 @@ CREATE INDEX IF NOT EXISTS idx_library_seat_status_cache_last_synced_at
 ON library_seat_status_cache(last_synced_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notices_published_at ON notices(published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_transport_guides_mode ON transport_guides(mode);
+CREATE INDEX IF NOT EXISTS idx_certificate_guides_title ON certificate_guides(title);
 CREATE INDEX IF NOT EXISTS idx_campus_dining_menus_place_slug
 ON campus_dining_menus(place_slug);
 CREATE INDEX IF NOT EXISTS idx_profile_courses_profile_id ON profile_courses(profile_id);
