@@ -102,7 +102,19 @@ def test_settings_parse_public_mode_and_urls(monkeypatch):
     assert settings.public_mcp_url == "https://songsim-mcp.onrender.com/mcp"
 
 
+def test_settings_default_public_mcp_auth_mode_is_anonymous(monkeypatch):
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    monkeypatch.delenv("SONGSIM_PUBLIC_MCP_AUTH_MODE", raising=False)
+    clear_settings_cache()
+
+    settings = Settings()
+
+    assert settings.public_mcp_auth_mode == "anonymous"
+
+
 def test_settings_parse_mcp_oauth(monkeypatch):
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    monkeypatch.setenv("SONGSIM_PUBLIC_MCP_AUTH_MODE", "oauth")
     monkeypatch.setenv("SONGSIM_MCP_OAUTH_ENABLED", "true")
     monkeypatch.setenv("SONGSIM_MCP_OAUTH_ISSUER", "https://songsim.us.auth0.com/")
     monkeypatch.setenv(
@@ -114,6 +126,7 @@ def test_settings_parse_mcp_oauth(monkeypatch):
 
     settings = Settings()
 
+    assert settings.public_mcp_auth_mode == "oauth"
     assert settings.mcp_oauth_enabled is True
     assert settings.mcp_oauth_issuer == "https://songsim.us.auth0.com/"
     assert settings.mcp_oauth_audience == "https://songsim-public-mcp.onrender.com/mcp"
@@ -144,6 +157,7 @@ def test_env_example_documents_2026_first_semester_defaults():
     assert "SONGSIM_APP_MODE=local_full" in text
     assert "SONGSIM_PUBLIC_HTTP_URL=" in text
     assert "SONGSIM_PUBLIC_MCP_URL=" in text
+    assert "SONGSIM_PUBLIC_MCP_AUTH_MODE=anonymous" in text
     assert "SONGSIM_MCP_OAUTH_ENABLED=false" in text
     assert "SONGSIM_MCP_OAUTH_ISSUER=" in text
     assert "SONGSIM_MCP_OAUTH_AUDIENCE=" in text

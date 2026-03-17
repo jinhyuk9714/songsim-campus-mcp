@@ -26,7 +26,7 @@ MCP_AUTH_REQUIRED_MESSAGE = "Authentication required for Songsim MCP tools."
 
 
 def is_public_mcp_oauth_enabled(settings: Settings) -> bool:
-    return settings.app_mode == "public_readonly" and settings.mcp_oauth_enabled
+    return settings.app_mode == "public_readonly" and settings.public_mcp_auth_mode == "oauth"
 
 
 def build_mcp_auth_settings(settings: Settings) -> AuthSettings | None:

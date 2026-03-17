@@ -4,7 +4,7 @@
 
 공개 배포에서는 `read-only` 원격 MCP가 핵심 제품 표면으로 동작하고, HTTP API는 그 위에 붙는 얇은 companion layer 역할을 합니다. 로컬 full 모드에서는 admin, sync, observability, 개인화 실험까지 함께 쓸 수 있습니다.
 
-공개 MCP는 ChatGPT와 Codex에서 사용할 수 있도록 OAuth 로그인 흐름을 지원합니다. 공개 API는 계속 익명 read-only입니다.
+공개 MCP는 기본적으로 익명 read-only로 열려 있고, 필요하면 OAuth 보호 모드로 전환할 수 있습니다. 공개 API는 계속 익명 read-only입니다.
 
 ## 공개 사용 방식
 
@@ -155,6 +155,13 @@ cp .env.example .env
 SONGSIM_APP_MODE=public_readonly
 SONGSIM_PUBLIC_HTTP_URL=https://your-public-api-url
 SONGSIM_PUBLIC_MCP_URL=https://your-public-mcp-url/mcp
+SONGSIM_PUBLIC_MCP_AUTH_MODE=anonymous
+```
+
+OAuth로 보호된 공개 MCP가 필요하면 아래 값을 추가하세요.
+
+```bash
+SONGSIM_PUBLIC_MCP_AUTH_MODE=oauth
 SONGSIM_MCP_OAUTH_ENABLED=true
 SONGSIM_MCP_OAUTH_ISSUER=https://your-tenant.us.auth0.com/
 SONGSIM_MCP_OAUTH_AUDIENCE=https://your-public-mcp-url/mcp

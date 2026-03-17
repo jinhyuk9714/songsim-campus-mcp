@@ -19,6 +19,7 @@ def _set_public_oauth_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
     monkeypatch.setenv("SONGSIM_PUBLIC_HTTP_URL", "https://songsim-public-api.onrender.com")
     monkeypatch.setenv("SONGSIM_PUBLIC_MCP_URL", "https://songsim-public-mcp.onrender.com/mcp")
+    monkeypatch.setenv("SONGSIM_PUBLIC_MCP_AUTH_MODE", "oauth")
     monkeypatch.setenv("SONGSIM_MCP_OAUTH_ENABLED", "true")
     monkeypatch.setenv("SONGSIM_MCP_OAUTH_ISSUER", "https://songsim.us.auth0.com/")
     monkeypatch.setenv(
@@ -26,6 +27,18 @@ def _set_public_oauth_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "https://songsim-public-mcp.onrender.com/mcp",
     )
     monkeypatch.setenv("SONGSIM_MCP_OAUTH_SCOPES", "songsim.read")
+    clear_settings_cache()
+
+
+def _set_public_anonymous_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    monkeypatch.setenv("SONGSIM_PUBLIC_HTTP_URL", "https://songsim-public-api.onrender.com")
+    monkeypatch.setenv("SONGSIM_PUBLIC_MCP_URL", "https://songsim-public-mcp.onrender.com/mcp")
+    monkeypatch.setenv("SONGSIM_PUBLIC_MCP_AUTH_MODE", "anonymous")
+    monkeypatch.delenv("SONGSIM_MCP_OAUTH_ENABLED", raising=False)
+    monkeypatch.delenv("SONGSIM_MCP_OAUTH_ISSUER", raising=False)
+    monkeypatch.delenv("SONGSIM_MCP_OAUTH_AUDIENCE", raising=False)
+    monkeypatch.delenv("SONGSIM_MCP_OAUTH_SCOPES", raising=False)
     clear_settings_cache()
 
 
@@ -144,6 +157,72 @@ def test_mcp_oauth_tool_calls_require_auth_after_initialize(app_env, monkeypatch
     payload = tool_call.json()["result"]
     assert payload["isError"] is True
     assert payload["content"][0]["text"] == "Authentication required for Songsim MCP tools."
+
+
+def test_mcp_public_anonymous_mode_hides_oauth_metadata_and_allows_tool_calls(
+    app_env, monkeypatch
+):
+    pytest.importorskip("mcp.server.fastmcp")
+    _set_public_anonymous_env(monkeypatch)
+
+    mcp = build_mcp()
+    with TestClient(mcp.streamable_http_app()) as client:
+        root_metadata = client.get("/.well-known/oauth-protected-resource")
+        scoped_metadata = client.get("/.well-known/oauth-protected-resource/mcp")
+        initialize = client.post(
+            "/mcp",
+            headers=_json_rpc_headers(),
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": LATEST_PROTOCOL_VERSION,
+                    "capabilities": {},
+                    "clientInfo": {"name": "pytest", "version": "1.0"},
+                },
+            },
+        )
+        session_id = initialize.headers["mcp-session-id"]
+        tool_call = client.post(
+            "/mcp",
+            headers=_json_rpc_headers(session_id=session_id),
+            json={
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": {
+                    "name": "tool_get_class_periods",
+                    "arguments": {},
+                },
+            },
+        )
+        list_tools = client.post(
+            "/mcp",
+            headers=_json_rpc_headers(session_id=session_id),
+            json={
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "tools/list",
+                "params": {},
+            },
+        )
+
+    clear_settings_cache()
+
+    assert root_metadata.status_code == 404
+    assert scoped_metadata.status_code == 404
+    assert initialize.status_code == 200
+    assert tool_call.status_code == 200
+    payload = tool_call.json()["result"]
+    assert payload["isError"] is False
+    assert '"period":1' in payload["content"][0]["text"].replace(" ", "")
+    tools = list_tools.json()["result"]["tools"]
+    assert tools
+    assert all(
+        "securitySchemes" not in tool.get("_meta", {})  # nosec: test assertion
+        for tool in tools
+    )
 
 
 def test_mcp_public_tools_include_oauth_security_metadata(app_env, monkeypatch):

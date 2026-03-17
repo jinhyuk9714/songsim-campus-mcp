@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     app_mode: Literal["local_full", "public_readonly"] = "local_full"
     public_http_url: str | None = None
     public_mcp_url: str | None = None
+    public_mcp_auth_mode: Literal["anonymous", "oauth"] = "anonymous"
     mcp_oauth_enabled: bool = False
     mcp_oauth_issuer: str | None = None
     mcp_oauth_audience: str | None = None
@@ -82,20 +83,21 @@ class Settings(BaseSettings):
                 "SONGSIM_DATABASE_PATH is no longer supported. "
                 "Use SONGSIM_DATABASE_URL instead."
             )
-        if self.mcp_oauth_enabled:
+        if self.app_mode == "public_readonly" and self.public_mcp_auth_mode == "oauth":
             if not self.mcp_oauth_issuer:
                 raise ValueError(
-                    "SONGSIM_MCP_OAUTH_ISSUER is required when SONGSIM_MCP_OAUTH_ENABLED=true."
+                    "SONGSIM_MCP_OAUTH_ISSUER is required when "
+                    "SONGSIM_PUBLIC_MCP_AUTH_MODE=oauth."
                 )
             if not self.resolved_mcp_oauth_audience:
                 raise ValueError(
                     "SONGSIM_MCP_OAUTH_AUDIENCE or SONGSIM_PUBLIC_MCP_URL is required "
-                    "when SONGSIM_MCP_OAUTH_ENABLED=true."
+                    "when SONGSIM_PUBLIC_MCP_AUTH_MODE=oauth."
                 )
             if not self.mcp_oauth_scopes:
                 raise ValueError(
                     "SONGSIM_MCP_OAUTH_SCOPES must include at least one scope "
-                    "when SONGSIM_MCP_OAUTH_ENABLED=true."
+                    "when SONGSIM_PUBLIC_MCP_AUTH_MODE=oauth."
                 )
         return self
 

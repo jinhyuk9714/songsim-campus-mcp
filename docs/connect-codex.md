@@ -79,7 +79,8 @@ Codex에서는 이 MCP가 공개 제품의 기준 표면입니다. HTTP API나 S
 
 ## 공개 서버 제한
 
-- 첫 연결 시 로그인 또는 `mcp login` 흐름이 필요할 수 있습니다.
+- 이 공개 MCP는 기본적으로 익명 read-only입니다.
+- 운영자가 `SONGSIM_PUBLIC_MCP_AUTH_MODE=oauth`로 바꾸면 로그인 흐름이 다시 필요할 수 있습니다.
 - 이 공개 MCP는 read-only입니다.
 - 강의실 공실 응답에는 realtime/estimated fallback 여부가 함께 표시됩니다.
 - profile, timetable, notice preferences, meal personalization, admin 기능은 제외됩니다.
