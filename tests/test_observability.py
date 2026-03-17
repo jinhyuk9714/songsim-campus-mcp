@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import logging
+import threading
+import time
 from datetime import datetime, timedelta
 
 import pytest
 
 from songsim_campus import repo
+from songsim_campus import services as services_module
 from songsim_campus.db import connection, init_db
 from songsim_campus.seed import seed_demo
 from songsim_campus.services import (
@@ -43,6 +46,33 @@ def _kakao_cache_row(*, name: str = "가톨릭백반") -> dict[str, object]:
         "kakao_place_id": "242731511",
         "source_url": "https://place.map.kakao.com/242731511",
     }
+
+
+def _readiness_payload(
+    *,
+    ok: bool,
+    with_error: bool = False,
+    suffix: str = "",
+) -> dict[str, object]:
+    tables = {
+        table: {
+            "ok": ok,
+            "name": f"{table}{suffix}",
+            "row_count": 1,
+            "last_synced_at": "2026-03-17T17:59:00+09:00",
+        }
+        for table in SYNC_DATASET_TABLES
+    }
+    tables["sync_runs"] = {"ok": ok}
+    payload: dict[str, object] = {
+        "ok": ok,
+        "database": {"ok": not with_error, "error": "database timeout" if with_error else None},
+        "tables": tables,
+    }
+    if with_error:
+        payload["ok"] = False
+        payload["tables"]["places"] = {"ok": False, "error": "statement timeout"}
+    return payload
 
 
 def test_observability_counts_fresh_cache_hits(app_env, monkeypatch, caplog):
@@ -350,7 +380,12 @@ def test_readiness_snapshot_recomputes_after_ttl(app_env, monkeypatch):
     current["value"] += timedelta(seconds=31)
     get_readiness_snapshot()
 
-    assert len(dataset_calls) == len(SYNC_DATASET_TABLES) * 2
+    deadline = time.time() + 1
+    expected_calls = len(SYNC_DATASET_TABLES) * 2
+    while time.time() < deadline and len(dataset_calls) < expected_calls:
+        time.sleep(0.01)
+
+    assert len(dataset_calls) == expected_calls
 
 
 def test_readiness_snapshot_keeps_cache_separate_by_app_mode(app_env, monkeypatch):
@@ -434,3 +469,177 @@ def test_readiness_snapshot_caches_failure_within_ttl(app_env, monkeypatch):
     assert first["ok"] is False
     assert second["ok"] is False
     assert dataset_calls == list(SYNC_DATASET_TABLES)
+
+
+def test_readiness_snapshot_returns_stale_while_refresh_runs(app_env, monkeypatch):
+    init_db()
+    current = {"value": datetime.fromisoformat("2026-03-17T18:00:00+09:00")}
+    stale_snapshot = _readiness_payload(ok=True, suffix="-stale")
+    fresh_snapshot = _readiness_payload(ok=True, suffix="-fresh")
+    started = threading.Event()
+    release = threading.Event()
+    finished = threading.Event()
+    call_count = {"value": 0}
+
+    monkeypatch.setattr("songsim_campus.services._now", lambda: current["value"])
+
+    def compute_stale(settings):
+        return stale_snapshot
+
+    monkeypatch.setattr("songsim_campus.services._compute_readiness_snapshot", compute_stale)
+    assert get_readiness_snapshot() == stale_snapshot
+
+    current["value"] += timedelta(seconds=31)
+
+    def slow_refresh(settings):
+        call_count["value"] += 1
+        started.set()
+        release.wait(timeout=2)
+        finished.set()
+        return fresh_snapshot
+
+    monkeypatch.setattr("songsim_campus.services._compute_readiness_snapshot", slow_refresh)
+
+    started_at = time.perf_counter()
+    result = get_readiness_snapshot()
+    elapsed_ms = (time.perf_counter() - started_at) * 1000
+
+    assert result == stale_snapshot
+    assert elapsed_ms < 200
+    assert started.wait(timeout=1)
+
+    release.set()
+    assert finished.wait(timeout=1)
+    deadline = time.time() + 1
+    while time.time() < deadline:
+        if get_readiness_snapshot() == fresh_snapshot:
+            break
+        time.sleep(0.01)
+
+    assert call_count["value"] == 1
+    assert get_readiness_snapshot() == fresh_snapshot
+
+
+def test_readiness_snapshot_starts_only_one_background_refresh(app_env, monkeypatch):
+    init_db()
+    current = {"value": datetime.fromisoformat("2026-03-17T18:10:00+09:00")}
+    stale_snapshot = _readiness_payload(ok=True, suffix="-stale")
+    fresh_snapshot = _readiness_payload(ok=True, suffix="-fresh")
+    release = threading.Event()
+    started = threading.Event()
+    finished = threading.Event()
+    call_count = {"value": 0}
+
+    monkeypatch.setattr("songsim_campus.services._now", lambda: current["value"])
+    monkeypatch.setattr(
+        "songsim_campus.services._compute_readiness_snapshot",
+        lambda settings: stale_snapshot,
+    )
+    assert get_readiness_snapshot() == stale_snapshot
+
+    current["value"] += timedelta(seconds=31)
+
+    def slow_refresh(settings):
+        call_count["value"] += 1
+        started.set()
+        release.wait(timeout=2)
+        finished.set()
+        return fresh_snapshot
+
+    monkeypatch.setattr("songsim_campus.services._compute_readiness_snapshot", slow_refresh)
+
+    results: list[dict[str, object]] = []
+
+    def fetch_snapshot():
+        results.append(get_readiness_snapshot())
+
+    threads = [threading.Thread(target=fetch_snapshot) for _ in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=1)
+
+    assert started.wait(timeout=1)
+    assert results == [stale_snapshot] * 4
+    assert call_count["value"] == 1
+    assert services_module._READINESS_REFRESH_IN_PROGRESS
+
+    release.set()
+    assert finished.wait(timeout=1)
+    deadline = time.time() + 1
+    while time.time() < deadline:
+        if not services_module._READINESS_REFRESH_IN_PROGRESS:
+            break
+        time.sleep(0.01)
+
+    assert not services_module._READINESS_REFRESH_IN_PROGRESS
+
+
+def test_readiness_snapshot_keeps_stale_snapshot_after_refresh_failure(app_env, monkeypatch):
+    init_db()
+    current = {"value": datetime.fromisoformat("2026-03-17T18:20:00+09:00")}
+    stale_snapshot = _readiness_payload(ok=True, suffix="-stale")
+    started = threading.Event()
+    release = threading.Event()
+    finished = threading.Event()
+    call_count = {"value": 0}
+
+    monkeypatch.setattr("songsim_campus.services._now", lambda: current["value"])
+    monkeypatch.setattr(
+        "songsim_campus.services._compute_readiness_snapshot",
+        lambda settings: stale_snapshot,
+    )
+    assert get_readiness_snapshot() == stale_snapshot
+
+    current["value"] += timedelta(seconds=31)
+
+    def failed_refresh(settings):
+        call_count["value"] += 1
+        started.set()
+        release.wait(timeout=2)
+        finished.set()
+        return _readiness_payload(ok=False, with_error=True, suffix="-failed")
+
+    monkeypatch.setattr("songsim_campus.services._compute_readiness_snapshot", failed_refresh)
+
+    assert get_readiness_snapshot() == stale_snapshot
+    assert started.wait(timeout=1)
+
+    release.set()
+    assert finished.wait(timeout=1)
+    deadline = time.time() + 1
+    while time.time() < deadline:
+        if not services_module._READINESS_REFRESH_IN_PROGRESS:
+            break
+        time.sleep(0.01)
+
+    assert not services_module._READINESS_REFRESH_IN_PROGRESS
+    assert get_readiness_snapshot() == stale_snapshot
+    assert call_count["value"] == 2
+
+
+def test_readiness_snapshot_does_not_use_stale_snapshot_past_max_stale_window(
+    app_env,
+    monkeypatch,
+):
+    init_db()
+    current = {"value": datetime.fromisoformat("2026-03-17T18:40:00+09:00")}
+    stale_snapshot = _readiness_payload(ok=True, suffix="-stale")
+    failure_snapshot = _readiness_payload(ok=False, with_error=True, suffix="-failed")
+
+    monkeypatch.setattr("songsim_campus.services._now", lambda: current["value"])
+    monkeypatch.setattr(
+        "songsim_campus.services._compute_readiness_snapshot",
+        lambda settings: stale_snapshot,
+    )
+    assert get_readiness_snapshot() == stale_snapshot
+
+    current["value"] += timedelta(
+        seconds=services_module.READINESS_CACHE_MAX_STALE_SECONDS + 1
+    )
+    monkeypatch.setattr(
+        "songsim_campus.services._compute_readiness_snapshot",
+        lambda settings: failure_snapshot,
+    )
+
+    assert get_readiness_snapshot() == failure_snapshot

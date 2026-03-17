@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import threading
+import time
 from datetime import datetime, timedelta
 
 from fastapi.testclient import TestClient
@@ -122,6 +124,76 @@ def test_readyz_caches_snapshot_within_ttl(app_env, monkeypatch):
     assert first.status_code == 200
     assert second.status_code == 200
     assert dataset_calls == list(services.SYNC_DATASET_TABLES)
+
+
+def test_readyz_returns_stale_payload_while_refresh_is_slow(app_env, monkeypatch):
+    current = {"value": datetime.fromisoformat("2026-03-17T18:30:00+09:00")}
+    stale_snapshot = {
+        "ok": True,
+        "database": {"ok": True, "error": None},
+        "tables": {
+            **{
+                table: {
+                    "ok": True,
+                    "name": f"{table}-stale",
+                    "row_count": 1,
+                    "last_synced_at": "2026-03-17T18:29:00+09:00",
+                }
+                for table in services.SYNC_DATASET_TABLES
+            },
+            "sync_runs": {"ok": True},
+        },
+    }
+    fresh_snapshot = {
+        "ok": True,
+        "database": {"ok": True, "error": None},
+        "tables": {
+            **{
+                table: {
+                    "ok": True,
+                    "name": f"{table}-fresh",
+                    "row_count": 1,
+                    "last_synced_at": "2026-03-17T18:31:00+09:00",
+                }
+                for table in services.SYNC_DATASET_TABLES
+            },
+            "sync_runs": {"ok": True},
+        },
+    }
+    started = threading.Event()
+    release = threading.Event()
+    finished = threading.Event()
+
+    monkeypatch.setattr("songsim_campus.services._now", lambda: current["value"])
+    monkeypatch.setattr(
+        "songsim_campus.services._compute_readiness_snapshot",
+        lambda settings: stale_snapshot,
+    )
+    assert services.get_readiness_snapshot() == stale_snapshot
+
+    current["value"] += timedelta(seconds=31)
+
+    def slow_refresh(settings):
+        started.set()
+        release.wait(timeout=2)
+        finished.set()
+        return fresh_snapshot
+
+    monkeypatch.setattr("songsim_campus.services._compute_readiness_snapshot", slow_refresh)
+
+    app = create_app()
+    with TestClient(app) as public_client:
+        started_at = time.perf_counter()
+        response = public_client.get("/readyz")
+        elapsed_ms = (time.perf_counter() - started_at) * 1000
+
+    assert response.status_code == 200
+    assert response.json() == stale_snapshot
+    assert elapsed_ms < 200
+    assert started.wait(timeout=1)
+
+    release.set()
+    assert finished.wait(timeout=1)
 
 
 def test_admin_sync_route_is_disabled_by_default(client):

@@ -138,6 +138,7 @@ CLASS_PERIODS = [
 logger = logging.getLogger(__name__)
 OBSERVABILITY_EVENT_LIMIT = 10
 READINESS_CACHE_TTL_SECONDS = 30
+READINESS_CACHE_MAX_STALE_SECONDS = 600
 EMPTY_CLASSROOM_ESTIMATE_NOTE = (
     "공식 시간표 기준 예상 공실입니다. 실시간 점유는 반영되지 않습니다."
 )
@@ -283,6 +284,7 @@ def _new_observability_state(process_started_at: str | None = None) -> dict[str,
 _OBSERVABILITY_STATE = _new_observability_state()
 _READINESS_CACHE_LOCK = threading.Lock()
 _READINESS_CACHE: dict[tuple[str, str], dict[str, Any]] = {}
+_READINESS_REFRESH_IN_PROGRESS: set[tuple[str, str]] = set()
 
 
 def reset_observability_state() -> None:
@@ -293,6 +295,7 @@ def reset_observability_state() -> None:
 def reset_readiness_cache() -> None:
     with _READINESS_CACHE_LOCK:
         _READINESS_CACHE.clear()
+        _READINESS_REFRESH_IN_PROGRESS.clear()
 
 
 def set_automation_leader(is_leader: bool) -> None:
@@ -429,6 +432,131 @@ def _readiness_cache_key(settings: Any) -> tuple[str, str]:
     return (settings.app_mode, settings.database_url)
 
 
+def _cache_readiness_snapshot(
+    cache_key: tuple[str, str],
+    *,
+    fetched_at: datetime,
+    snapshot: dict[str, Any],
+) -> dict[str, Any]:
+    cached_snapshot = deepcopy(snapshot)
+    entry = {
+        "fetched_at": fetched_at,
+        "snapshot": cached_snapshot,
+    }
+    _READINESS_CACHE[cache_key] = entry
+    return entry
+
+
+def _readiness_snapshot_has_runtime_errors(snapshot: dict[str, Any]) -> bool:
+    database = snapshot.get("database", {})
+    if isinstance(database, dict) and database.get("error"):
+        return True
+    tables = snapshot.get("tables", {})
+    if not isinstance(tables, dict):
+        return False
+    return any(
+        isinstance(item, dict) and bool(item.get("error"))
+        for item in tables.values()
+    )
+
+
+def _readiness_failure_reason(snapshot: dict[str, Any]) -> str:
+    database = snapshot.get("database", {})
+    if isinstance(database, dict) and database.get("error"):
+        return str(database["error"])
+    tables = snapshot.get("tables", {})
+    if isinstance(tables, dict):
+        for name, item in tables.items():
+            if isinstance(item, dict) and item.get("error"):
+                return f"{name}: {item['error']}"
+    return "unknown"
+
+
+def _compute_and_store_readiness_snapshot(
+    cache_key: tuple[str, str],
+    settings: Any,
+    *,
+    background: bool,
+) -> dict[str, Any]:
+    logger.info(
+        "event=readiness_refresh_started background=%s app_mode=%s",
+        background,
+        settings.app_mode,
+    )
+    snapshot = _compute_readiness_snapshot(settings)
+    fetched_at = _now()
+    with _READINESS_CACHE_LOCK:
+        _cache_readiness_snapshot(cache_key, fetched_at=fetched_at, snapshot=snapshot)
+        _READINESS_REFRESH_IN_PROGRESS.discard(cache_key)
+    if _readiness_snapshot_has_runtime_errors(snapshot):
+        logger.warning(
+            "event=readiness_refresh_failed background=%s app_mode=%s error=%s",
+            background,
+            settings.app_mode,
+            _readiness_failure_reason(snapshot),
+        )
+    else:
+        logger.info(
+            "event=readiness_refresh_succeeded background=%s app_mode=%s ok=%s",
+            background,
+            settings.app_mode,
+            snapshot.get("ok", False),
+        )
+    return snapshot
+
+
+def _refresh_readiness_snapshot_in_background(
+    cache_key: tuple[str, str],
+    settings: Any,
+) -> None:
+    try:
+        snapshot = _compute_readiness_snapshot(settings)
+        if _readiness_snapshot_has_runtime_errors(snapshot):
+            logger.warning(
+                "event=readiness_refresh_failed background=%s app_mode=%s error=%s",
+                True,
+                settings.app_mode,
+                _readiness_failure_reason(snapshot),
+            )
+            return
+        fetched_at = _now()
+        with _READINESS_CACHE_LOCK:
+            _cache_readiness_snapshot(cache_key, fetched_at=fetched_at, snapshot=snapshot)
+        logger.info(
+            "event=readiness_refresh_succeeded background=%s app_mode=%s ok=%s",
+            True,
+            settings.app_mode,
+            snapshot.get("ok", False),
+        )
+    except Exception as exc:
+        logger.warning(
+            "event=readiness_refresh_failed background=%s app_mode=%s error=%s",
+            True,
+            settings.app_mode,
+            exc,
+        )
+    finally:
+        with _READINESS_CACHE_LOCK:
+            _READINESS_REFRESH_IN_PROGRESS.discard(cache_key)
+
+
+def _start_background_readiness_refresh(
+    cache_key: tuple[str, str],
+    settings: Any,
+) -> None:
+    logger.info(
+        "event=readiness_refresh_started background=%s app_mode=%s",
+        True,
+        settings.app_mode,
+    )
+    thread = threading.Thread(
+        target=_refresh_readiness_snapshot_in_background,
+        args=(cache_key, settings),
+        daemon=True,
+    )
+    thread.start()
+
+
 def _rollback_readiness_connection(conn: sqlite3.Connection) -> None:
     try:
         conn.rollback()
@@ -496,19 +624,37 @@ def get_readiness_snapshot() -> dict[str, Any]:
     settings = get_settings()
     cache_key = _readiness_cache_key(settings)
     ttl = timedelta(seconds=READINESS_CACHE_TTL_SECONDS)
+    max_stale = timedelta(seconds=READINESS_CACHE_MAX_STALE_SECONDS)
+    start_background_refresh = False
+    current = _now()
     with _READINESS_CACHE_LOCK:
         cached = _READINESS_CACHE.get(cache_key)
-        current = _now()
         if cached is not None and current - cached["fetched_at"] < ttl:
             return deepcopy(cached["snapshot"])
+        if (
+            cached is not None
+            and current - cached["fetched_at"] <= max_stale
+            and not _readiness_snapshot_has_runtime_errors(cached["snapshot"])
+        ):
+            if cache_key not in _READINESS_REFRESH_IN_PROGRESS:
+                _READINESS_REFRESH_IN_PROGRESS.add(cache_key)
+                start_background_refresh = True
+            snapshot = deepcopy(cached["snapshot"])
+        else:
+            snapshot = None
 
-        snapshot = _compute_readiness_snapshot(settings)
-        cached_snapshot = deepcopy(snapshot)
-        _READINESS_CACHE[cache_key] = {
-            "fetched_at": current,
-            "snapshot": cached_snapshot,
-        }
-        return deepcopy(cached_snapshot)
+    if snapshot is not None:
+        if start_background_refresh:
+            _start_background_readiness_refresh(cache_key, settings)
+        return snapshot
+
+    return deepcopy(
+        _compute_and_store_readiness_snapshot(
+            cache_key,
+            settings,
+            background=False,
+        )
+    )
 
 
 def get_observability_snapshot(
