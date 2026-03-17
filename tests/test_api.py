@@ -40,6 +40,59 @@ def test_readyz_reports_database_and_table_status(client):
     assert payload["tables"]["sync_runs"]["ok"] is True
 
 
+def test_readyz_marks_empty_required_public_dataset_as_not_ready(app_env, monkeypatch):
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    def fake_dataset_state(conn, table: str):
+        if table == "certificate_guides":
+            return {"name": table, "row_count": 0, "last_synced_at": None}
+        return {
+            "name": table,
+            "row_count": 1,
+            "last_synced_at": "2026-03-17T16:00:00+09:00",
+        }
+
+    monkeypatch.setattr("songsim_campus.services.repo.get_dataset_sync_state", fake_dataset_state)
+
+    app = create_app()
+    with TestClient(app) as public_client:
+        response = public_client.get("/readyz")
+
+    clear_settings_cache()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is False
+    assert payload["tables"]["certificate_guides"]["ok"] is False
+    assert payload["tables"]["certificate_guides"]["reason"] == "empty_or_unsynced"
+
+
+def test_healthz_stays_liveness_only_when_required_public_dataset_is_empty(app_env, monkeypatch):
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    def fake_dataset_state(conn, table: str):
+        if table == "certificate_guides":
+            return {"name": table, "row_count": 0, "last_synced_at": None}
+        return {
+            "name": table,
+            "row_count": 1,
+            "last_synced_at": "2026-03-17T16:00:00+09:00",
+        }
+
+    monkeypatch.setattr("songsim_campus.services.repo.get_dataset_sync_state", fake_dataset_state)
+
+    app = create_app()
+    with TestClient(app) as public_client:
+        response = public_client.get("/healthz")
+
+    clear_settings_cache()
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+
+
 def test_admin_sync_route_is_disabled_by_default(client):
     response = client.get("/admin/sync")
 

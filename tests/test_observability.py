@@ -15,6 +15,7 @@ from songsim_campus.services import (
     reset_observability_state,
     run_admin_sync,
 )
+from songsim_campus.settings import clear_settings_cache
 
 
 @pytest.fixture(autouse=True)
@@ -241,3 +242,54 @@ def test_readiness_snapshot_reports_failures(app_env, monkeypatch, caplog):
     assert readiness["tables"]["places"]["ok"] is False
     assert "unavailable" in readiness["tables"]["places"]["error"]
     assert "event=readiness_check_failed" in caplog.text
+
+
+def test_readiness_snapshot_requires_non_empty_required_public_datasets(app_env, monkeypatch):
+    init_db()
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    def fake_dataset_state(conn, table: str):
+        if table == "certificate_guides":
+            return {"name": table, "row_count": 0, "last_synced_at": None}
+        return {
+            "name": table,
+            "row_count": 1,
+            "last_synced_at": "2026-03-17T16:00:00+09:00",
+        }
+
+    monkeypatch.setattr("songsim_campus.services.repo.get_dataset_sync_state", fake_dataset_state)
+
+    readiness = get_readiness_snapshot()
+
+    clear_settings_cache()
+
+    assert readiness["ok"] is False
+    assert readiness["database"]["ok"] is True
+    assert readiness["tables"]["certificate_guides"]["ok"] is False
+    assert readiness["tables"]["certificate_guides"]["reason"] == "empty_or_unsynced"
+
+
+def test_readiness_snapshot_allows_empty_optional_public_datasets(app_env, monkeypatch):
+    init_db()
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    def fake_dataset_state(conn, table: str):
+        if table in {"courses", "campus_dining_menus"}:
+            return {"name": table, "row_count": 0, "last_synced_at": None}
+        return {
+            "name": table,
+            "row_count": 1,
+            "last_synced_at": "2026-03-17T16:00:00+09:00",
+        }
+
+    monkeypatch.setattr("songsim_campus.services.repo.get_dataset_sync_state", fake_dataset_state)
+
+    readiness = get_readiness_snapshot()
+
+    clear_settings_cache()
+
+    assert readiness["ok"] is True
+    assert readiness["tables"]["campus_dining_menus"]["ok"] is True
+    assert readiness["tables"]["courses"]["ok"] is True

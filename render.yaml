@@ -5,7 +5,7 @@ services:
     plan: free
     buildCommand: pip install -e .
     startCommand: bash -lc 'SONGSIM_APP_HOST=0.0.0.0 SONGSIM_APP_PORT=$PORT songsim-api'
-    healthCheckPath: /healthz
+    healthCheckPath: /readyz
     envVars:
       - key: SONGSIM_DATABASE_URL
         sync: false

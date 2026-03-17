@@ -98,6 +98,9 @@ SYNC_DATASET_TABLES = (
     "certificate_guides",
     "transport_guides",
 )
+PUBLIC_READY_REQUIRED_DATASETS = frozenset(
+    {"places", "notices", "certificate_guides", "transport_guides"}
+)
 ADMIN_SYNC_TARGETS = {
     "snapshot",
     "places",
@@ -376,6 +379,8 @@ def _record_sync_result(
 
 
 def get_readiness_snapshot() -> dict[str, Any]:
+    settings = get_settings()
+    public_readonly = settings.app_mode == "public_readonly"
     readiness: dict[str, Any] = {
         "ok": True,
         "database": {"ok": False, "error": None},
@@ -394,7 +399,19 @@ def get_readiness_snapshot() -> dict[str, Any]:
         for table in SYNC_DATASET_TABLES:
             try:
                 item = repo.get_dataset_sync_state(conn, table)
-                readiness["tables"][table] = {"ok": True, **item}
+                table_state = {"ok": True, **item}
+                if (
+                    public_readonly
+                    and table in PUBLIC_READY_REQUIRED_DATASETS
+                    and (
+                        not item.get("row_count")
+                        or item.get("last_synced_at") is None
+                    )
+                ):
+                    readiness["ok"] = False
+                    table_state["ok"] = False
+                    table_state["reason"] = "empty_or_unsynced"
+                readiness["tables"][table] = table_state
             except Exception as exc:
                 readiness["ok"] = False
                 readiness["tables"][table] = {"ok": False, "error": str(exc)}

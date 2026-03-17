@@ -54,7 +54,8 @@
 
 - API landing page: `https://.../`
 - API docs: `https://.../docs`
-- API health: `https://.../healthz`
+- API readiness: `https://.../readyz`
+- API liveness: `https://.../healthz`
 - MCP endpoint: `https://.../mcp`
 
 ## 5. 주의
