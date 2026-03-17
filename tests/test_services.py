@@ -8,6 +8,7 @@ from pathlib import Path
 import httpx
 import pytest
 
+import songsim_campus.services as services_module
 from songsim_campus import repo
 from songsim_campus.db import connection, init_db
 from songsim_campus.ingest.kakao_places import KakaoPlace
@@ -255,6 +256,69 @@ def test_get_library_seat_status_falls_back_to_stale_cache_on_live_failure(app_e
     assert response.checked_at == "2026-03-16T08:50:00+09:00"
     assert response.rooms[0].remaining_seats == 10
     assert response.note
+
+
+def test_refresh_library_seat_status_cache_replaces_existing_rows_on_success(app_env):
+    init_db()
+    with connection() as conn:
+        repo.replace_library_seat_status_cache(
+            conn,
+            [
+                {
+                    "room_name": "제1자유열람실",
+                    "remaining_seats": 10,
+                    "occupied_seats": 90,
+                    "total_seats": 100,
+                    "source_url": "http://203.229.203.240/8080/Domian5.asp",
+                    "source_tag": "cuk_library_seat_status",
+                    "last_synced_at": "2026-03-16T08:50:00+09:00",
+                }
+            ],
+        )
+
+        rows = services_module.refresh_library_seat_status_cache(
+            conn,
+            fetched_at="2026-03-16T09:00:00+09:00",
+            source=FakeLibrarySeatStatusSource(),
+        )
+
+        cached = repo.list_library_seat_status_cache(conn)
+
+    assert len(rows) == 2
+    assert [row["room_name"] for row in cached] == ["제1자유열람실", "제2자유열람실"]
+    assert cached[0]["last_synced_at"] == "2026-03-16T09:00:00+09:00"
+
+
+def test_refresh_library_seat_status_cache_keeps_existing_rows_on_failure(app_env):
+    init_db()
+    with connection() as conn:
+        repo.replace_library_seat_status_cache(
+            conn,
+            [
+                {
+                    "room_name": "제1자유열람실",
+                    "remaining_seats": 10,
+                    "occupied_seats": 90,
+                    "total_seats": 100,
+                    "source_url": "http://203.229.203.240/8080/Domian5.asp",
+                    "source_tag": "cuk_library_seat_status",
+                    "last_synced_at": "2026-03-16T08:50:00+09:00",
+                }
+            ],
+        )
+
+        with pytest.raises(httpx.ConnectTimeout):
+            services_module.refresh_library_seat_status_cache(
+                conn,
+                fetched_at="2026-03-16T09:00:00+09:00",
+                source=FailingLibrarySeatStatusSource(),
+            )
+
+        cached = repo.list_library_seat_status_cache(conn)
+
+    assert len(cached) == 1
+    assert cached[0]["remaining_seats"] == 10
+    assert cached[0]["last_synced_at"] == "2026-03-16T08:50:00+09:00"
 
 
 def test_get_library_seat_status_returns_unavailable_when_live_and_cache_are_missing(app_env):

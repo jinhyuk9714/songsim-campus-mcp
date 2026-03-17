@@ -80,6 +80,20 @@ def test_run_admin_sync_dispatches_target_specific_parameters(app_env, monkeypat
         seen["dining_menus"] = {"fetched_at": fetched_at}
         return []
 
+    def fake_library_seat_status(conn, *, fetched_at: str | None = None, source=None):
+        seen["library_seat_status"] = {"fetched_at": fetched_at}
+        return [
+            {
+                "room_name": "제1자유열람실",
+                "remaining_seats": 28,
+                "occupied_seats": 72,
+                "total_seats": 100,
+                "source_url": "http://203.229.203.240/8080/Domian5.asp",
+                "source_tag": "cuk_library_seat_status",
+                "last_synced_at": fetched_at or "2026-03-16T09:00:00+09:00",
+            }
+        ]
+
     monkeypatch.setattr("songsim_campus.services.refresh_places_from_campus_map", fake_places)
     monkeypatch.setattr("songsim_campus.services.refresh_courses_from_subject_search", fake_courses)
     monkeypatch.setattr("songsim_campus.services.refresh_notices_from_notice_board", fake_notices)
@@ -87,18 +101,25 @@ def test_run_admin_sync_dispatches_target_specific_parameters(app_env, monkeypat
         "songsim_campus.services.refresh_campus_dining_menus_from_facilities_page",
         fake_dining_menus,
     )
+    monkeypatch.setattr(
+        "songsim_campus.services.refresh_library_seat_status_cache",
+        fake_library_seat_status,
+    )
 
     places_run = run_admin_sync(target="places", campus="9")
     dining_run = run_admin_sync(target="dining_menus")
+    library_run = run_admin_sync(target="library_seat_status")
     courses_run = run_admin_sync(target="courses", year=2026, semester=1)
     notices_run = run_admin_sync(target="notices", notice_pages=3)
 
     assert places_run.summary == {"places": 0}
     assert dining_run.summary == {"dining_menus": 0}
+    assert library_run.summary == {"library_seat_status": 1}
     assert courses_run.summary == {"courses": 0}
     assert notices_run.summary == {"notices": 0}
     assert seen["places"] == {"campus": "9", "fetched_at": None}
     assert seen["dining_menus"] == {"fetched_at": None}
+    assert seen["library_seat_status"] == {"fetched_at": None}
     assert seen["courses"] == {"year": 2026, "semester": 1, "fetched_at": None}
     assert seen["notices"] == {"pages": 3, "fetched_at": None}
 
@@ -140,6 +161,47 @@ def test_run_admin_sync_rolls_back_failed_target_and_records_failure(app_env, mo
 
     assert stored[0].status == "failed"
     assert "transport sync exploded" in (stored[0].error_text or "")
+
+
+def test_run_admin_sync_keeps_library_seat_cache_when_refresh_fails(app_env, monkeypatch):
+    init_db()
+    with connection() as conn:
+        repo.replace_library_seat_status_cache(
+            conn,
+            [
+                {
+                    "room_name": "제1자유열람실",
+                    "remaining_seats": 10,
+                    "occupied_seats": 90,
+                    "total_seats": 100,
+                    "source_url": "http://203.229.203.240/8080/Domian5.asp",
+                    "source_tag": "cuk_library_seat_status",
+                    "last_synced_at": "2026-03-16T08:50:00+09:00",
+                }
+            ],
+        )
+
+    def broken_library_seat_status(conn, *, fetched_at: str | None = None, source=None):
+        raise RuntimeError("seat refresh exploded")
+
+    monkeypatch.setattr(
+        "songsim_campus.services.refresh_library_seat_status_cache",
+        broken_library_seat_status,
+    )
+
+    run = run_admin_sync(target="library_seat_status")
+
+    assert run.status == "failed"
+    assert run.summary == {}
+    assert "seat refresh exploded" in (run.error_text or "")
+
+    with connection() as conn:
+        cached = repo.list_library_seat_status_cache(conn)
+        stored = list_sync_runs(conn, limit=10)
+
+    assert len(cached) == 1
+    assert cached[0]["remaining_seats"] == 10
+    assert stored[0].status == "failed"
 
 
 def test_get_sync_dashboard_state_reports_row_counts_and_last_synced(app_env):

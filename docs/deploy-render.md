@@ -28,7 +28,8 @@
 3. 두 서비스 모두에 아래 secret env를 채웁니다.
    - `SONGSIM_DATABASE_URL`
    - `SONGSIM_KAKAO_REST_API_KEY`
-   - `songsim-public-mcp`에는 아래 OAuth env도 채웁니다.
+   - 공개 MCP를 OAuth로 보호할 때만 `songsim-public-mcp`에 아래 env를 추가합니다.
+     - `SONGSIM_PUBLIC_MCP_AUTH_MODE=oauth`
      - `SONGSIM_MCP_OAUTH_ENABLED=true`
      - `SONGSIM_MCP_OAUTH_ISSUER=https://<your-auth0-domain>/`
      - `SONGSIM_MCP_OAUTH_AUDIENCE=https://<your-mcp-render-url>/mcp`
@@ -44,8 +45,10 @@
 - `SONGSIM_SEED_DEMO_ON_START=false`
 - `SONGSIM_SYNC_OFFICIAL_ON_START=false`
 - `songsim-public-api`만 `SONGSIM_AUTOMATION_ENABLED=true`
+- `songsim-public-api`는 `SONGSIM_LIBRARY_SEAT_PREWARM_INTERVAL_MINUTES=5`
 - `songsim-public-mcp`는 `SONGSIM_AUTOMATION_ENABLED=false`
-- `songsim-public-mcp`는 Auth0 + Google login으로 보호
+- `songsim-public-mcp`는 기본적으로 익명 read-only
+- 공개 MCP를 보호해야 하면 `SONGSIM_PUBLIC_MCP_AUTH_MODE=oauth`로 전환
 
 ## 4. 배포 후 확인
 
@@ -59,4 +62,5 @@
 - Render free web service는 cold start가 생길 수 있습니다.
 - Supabase free project는 장기간 무활동 시 pause될 수 있습니다.
 - 공개 배포는 read-only입니다. profile/admin 경로는 숨겨집니다.
-- ChatGPT 연결에는 MCP OAuth가 필요하므로 Auth0 설정이 끝나야 합니다.
+- `songsim-public-api` automation은 `snapshot`, `library_seat_prewarm`, `cache_cleanup`을 실행합니다.
+- ChatGPT Actions는 HTTP API를 쓰므로 MCP OAuth와 무관합니다. MCP OAuth는 원할 때만 켜면 됩니다.

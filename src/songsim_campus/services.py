@@ -92,13 +92,14 @@ ADMIN_SYNC_TARGETS = {
     "snapshot",
     "places",
     "library_hours",
+    "library_seat_status",
     "facility_hours",
     "dining_menus",
     "courses",
     "notices",
     "transport_guides",
 }
-AUTOMATION_SYNC_TARGETS = {"snapshot", "cache_cleanup"}
+AUTOMATION_SYNC_TARGETS = {"snapshot", "library_seat_prewarm", "cache_cleanup"}
 SYNC_RUN_TARGETS = ADMIN_SYNC_TARGETS | AUTOMATION_SYNC_TARGETS
 AUTOMATION_LOCK_KEY = 20_260_314
 ALLOWED_ADMISSION_TYPES = {"general", "freshman", "transfer", "exchange"}
@@ -424,6 +425,8 @@ def _automation_interval_minutes(target: str) -> int:
     settings = get_settings()
     if target == "snapshot":
         return settings.automation_snapshot_interval_minutes
+    if target == "library_seat_prewarm":
+        return settings.library_seat_prewarm_interval_minutes
     if target == "cache_cleanup":
         return settings.automation_cache_cleanup_interval_minutes
     raise InvalidRequestError(f"Unsupported automation target: {target}")
@@ -482,7 +485,7 @@ def get_automation_status(
         leader=bool(_OBSERVABILITY_STATE["automation"]["leader"]),
         jobs=[
             _automation_job_snapshot(conn, target=target, now=now)
-            for target in ("snapshot", "cache_cleanup")
+            for target in ("snapshot", "library_seat_prewarm", "cache_cleanup")
         ],
     )
 
@@ -1798,6 +1801,33 @@ def _build_library_seat_status_response(
     )
 
 
+def _coerce_library_seat_status_source(
+    source: LibrarySeatStatusSource | Any | None = None,
+) -> LibrarySeatStatusSource | Any:
+    if source is not None:
+        return source
+    try:
+        return LibrarySeatStatusSource(LIBRARY_SEAT_STATUS_SOURCE_URL)
+    except TypeError:
+        return LibrarySeatStatusSource()
+
+
+def refresh_library_seat_status_cache(
+    conn: sqlite3.Connection,
+    *,
+    fetched_at: str | None = None,
+    source: LibrarySeatStatusSource | Any | None = None,
+) -> list[dict[str, Any]]:
+    seat_source = _coerce_library_seat_status_source(source)
+    checked_at = fetched_at or _now_iso()
+    payload = seat_source.fetch()
+    live_rows = seat_source.parse(payload, fetched_at=checked_at)
+    if not live_rows:
+        raise ValueError("library seat source returned no room rows")
+    repo.replace_library_seat_status_cache(conn, live_rows)
+    return live_rows
+
+
 def _evaluate_open_now_from_map(opening_hours: dict[str, str], at: datetime) -> bool | None:
     if not opening_hours:
         return None
@@ -2352,11 +2382,7 @@ def get_library_seat_status(
     now: datetime | None = None,
 ) -> LibrarySeatStatusResponse:
     current = now or _now()
-    if source is None:
-        try:
-            source = LibrarySeatStatusSource(LIBRARY_SEAT_STATUS_SOURCE_URL)
-        except TypeError:
-            source = LibrarySeatStatusSource()
+    source = _coerce_library_seat_status_source(source)
     cached_rows = repo.list_library_seat_status_cache(conn)
     cache_state = (
         _library_seat_cache_status(str(cached_rows[0]["last_synced_at"]), current)
@@ -2374,11 +2400,11 @@ def get_library_seat_status(
 
     checked_at = current.isoformat(timespec="seconds")
     try:
-        payload = source.fetch()
-        live_rows = source.parse(payload, fetched_at=checked_at)
-        if not live_rows:
-            raise ValueError("library seat source returned no room rows")
-        repo.replace_library_seat_status_cache(conn, live_rows)
+        live_rows = refresh_library_seat_status_cache(
+            conn,
+            fetched_at=checked_at,
+            source=source,
+        )
         return _build_library_seat_status_response(
             _filter_library_seat_rows(live_rows, query),
             availability_mode="live",
@@ -2903,6 +2929,8 @@ def _run_admin_sync_target(
         }
     if target == "library_hours":
         return {"updated_places": len(refresh_library_hours_from_library_page(conn))}
+    if target in {"library_seat_status", "library_seat_prewarm"}:
+        return {"library_seat_status": len(refresh_library_seat_status_cache(conn))}
     if target == "facility_hours":
         return {"updated_places": len(refresh_facility_hours_from_facilities_page(conn))}
     if target == "dining_menus":
@@ -3058,7 +3086,7 @@ def run_automation_tick(
     current = _coerce_datetime(now)
     due_targets: list[str] = []
     with connection() as conn:
-        for target in ("snapshot", "cache_cleanup"):
+        for target in ("snapshot", "library_seat_prewarm", "cache_cleanup"):
             if target not in selected:
                 continue
             if _is_automation_job_due(conn, target=target, now=current):

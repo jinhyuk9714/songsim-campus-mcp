@@ -543,6 +543,7 @@ def create_app() -> FastAPI:
                 "fields": [render_field("campus", "campus", settings.official_campus_id)],
             },
             {"title": "library_hours", "fields": []},
+            {"title": "library_seat_status", "fields": []},
             {"title": "facility_hours", "fields": []},
             {"title": "dining_menus", "fields": []},
             {

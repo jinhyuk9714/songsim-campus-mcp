@@ -138,6 +138,7 @@ def test_settings_parse_automation_defaults(monkeypatch):
     monkeypatch.setenv("SONGSIM_AUTOMATION_TICK_SECONDS", "30")
     monkeypatch.setenv("SONGSIM_AUTOMATION_SNAPSHOT_INTERVAL_MINUTES", "180")
     monkeypatch.setenv("SONGSIM_AUTOMATION_CACHE_CLEANUP_INTERVAL_MINUTES", "600")
+    monkeypatch.setenv("SONGSIM_LIBRARY_SEAT_PREWARM_INTERVAL_MINUTES", "5")
     clear_settings_cache()
 
     settings = Settings()
@@ -146,6 +147,7 @@ def test_settings_parse_automation_defaults(monkeypatch):
     assert settings.automation_tick_seconds == 30
     assert settings.automation_snapshot_interval_minutes == 180
     assert settings.automation_cache_cleanup_interval_minutes == 600
+    assert settings.library_seat_prewarm_interval_minutes == 5
 
 
 def test_env_example_documents_2026_first_semester_defaults():
@@ -166,6 +168,7 @@ def test_env_example_documents_2026_first_semester_defaults():
     assert "SONGSIM_AUTOMATION_TICK_SECONDS=60" in text
     assert "SONGSIM_AUTOMATION_SNAPSHOT_INTERVAL_MINUTES=360" in text
     assert "SONGSIM_AUTOMATION_CACHE_CLEANUP_INTERVAL_MINUTES=720" in text
+    assert "SONGSIM_LIBRARY_SEAT_PREWARM_INTERVAL_MINUTES=5" in text
     assert "SONGSIM_RESTAURANT_CACHE_TTL_MINUTES=360" in text
     assert "SONGSIM_RESTAURANT_CACHE_STALE_TTL_MINUTES=1440" in text
     assert "SONGSIM_LIBRARY_SEAT_CACHE_TTL_MINUTES=2" in text

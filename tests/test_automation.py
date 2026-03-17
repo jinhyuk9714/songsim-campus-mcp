@@ -95,6 +95,24 @@ def test_automation_observability_uses_last_success_for_due_calculation(
     assert job.next_due_at == "2026-03-14T11:05:00+09:00"
 
 
+def test_automation_observability_includes_library_seat_prewarm_job(app_env, monkeypatch):
+    monkeypatch.setenv("SONGSIM_AUTOMATION_ENABLED", "true")
+    monkeypatch.setenv("SONGSIM_LIBRARY_SEAT_PREWARM_INTERVAL_MINUTES", "5")
+    clear_settings_cache()
+    init_db()
+
+    now = datetime.fromisoformat("2026-03-14T09:00:00+09:00")
+    monkeypatch.setattr("songsim_campus.services._now", lambda: now)
+
+    with connection() as conn:
+        snapshot = get_observability_snapshot(conn)
+
+    job = next(item for item in snapshot.automation.jobs if item.name == "library_seat_prewarm")
+    assert job.interval_minutes == 5
+    assert job.last_run_at is None
+    assert job.next_due_at == "2026-03-14T09:00:00+09:00"
+
+
 def test_run_automation_tick_records_snapshot_run_as_automation(app_env, monkeypatch, caplog):
     caplog.set_level(logging.INFO)
     monkeypatch.setenv("SONGSIM_AUTOMATION_ENABLED", "true")
@@ -128,6 +146,45 @@ def test_run_automation_tick_records_snapshot_run_as_automation(app_env, monkeyp
     with connection() as conn:
         stored = repo.list_sync_runs(conn, limit=5)
     assert stored[0]["trigger"] == "automation"
+    assert "event=automation_job_completed" in caplog.text
+
+
+def test_run_automation_tick_records_library_seat_prewarm_run_as_automation(
+    app_env,
+    monkeypatch,
+    caplog,
+):
+    caplog.set_level(logging.INFO)
+    monkeypatch.setenv("SONGSIM_AUTOMATION_ENABLED", "true")
+    clear_settings_cache()
+    init_db()
+
+    def fake_refresh(conn, *, fetched_at: str | None = None, source=None):
+        return [
+            {
+                "room_name": "제1자유열람실",
+                "remaining_seats": 28,
+                "occupied_seats": 72,
+                "total_seats": 100,
+                "source_url": "http://203.229.203.240/8080/Domian5.asp",
+                "source_tag": "cuk_library_seat_status",
+                "last_synced_at": fetched_at or "2026-03-16T09:00:00+09:00",
+            }
+        ]
+
+    monkeypatch.setattr("songsim_campus.services.refresh_library_seat_status_cache", fake_refresh)
+
+    runs = run_automation_tick(job_names={"library_seat_prewarm"})
+
+    assert len(runs) == 1
+    assert runs[0].target == "library_seat_prewarm"
+    assert runs[0].trigger == "automation"
+    assert runs[0].status == "success"
+    assert runs[0].summary == {"library_seat_status": 1}
+    with connection() as conn:
+        stored = repo.list_sync_runs(conn, limit=5)
+    assert stored[0]["trigger"] == "automation"
+    assert stored[0]["target"] == "library_seat_prewarm"
     assert "event=automation_job_completed" in caplog.text
 
 

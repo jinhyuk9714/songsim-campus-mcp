@@ -1187,7 +1187,11 @@ def test_admin_observability_pages_render_runtime_state(admin_client, client, mo
     assert payload["sync"]["last_failure_message"] == "transport sync exploded"
     assert payload["automation"]["enabled"] is False
     assert payload["automation"]["leader"] is False
-    assert {job["name"] for job in payload["automation"]["jobs"]} == {"snapshot", "cache_cleanup"}
+    assert {job["name"] for job in payload["automation"]["jobs"]} == {
+        "snapshot",
+        "library_seat_prewarm",
+        "cache_cleanup",
+    }
     assert payload["datasets"][0]["name"] == "places"
     assert payload["recent_sync_runs"][0]["status"] in {"success", "failed"}
 

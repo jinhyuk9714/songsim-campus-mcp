@@ -203,6 +203,7 @@ SONGSIM_AUTOMATION_ENABLED=true
 SONGSIM_AUTOMATION_TICK_SECONDS=60
 SONGSIM_AUTOMATION_SNAPSHOT_INTERVAL_MINUTES=360
 SONGSIM_AUTOMATION_CACHE_CLEANUP_INTERVAL_MINUTES=720
+SONGSIM_LIBRARY_SEAT_PREWARM_INTERVAL_MINUTES=5
 ```
 
 처음 DB만 만들고 싶으면:
@@ -274,13 +275,13 @@ curl 'http://127.0.0.1:8000/profiles/{profile_id}/meal-recommendations?origin=ce
 SONGSIM_ADMIN_ENABLED=true uv run songsim-api
 # 브라우저에서 http://127.0.0.1:8000/admin/sync 열기
 # 관측성 JSON은 http://127.0.0.1:8000/admin/observability.json
-# 자동화를 켜면 같은 앱 안에서 snapshot sync + cache cleanup이 주기적으로 실행됨
+# 자동화를 켜면 같은 앱 안에서 snapshot sync + library seat prewarm + cache cleanup이 주기적으로 실행됨
 ```
 
 `budget_max`는 엄격 필터입니다. 가격 정보가 없는 식당은 결과에서 제외됩니다.
 브랜드 direct search는 `origin`이 없어도 동작하고, 먼저 캠퍼스에 가까운 후보를 찾습니다. 근처에 없으면 더 가까운 외부 지점을 보여줄 수 있습니다. `스타벅스`, `커피빈`, `투썸`, `빽다방`처럼 long-tail 브랜드도 direct search로 먼저 확인합니다.
 교내 공식 학식 3곳의 이번 주 메뉴는 `/dining-menus`와 `/gpt/dining-menus`로 조회할 수 있습니다. 현재는 주간 메뉴 텍스트와 원본 PDF 링크를 함께 반환하고, `오늘 메뉴`나 `내일 메뉴`도 이번 주 메뉴 기준으로 안내합니다.
-중앙도서관 열람실 좌석은 `/library-seats`와 `/gpt/library-seats`로 best-effort 실시간 조회할 수 있습니다. source가 응답하지 않으면 stale cache 또는 unavailable note로 안전하게 폴백합니다.
+중앙도서관 열람실 좌석은 `/library-seats`와 `/gpt/library-seats`로 best-effort 실시간 조회할 수 있습니다. public API automation이 켜져 있으면 5분 간격 prewarm으로 짧은 stale cache를 먼저 채우고, source가 응답하지 않으면 stale cache 또는 unavailable note로 안전하게 폴백합니다.
 공지 카테고리 설명은 `/notice-categories` 또는 `songsim://notice-categories`로 바로 읽을 수 있고, 교시표는 `/periods`, `/gpt/periods`, `songsim://class-periods`로 바로 확인할 수 있습니다. 교시 기반 과목 조회는 `/courses?year=2026&semester=1&period_start=7`처럼 direct filter로도 처리할 수 있습니다.
 
 ## 대표 MCP 테스트 질문
@@ -400,5 +401,5 @@ SONGSIM_ADMIN_ENABLED=true uv run songsim-api
 - 외부 구간의 후보 식당 조회와 거리 계산은 PostGIS를 사용합니다.
 - `/admin/sync`는 `SONGSIM_ADMIN_ENABLED=true`일 때만 열리고, loopback 클라이언트에서만 접근됩니다.
 - `/readyz`는 DB와 핵심 테이블 접근성을 점검하고, `/admin/observability`와 `/admin/observability.json`은 최근 sync/cache 상태를 로컬에서만 보여줍니다.
-- `SONGSIM_AUTOMATION_ENABLED=true`이면 앱 내부 스케줄러가 advisory lock 기반으로 `snapshot`과 `cache_cleanup` job을 자동 실행합니다.
+- `SONGSIM_AUTOMATION_ENABLED=true`이면 앱 내부 스케줄러가 advisory lock 기반으로 `snapshot`, `library_seat_prewarm`, `cache_cleanup` job을 자동 실행합니다.
 - `SONGSIM_APP_MODE=public_readonly`이면 공개 read-only surface만 노출하고 `/profiles/*`, `/admin/*`는 숨겨집니다.

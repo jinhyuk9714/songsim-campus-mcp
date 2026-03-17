@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     automation_tick_seconds: int = 60
     automation_snapshot_interval_minutes: int = 360
     automation_cache_cleanup_interval_minutes: int = 720
+    library_seat_prewarm_interval_minutes: int = 5
     app_host: str = "127.0.0.1"
     app_port: int = 8000
     kakao_rest_api_key: str | None = None
