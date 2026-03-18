@@ -731,6 +731,12 @@ def test_refresh_campus_facilities_replaces_rows_and_maps_place_slugs(app_env):
                     category="dormitory",
                 ),
                 _place_row(
+                    slug="kim-sou-hwan-hall",
+                    name="김수환관",
+                    aliases=["김수환", "K관"],
+                    category="building",
+                ),
+                _place_row(
                     slug="central-library",
                     name="중앙도서관",
                     aliases=["중도"],
@@ -772,7 +778,7 @@ def test_refresh_campus_facilities_replaces_rows_and_maps_place_slugs(app_env):
     assert [row["facility_name"] for row in rows] == ["교내복사실", "카페드림"]
     assert rows[0]["phone"] == "02-2164-4725"
     assert rows[0]["location_text"] == "K관 1층"
-    assert rows[0]["place_slug"] == "dormitory-stephen"
+    assert rows[0]["place_slug"] == "kim-sou-hwan-hall"
     assert rows[1]["phone"] == "010-9517-9417"
     assert rows[1]["place_slug"] == "central-library"
 
@@ -868,6 +874,90 @@ def test_search_places_sentence_queries_prefer_exact_facility_match_with_metadat
 
     assert library_places[0].slug == "central-library"
     assert library_places[0].matched_facility is None
+
+
+def test_search_places_promotes_canonical_parent_place_for_k_hall_facilities(app_env):
+    init_db()
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                _place_row(
+                    slug="dormitory-stephen",
+                    name="스테파노기숙사",
+                    category="dormitory",
+                    aliases=["K관"],
+                    description="기숙사 생활시설 건물",
+                ),
+                _place_row(
+                    slug="kim-sou-hwan-hall",
+                    name="김수환관",
+                    category="building",
+                    aliases=["김수환", "K관"],
+                    description="강의실과 생활 편의시설이 함께 있는 건물",
+                ),
+            ],
+        )
+        repo.replace_campus_facilities(
+            conn,
+            [
+                {
+                    "facility_name": "교내복사실",
+                    "category": "복사실",
+                    "phone": "02-2164-4725",
+                    "location_text": "K관 1층",
+                    "hours_text": "평일 08:50~19:00 (토/일/공휴일휴무)",
+                    "place_slug": "kim-sou-hwan-hall",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-18T10:00:00+09:00",
+                },
+                {
+                    "facility_name": "우리은행",
+                    "category": "은행",
+                    "phone": "032-342-2641",
+                    "location_text": "K관 1층",
+                    "hours_text": "평일 09:00~16:00 (토,일/공휴일휴무)",
+                    "place_slug": "kim-sou-hwan-hall",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-18T10:00:00+09:00",
+                },
+                {
+                    "facility_name": "트러스트짐",
+                    "category": "피트니스센터",
+                    "phone": "032-342-5406",
+                    "location_text": "K관 1층",
+                    "hours_text": "평일 07:00~22:30 토 09:30~18:00 (일/공휴일휴무)",
+                    "place_slug": "kim-sou-hwan-hall",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-18T10:00:00+09:00",
+                },
+            ],
+        )
+
+        copy_room_places = search_places(conn, query="복사실이 어디야?", limit=1)
+        bank_places = search_places(conn, query="우리은행 전화번호 알려줘", limit=1)
+        gym_places = search_places(conn, query="트러스트짐 어디야?", limit=1)
+        k_hall_places = search_places(conn, query="K관 어디야?", limit=1)
+
+    assert copy_room_places[0].slug == "kim-sou-hwan-hall"
+    assert copy_room_places[0].matched_facility is not None
+    assert copy_room_places[0].matched_facility.name == "교내복사실"
+    assert copy_room_places[0].matched_facility.location_hint == "K관 1층"
+
+    assert bank_places[0].slug == "kim-sou-hwan-hall"
+    assert bank_places[0].matched_facility is not None
+    assert bank_places[0].matched_facility.name == "우리은행"
+    assert bank_places[0].matched_facility.phone == "032-342-2641"
+
+    assert gym_places[0].slug == "kim-sou-hwan-hall"
+    assert gym_places[0].matched_facility is not None
+    assert gym_places[0].matched_facility.name == "트러스트짐"
+
+    assert k_hall_places[0].slug == "kim-sou-hwan-hall"
+    assert k_hall_places[0].matched_facility is None
 
 
 def test_search_places_uses_source_backed_facility_fallback_when_snapshot_is_empty(

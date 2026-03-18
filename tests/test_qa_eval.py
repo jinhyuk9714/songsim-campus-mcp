@@ -169,6 +169,35 @@ def test_build_truth_rows_marks_watch_only_without_expected() -> None:
     assert truth_rows[0].truth_source == "watchlist"
 
 
+def test_build_truth_rows_skips_facility_host_place_canary_without_database() -> None:
+    row = EvalCorpusRow.model_validate(
+        {
+            "id": "PLF001",
+            "domain": "place",
+            "style": "normal",
+            "user_utterance": "복사실이 어디야?",
+            "api_request": {"path": "/places", "params": {"query": "복사실이 어디야?", "limit": 5}},
+            "expected_mcp_flow": "tool_search_places -> tool_get_place",
+            "truth_mode": "set_contains",
+            "pass_rule": {"summary_kind": "places_top1_facility_host"},
+            "watch_policy": "facility_search",
+            "notes": "",
+        }
+    )
+
+    truth_rows = build_truth_rows([row], database_url=None, captured_at="2026-03-18T10:10:00+09:00")
+
+    assert truth_rows == [
+        EvalTruthRow(
+            id="PLF001",
+            normalized_expected=None,
+            truth_source="unavailable",
+            captured_at="2026-03-18T10:10:00+09:00",
+            stability="degraded_skip",
+        )
+    ]
+
+
 def test_payload_from_sources_prioritizes_songsim_academic_calendar_events() -> None:
     row = EvalCorpusRow.model_validate(
         {
@@ -473,6 +502,68 @@ def test_run_row_evaluation_supports_exact_set_contains_invariant_and_watch() ->
     assert contains_result.verdict == "pass"
     assert invariant_result.verdict == "pass"
     assert watch_result.verdict == "watch"
+
+
+def test_run_row_evaluation_supports_place_top1_facility_host_summary() -> None:
+    row = EvalCorpusRow.model_validate(
+        {
+            "id": "PLF001",
+            "domain": "place",
+            "style": "normal",
+            "user_utterance": "트러스트짐 어디야?",
+            "api_request": {
+                "path": "/places",
+                "params": {"query": "트러스트짐 어디야?", "limit": 5},
+            },
+            "expected_mcp_flow": "tool_search_places -> tool_get_place",
+            "truth_mode": "set_contains",
+            "pass_rule": {"summary_kind": "places_top1_facility_host"},
+            "watch_policy": "facility_search",
+            "notes": "",
+        }
+    )
+    truth = EvalTruthRow(
+        id="PLF001",
+        normalized_expected={
+            "slug": "kim-sou-hwan-hall",
+            "matched_facility": {
+                "name": "트러스트짐",
+                "location_hint": "K관 1층",
+            },
+        },
+        truth_source="database_snapshot",
+        captured_at="2026-03-18T10:10:00+09:00",
+        stability="stable",
+    )
+
+    result = run_row_evaluation(
+        row,
+        actual_payload=[
+            {
+                "slug": "kim-sou-hwan-hall",
+                "name": "김수환관",
+                "category": "building",
+                "matched_facility": {
+                    "name": "트러스트짐",
+                    "location_hint": "K관 1층",
+                    "opening_hours": "평일 07:00~22:30",
+                },
+            }
+        ],
+        truth=truth,
+        checked_at="2026-03-18T10:20:00+09:00",
+    )
+
+    assert result.verdict == "pass"
+    assert result.actual_summary == {
+        "slug": "kim-sou-hwan-hall",
+        "name": "김수환관",
+        "category": "building",
+        "matched_facility": {
+            "name": "트러스트짐",
+            "location_hint": "K관 1층",
+        },
+    }
 
 
 def test_render_validation_report_separates_watchlist() -> None:

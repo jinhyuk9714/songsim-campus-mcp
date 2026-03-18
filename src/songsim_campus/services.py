@@ -886,6 +886,52 @@ def _location_candidates(value: str) -> list[str]:
     return candidates
 
 
+def _facility_host_place_category_rank(category: str | None) -> int:
+    normalized = _normalize_optional_text(category)
+    if normalized in {"building", "library", "gate"}:
+        return 0
+    if normalized == "facility":
+        return 1
+    if normalized == "dormitory":
+        return 2
+    return 3
+
+
+def _resolve_campus_facility_place_slug(
+    location_text: str | None,
+    *,
+    place_rows: list[dict[str, Any]],
+) -> str | None:
+    place_lookup = {str(row.get("slug") or "").strip(): row for row in place_rows}
+    candidates_lookup = _build_place_slug_candidates_lookup(place_rows)
+
+    for candidate in _location_candidates(str(location_text or "")):
+        preferred_slugs = _preferred_place_slugs_for_query(candidate, context="place_search")
+        for preferred_slug in preferred_slugs:
+            if preferred_slug in place_lookup:
+                return preferred_slug
+
+        normalized_candidate = _normalize_place_key(candidate)
+        if not normalized_candidate:
+            continue
+        matching_slugs = candidates_lookup.get(normalized_candidate, [])
+        if not matching_slugs:
+            continue
+        if len(matching_slugs) == 1:
+            return matching_slugs[0]
+
+        ranked_slugs = sorted(
+            matching_slugs,
+            key=lambda slug: (
+                _facility_host_place_category_rank(place_lookup.get(slug, {}).get("category")),
+                slug,
+            ),
+        )
+        if ranked_slugs:
+            return ranked_slugs[0]
+    return None
+
+
 def _day_label_from_datetime(value: datetime) -> str:
     return ["월", "화", "수", "목", "금", "토", "일"][value.weekday()]
 
@@ -2143,7 +2189,6 @@ def _build_searchable_campus_facilities(
     rows = repo.list_campus_facilities(conn)
     if not rows:
         rows = _load_source_backed_campus_facilities(place_rows)
-    place_lookup = _build_place_slug_lookup(place_rows)
     seen: set[tuple[str, str]] = set()
     searchable: list[dict[str, Any]] = []
 
@@ -2153,10 +2198,10 @@ def _build_searchable_campus_facilities(
             continue
         place_slug = _normalize_optional_text(row.get("place_slug"))
         if place_slug is None:
-            for candidate in _location_candidates(str(row.get("location_text") or "")):
-                place_slug = place_lookup.get(_normalize_place_key(candidate))
-                if place_slug:
-                    break
+            place_slug = _resolve_campus_facility_place_slug(
+                str(row.get("location_text") or ""),
+                place_rows=place_rows,
+            )
         key = (place_slug or "", _normalize_facility_name(facility_name))
         if key in seen:
             continue
@@ -2220,18 +2265,15 @@ def _load_source_backed_campus_facilities(
     except Exception:
         return []
 
-    place_lookup = _build_place_slug_lookup(place_rows)
     normalized_rows: list[dict[str, Any]] = []
     for row in rows:
         location_text = _normalize_campus_facility_location(
             row.get("location_text") or row.get("location")
         )
-        place_slug = None
-        if location_text is not None:
-            for candidate in _location_candidates(location_text):
-                place_slug = place_lookup.get(_normalize_place_key(candidate))
-                if place_slug:
-                    break
+        place_slug = _resolve_campus_facility_place_slug(
+            location_text,
+            place_rows=place_rows,
+        )
         normalized_rows.append(
             {
                 "facility_name": str(row.get("facility_name") or ""),
@@ -5275,14 +5317,13 @@ def refresh_campus_facilities_from_source(
     source = source or CampusFacilitiesSource(FACILITIES_SOURCE_URL)
     synced_at = fetched_at or _now_iso()
     rows = source.parse(source.fetch(), fetched_at=synced_at)
-    place_lookup = _place_index(conn)
+    place_rows = repo.list_places(conn)
     prepared_rows: list[dict[str, Any]] = []
     for row in rows:
-        slug = None
-        for candidate in _location_candidates(str(row.get("location") or "")):
-            slug = place_lookup.get(_normalize_place_key(candidate))
-            if slug:
-                break
+        slug = _resolve_campus_facility_place_slug(
+            str(row.get("location") or ""),
+            place_rows=place_rows,
+        )
         prepared_rows.append(
             {
                 "facility_name": str(row.get("facility_name") or ""),
@@ -5309,15 +5350,14 @@ def refresh_facility_hours_from_facilities_page(
     source = source or CampusFacilitiesSource(FACILITIES_SOURCE_URL)
     synced_at = fetched_at or _now_iso()
     rows = source.parse(source.fetch(), fetched_at=synced_at)
-    place_lookup = _place_index(conn)
+    place_rows = repo.list_places(conn)
     touched: list[Place] = []
     seen_slugs: set[str] = set()
     for row in rows:
-        slug = None
-        for candidate in _location_candidates(row["location"]):
-            slug = place_lookup.get(_normalize_place_key(candidate))
-            if slug:
-                break
+        slug = _resolve_campus_facility_place_slug(
+            str(row.get("location") or ""),
+            place_rows=place_rows,
+        )
         if not slug:
             continue
         repo.update_place_opening_hours(

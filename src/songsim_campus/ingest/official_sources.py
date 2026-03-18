@@ -698,14 +698,27 @@ class CampusFacilitiesSource:
             return rows
 
         grid = _extract_table_grid(table)
+        if not grid:
+            return rows
+
+        header = grid[0]
+        category_index = _column_index_for_header(header, ["업종"], 0)
+        name_index = _column_index_for_header(header, ["매장명", "시설명"], 1)
+        phone_index = _column_index_for_header(header, ["전화번호", "연락처"], 2)
+        location_index = _column_index_for_header(header, ["위치"], 3)
+        hours_index = _column_index_for_header(header, ["운영시간", "운영"], 4)
+        min_cells = max(category_index, name_index, phone_index, location_index, hours_index) + 1
+
         for row in grid[1:]:
-            if len(row) < 5:
+            if len(row) < min_cells:
                 continue
-            category = row[0]
-            facility_name = row[1]
-            phone = _normalize_phone(row[2])
-            location = row[3]
-            hours_text = row[4]
+            category = _clean_text(row[category_index]) if category_index < len(row) else ""
+            facility_name = _clean_text(row[name_index]) if name_index < len(row) else ""
+            phone = _normalize_phone(row[phone_index]) if phone_index < len(row) else None
+            location = _clean_text(row[location_index]) if location_index < len(row) else ""
+            hours_text = _clean_text(row[hours_index]) if hours_index < len(row) else ""
+            if not facility_name:
+                continue
             rows.append(
                 {
                     "facility_name": facility_name,
@@ -1454,6 +1467,15 @@ def _clean_contact_cell(cell) -> list[str]:
         if cleaned:
             parts.append(cleaned)
     return parts
+
+
+def _column_index_for_header(header: list[str], keywords: list[str], default: int) -> int:
+    normalized_keywords = [keyword.strip().lower() for keyword in keywords]
+    for index, value in enumerate(header):
+        text = (value or "").lower()
+        if any(keyword in text for keyword in normalized_keywords):
+            return index
+    return default
 
 
 def _normalize_phone(value: str | None) -> str | None:

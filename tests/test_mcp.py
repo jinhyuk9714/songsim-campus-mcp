@@ -1808,6 +1808,121 @@ def test_mcp_public_search_places_prefers_short_query_place_preference_for_k_hal
     clear_settings_cache()
 
 
+def test_mcp_public_search_places_promotes_canonical_parent_place_for_k_hall_facilities(
+    app_env,
+    monkeypatch,
+):
+    pytest.importorskip('mcp.server.fastmcp')
+    init_db()
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                {
+                    "slug": "dormitory-stephen",
+                    "name": "스테파노기숙사",
+                    "category": "dormitory",
+                    "aliases": ["K관"],
+                    "description": "기숙사 생활시설 건물",
+                    "latitude": 37.48516,
+                    "longitude": 126.80323,
+                    "opening_hours": {},
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "slug": "kim-sou-hwan-hall",
+                    "name": "김수환관",
+                    "category": "building",
+                    "aliases": ["김수환", "K관"],
+                    "description": "강의실과 연구실이 있는 건물",
+                    "latitude": 37.48630,
+                    "longitude": 126.80120,
+                    "opening_hours": {},
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+        replace_campus_facilities(
+            conn,
+            [
+                {
+                    "facility_name": "교내복사실",
+                    "category": "복사실",
+                    "phone": "02-2164-4725",
+                    "location_text": "K관 1층",
+                    "hours_text": "평일 08:50~19:00 (토/일/공휴일휴무)",
+                    "place_slug": "kim-sou-hwan-hall",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-18T10:00:00+09:00",
+                },
+                {
+                    "facility_name": "우리은행",
+                    "category": "은행",
+                    "phone": "032-342-2641",
+                    "location_text": "K관 1층",
+                    "hours_text": "평일 09:00~16:00 (토,일/공휴일휴무)",
+                    "place_slug": "kim-sou-hwan-hall",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-18T10:00:00+09:00",
+                },
+                {
+                    "facility_name": "트러스트짐",
+                    "category": "피트니스센터",
+                    "phone": "032-342-5406",
+                    "location_text": "K관 1층",
+                    "hours_text": "평일 07:00~22:30 토 09:30~18:00 (일/공휴일휴무)",
+                    "place_slug": "kim-sou-hwan-hall",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-18T10:00:00+09:00",
+                },
+            ],
+        )
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        copy_room = _tool_payloads(
+            await mcp.call_tool("tool_search_places", {"query": "복사실이 어디야?", "limit": 1})
+        )[0]
+        bank = _tool_payloads(
+            await mcp.call_tool(
+                "tool_search_places",
+                {"query": "우리은행 전화번호 알려줘", "limit": 1},
+            )
+        )[0]
+        gym = _tool_payloads(
+            await mcp.call_tool("tool_search_places", {"query": "트러스트짐 어디야?", "limit": 1})
+        )[0]
+        hall = _tool_payloads(
+            await mcp.call_tool("tool_search_places", {"query": "K관 어디야?", "limit": 1})
+        )[0]
+        return copy_room, bank, gym, hall
+
+    copy_room_payload, bank_payload, gym_payload, hall_payload = asyncio.run(main())
+
+    assert copy_room_payload["slug"] == "kim-sou-hwan-hall"
+    assert copy_room_payload["matched_facility"]["name"] == "교내복사실"
+    assert copy_room_payload["matched_facility"]["location_hint"] == "K관 1층"
+
+    assert bank_payload["slug"] == "kim-sou-hwan-hall"
+    assert bank_payload["matched_facility"]["name"] == "우리은행"
+    assert bank_payload["matched_facility"]["phone"] == "032-342-2641"
+
+    assert gym_payload["slug"] == "kim-sou-hwan-hall"
+    assert gym_payload["matched_facility"]["name"] == "트러스트짐"
+
+    assert hall_payload["slug"] == "kim-sou-hwan-hall"
+    assert "matched_facility" not in hall_payload
+
+    clear_settings_cache()
+
+
 def test_mcp_public_search_restaurants_returns_compact_brand_match(app_env, monkeypatch):
     pytest.importorskip('mcp.server.fastmcp')
     init_db()

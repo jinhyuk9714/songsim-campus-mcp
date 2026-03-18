@@ -186,6 +186,25 @@ def _summarize_payload(payload: Any, *, summary_kind: str) -> Any:
             }
             for item in rows[:3]
         ]
+    if summary_kind == "places_top1_facility_host":
+        rows = payload if isinstance(payload, list) else []
+        if not rows:
+            return None
+        item = rows[0]
+        facility = item.get("matched_facility") if isinstance(item, dict) else None
+        return {
+            "slug": item.get("slug"),
+            "name": item.get("name"),
+            "category": item.get("category"),
+            "matched_facility": (
+                {
+                    "name": facility.get("name"),
+                    "location_hint": facility.get("location_hint"),
+                }
+                if isinstance(facility, dict)
+                else None
+            ),
+        }
     if summary_kind == "courses_top5":
         rows = payload if isinstance(payload, list) else []
         return [
@@ -579,6 +598,8 @@ def _payload_from_sources(
     path = row.api_request.path
     limit = _limit_from_row(row, 20)
     if path == "/places":
+        if str(row.pass_rule.get("summary_kind") or "") == "places_top1_facility_host":
+            return None
         return _search_places_from_source(row, fetched_at=captured_at, source_cache=source_cache)
     if path == "/courses":
         return _search_courses_from_source(row, fetched_at=captured_at, source_cache=source_cache)

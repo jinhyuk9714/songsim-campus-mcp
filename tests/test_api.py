@@ -1802,6 +1802,94 @@ def test_places_endpoint_normalizes_spacing_variants(client):
     assert response.json()[0]["slug"] == "central-library"
 
 
+def test_places_endpoint_promotes_canonical_parent_place_for_k_hall_facilities(client):
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                {
+                    "slug": "dormitory-stephen",
+                    "name": "스테파노기숙사",
+                    "category": "dormitory",
+                    "aliases": ["K관"],
+                    "description": "기숙사 생활시설 건물",
+                    "latitude": 37.48516,
+                    "longitude": 126.80323,
+                    "opening_hours": {},
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "slug": "kim-sou-hwan-hall",
+                    "name": "김수환관",
+                    "category": "building",
+                    "aliases": ["김수환", "K관"],
+                    "description": "강의실과 연구실이 있는 건물",
+                    "latitude": 37.48630,
+                    "longitude": 126.80120,
+                    "opening_hours": {},
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+        replace_campus_facilities(
+            conn,
+            [
+                {
+                    "facility_name": "교내복사실",
+                    "category": "복사실",
+                    "phone": "02-2164-4725",
+                    "location_text": "K관 1층",
+                    "hours_text": "평일 08:50~19:00 (토/일/공휴일휴무)",
+                    "place_slug": "kim-sou-hwan-hall",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-18T10:00:00+09:00",
+                },
+                {
+                    "facility_name": "우리은행",
+                    "category": "은행",
+                    "phone": "032-342-2641",
+                    "location_text": "K관 1층",
+                    "hours_text": "평일 09:00~16:00 (토,일/공휴일휴무)",
+                    "place_slug": "kim-sou-hwan-hall",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-18T10:00:00+09:00",
+                },
+                {
+                    "facility_name": "트러스트짐",
+                    "category": "피트니스센터",
+                    "phone": "032-342-5406",
+                    "location_text": "K관 1층",
+                    "hours_text": "평일 07:00~22:30 토 09:30~18:00 (일/공휴일휴무)",
+                    "place_slug": "kim-sou-hwan-hall",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-18T10:00:00+09:00",
+                },
+            ],
+        )
+
+    for query, facility_name in {
+        "복사실이 어디야?": "교내복사실",
+        "우리은행 전화번호 알려줘": "우리은행",
+        "트러스트짐 어디야?": "트러스트짐",
+    }.items():
+        response = client.get("/places", params={"query": query, "limit": 1})
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload[0]["slug"] == "kim-sou-hwan-hall"
+        assert payload[0]["matched_facility"]["name"] == facility_name
+        assert payload[0]["matched_facility"]["location_hint"] == "K관 1층"
+
+    k_hall_response = client.get("/places", params={"query": "K관 어디야?", "limit": 1})
+    assert k_hall_response.status_code == 200
+    assert k_hall_response.json()[0]["slug"] == "kim-sou-hwan-hall"
+    assert k_hall_response.json()[0].get("matched_facility") is None
+
+
 def test_courses_endpoint_normalizes_spacing_variants(client):
     response = client.get("/courses", params={"query": "객체 지향", "year": 2026, "semester": 1})
 

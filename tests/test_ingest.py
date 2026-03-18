@@ -356,6 +356,40 @@ def test_facility_hours_parser_extracts_cards_and_table_rows():
     assert market["hours_text"].endswith("(야간 무인으로 24시간 운영)")
 
 
+def test_facility_parser_handles_table_rows_with_missing_phone():
+    source = CampusFacilitiesSource("https://www.catholic.ac.kr/ko/campuslife/restaurant.do")
+
+    html = """
+    <div class="content-box restaurant">
+      <div class="table-wrap">
+        <table>
+          <tr>
+            <th>업종</th>
+            <th>매장명</th>
+            <th>전화번호</th>
+            <th>위치</th>
+            <th>운영시간</th>
+          </tr>
+          <tr>
+            <td class="txt-center">편의점</td>
+            <td class="txt-center">시범시설</td>
+            <td class="txt-center"></td>
+            <td class="txt-center">학생회관 2층</td>
+            <td>평일 09:00~18:00</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+    """
+
+    rows = source.parse(html, fetched_at="2026-03-13T09:00:00+09:00")
+
+    assert rows[0]["facility_name"] == "시범시설"
+    assert rows[0]["phone"] is None
+    assert rows[0]["location"] == "학생회관 2층"
+    assert rows[0]["hours_text"] == "평일 09:00~18:00"
+
+
 def test_transport_parser_extracts_modes_summaries_and_steps():
     source = TransportGuideSource("https://www.catholic.ac.kr/ko/about/location_songsim.do")
 
