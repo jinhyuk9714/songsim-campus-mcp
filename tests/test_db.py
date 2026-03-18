@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+import songsim_campus.db as db_module
 from songsim_campus.db import connection, get_connection, init_db
 
 
@@ -118,3 +121,43 @@ def test_init_db_creates_postgis_schema(app_env):
     assert library_seat_synced["data_type"] == "timestamp with time zone"
     assert geom_index["indexname"] == "idx_restaurants_geom"
     assert course_room_index["indexname"] == "idx_courses_year_semester_room"
+
+
+def test_init_db_acquires_schema_lock_before_running_statements(monkeypatch, tmp_path):
+    schema_path = tmp_path / "schema.sql"
+    schema_path.write_text(
+        "CREATE TABLE IF NOT EXISTS alpha (id integer);"
+        "CREATE TABLE IF NOT EXISTS beta (id integer);",
+        encoding="utf-8",
+    )
+    executed: list[str] = []
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            self.close()
+            return False
+
+        def execute(self, statement, params=None):
+            executed.append(statement if params is None else f"{statement}::{params!r}")
+            return self
+
+        def commit(self):
+            executed.append("COMMIT")
+
+        def close(self):
+            executed.append("CLOSE")
+
+    fake_conn = FakeConnection()
+
+    monkeypatch.setattr(db_module, "SCHEMA_PATH", Path(schema_path))
+    monkeypatch.setattr(db_module, "get_connection", lambda: fake_conn)
+
+    init_db()
+
+    assert executed[0].startswith("SELECT pg_advisory_lock(")
+    assert "CREATE TABLE IF NOT EXISTS alpha (id integer)" in executed[1]
+    assert "CREATE TABLE IF NOT EXISTS beta (id integer)" in executed[2]
+    assert executed[-2:] == ["COMMIT", "CLOSE"]

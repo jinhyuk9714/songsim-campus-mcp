@@ -10,6 +10,7 @@ from psycopg.rows import dict_row
 from .settings import get_settings
 
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
+SCHEMA_INIT_LOCK_KEY = 608_489_971_338_014_235
 
 
 def get_connection() -> psycopg.Connection:
@@ -24,6 +25,8 @@ def init_db() -> None:
     schema = SCHEMA_PATH.read_text(encoding="utf-8")
     statements = [item.strip() for item in schema.split(";") if item.strip()]
     with get_connection() as conn:
+        # Serialize schema bootstrap so API/MCP cold starts don't race on CREATE TABLE.
+        conn.execute("SELECT pg_advisory_lock(%s)", (SCHEMA_INIT_LOCK_KEY,))
         for statement in statements:
             conn.execute(statement)
         conn.commit()
