@@ -5,7 +5,6 @@ import json
 import logging
 import math
 import re
-import threading
 import unicodedata
 import uuid
 from copy import deepcopy
@@ -18,7 +17,7 @@ from typing import Any, Protocol
 import httpx
 from pypdf import PdfReader
 
-from . import repo
+from . import ops_runtime, repo
 from .db import DBConnection, connection, get_connection
 from .ingest.kakao_places import (
     KakaoLocalClient,
@@ -52,7 +51,6 @@ from .schemas import (
     AcademicSupportGuide,
     AutomationJobObservability,
     AutomationObservability,
-    CacheObservability,
     CampusDiningMenu,
     CertificateGuide,
     Course,
@@ -81,7 +79,6 @@ from .schemas import (
     Restaurant,
     RestaurantSearchResult,
     ScholarshipGuide,
-    SyncObservability,
     SyncRun,
     TransportGuide,
     WifiGuide,
@@ -200,9 +197,9 @@ CLASS_PERIODS = [
 ]
 
 logger = logging.getLogger(__name__)
-OBSERVABILITY_EVENT_LIMIT = 10
-READINESS_CACHE_TTL_SECONDS = 30
-READINESS_CACHE_MAX_STALE_SECONDS = 600
+OBSERVABILITY_EVENT_LIMIT = ops_runtime.OBSERVABILITY_EVENT_LIMIT
+READINESS_CACHE_TTL_SECONDS = ops_runtime.READINESS_CACHE_TTL_SECONDS
+READINESS_CACHE_MAX_STALE_SECONDS = ops_runtime.READINESS_CACHE_MAX_STALE_SECONDS
 EMPTY_CLASSROOM_ESTIMATE_NOTE = (
     "공식 시간표 기준 예상 공실입니다. 실시간 점유는 반영되지 않습니다."
 )
@@ -321,55 +318,31 @@ def _academic_calendar_priority(event: AcademicCalendarEvent) -> tuple[int, str,
 
 
 def _new_observability_state(process_started_at: str | None = None) -> dict[str, Any]:
-    return {
-        "process_started_at": process_started_at or _now_iso(),
-        "cache": {
-            "fresh_hit": 0,
-            "stale_hit": 0,
-            "live_fetch_success": 0,
-            "live_fetch_error": 0,
-            "local_fallback": 0,
-            "restaurant_hours_fresh_hit": 0,
-            "restaurant_hours_stale_hit": 0,
-            "restaurant_hours_live_fetch_success": 0,
-            "restaurant_hours_live_fetch_error": 0,
-            "recent_events": [],
-        },
-        "sync": {
-            "recent_events": [],
-            "last_failure_at": None,
-            "last_failure_message": None,
-        },
-        "automation": {
-            "leader": False,
-        },
-    }
+    return ops_runtime._new_observability_state(
+        process_started_at=process_started_at or _now_iso()
+    )
 
 
-_OBSERVABILITY_STATE = _new_observability_state()
-_READINESS_CACHE_LOCK = threading.Lock()
-_READINESS_CACHE: dict[tuple[str, str], dict[str, Any]] = {}
-_READINESS_REFRESH_IN_PROGRESS: set[tuple[str, str]] = set()
+_OBSERVABILITY_STATE = ops_runtime._OBSERVABILITY_STATE
+_READINESS_CACHE_LOCK = ops_runtime._READINESS_CACHE_LOCK
+_READINESS_CACHE = ops_runtime._READINESS_CACHE
+_READINESS_REFRESH_IN_PROGRESS = ops_runtime._READINESS_REFRESH_IN_PROGRESS
 
 
 def reset_observability_state() -> None:
-    global _OBSERVABILITY_STATE
-    _OBSERVABILITY_STATE = _new_observability_state()
+    ops_runtime.reset_observability_state(process_started_at=_now_iso())
 
 
 def reset_readiness_cache() -> None:
-    with _READINESS_CACHE_LOCK:
-        _READINESS_CACHE.clear()
-        _READINESS_REFRESH_IN_PROGRESS.clear()
+    ops_runtime.reset_readiness_cache()
 
 
 def set_automation_leader(is_leader: bool) -> None:
-    _OBSERVABILITY_STATE["automation"]["leader"] = is_leader
+    ops_runtime.set_automation_leader(is_leader)
 
 
 def _prepend_observability_event(items: list[dict[str, Any]], payload: dict[str, Any]) -> None:
-    items.insert(0, payload)
-    del items[OBSERVABILITY_EVENT_LIMIT:]
+    ops_runtime.prepend_observability_event(items, payload)
 
 
 def _record_cache_decision(
@@ -380,32 +353,14 @@ def _record_cache_decision(
     radius_meters: int,
     error_text: str | None = None,
 ) -> None:
-    cache_state = _OBSERVABILITY_STATE["cache"]
-    if decision in {
-        "fresh_hit",
-        "stale_hit",
-        "live_fetch_success",
-        "live_fetch_error",
-        "local_fallback",
-    }:
-        cache_state[decision] += 1
-    event = {
-        "decision": decision,
-        "origin_slug": origin_slug,
-        "kakao_query": kakao_query,
-        "radius_meters": radius_meters,
-        "occurred_at": _now_iso(),
-        "error_text": error_text,
-    }
-    _prepend_observability_event(cache_state["recent_events"], event)
-    logger.info(
-        "event=restaurant_cache_decision decision=%s origin_slug=%s kakao_query=%s "
-        "radius_meters=%s error_text=%s",
-        decision,
-        origin_slug,
-        kakao_query,
-        radius_meters,
-        error_text or "",
+    ops_runtime.record_cache_decision(
+        decision=decision,
+        origin_slug=origin_slug,
+        kakao_query=kakao_query,
+        radius_meters=radius_meters,
+        occurred_at=_now_iso(),
+        logger=logger,
+        error_text=error_text,
     )
 
 
@@ -416,30 +371,13 @@ def _record_hours_cache_decision(
     source_url: str | None,
     error_text: str | None = None,
 ) -> None:
-    cache_state = _OBSERVABILITY_STATE["cache"]
-    if decision in {
-        "restaurant_hours_fresh_hit",
-        "restaurant_hours_stale_hit",
-        "restaurant_hours_live_fetch_success",
-        "restaurant_hours_live_fetch_error",
-    }:
-        cache_state[decision] += 1
-    event = {
-        "decision": decision,
-        "origin_slug": "-",
-        "kakao_query": source_url or "-",
-        "radius_meters": kakao_place_id,
-        "occurred_at": _now_iso(),
-        "error_text": error_text,
-    }
-    _prepend_observability_event(cache_state["recent_events"], event)
-    logger.info(
-        "event=restaurant_hours_cache_decision decision=%s kakao_place_id=%s "
-        "source_url=%s error_text=%s",
-        decision,
-        kakao_place_id,
-        source_url or "",
-        error_text or "",
+    ops_runtime.record_hours_cache_decision(
+        decision=decision,
+        kakao_place_id=kakao_place_id,
+        source_url=source_url,
+        occurred_at=_now_iso(),
+        logger=logger,
+        error_text=error_text,
     )
 
 
@@ -453,48 +391,20 @@ def _record_sync_result(
     summary: dict[str, int] | None = None,
     error_text: str | None = None,
 ) -> None:
-    sync_state = _OBSERVABILITY_STATE["sync"]
-    started = datetime.fromisoformat(started_at)
-    finished = datetime.fromisoformat(finished_at)
-    event = {
-        "target": target,
-        "trigger": trigger,
-        "status": status,
-        "started_at": started_at,
-        "finished_at": finished_at,
-        "duration_ms": max(0, int((finished - started).total_seconds() * 1000)),
-        "summary": summary or {},
-        "error_text": error_text,
-    }
-    _prepend_observability_event(sync_state["recent_events"], event)
-    failed_event_name = "automation_job_failed" if trigger == "automation" else "admin_sync_failed"
-    completed_event_name = (
-        "automation_job_completed" if trigger == "automation" else "admin_sync_completed"
+    ops_runtime.record_sync_result(
+        target=target,
+        trigger=trigger,
+        status=status,
+        started_at=started_at,
+        finished_at=finished_at,
+        logger=logger,
+        summary=summary,
+        error_text=error_text,
     )
-    if status == "failed":
-        sync_state["last_failure_at"] = finished_at
-        sync_state["last_failure_message"] = error_text
-        logger.error(
-            "event=%s target=%s trigger=%s duration_ms=%s error_text=%s",
-            failed_event_name,
-            target,
-            trigger,
-            event["duration_ms"],
-            error_text or "",
-        )
-    else:
-        logger.info(
-            "event=%s target=%s trigger=%s duration_ms=%s summary=%s",
-            completed_event_name,
-            target,
-            trigger,
-            event["duration_ms"],
-            json.dumps(summary or {}, ensure_ascii=False),
-        )
 
 
 def _readiness_cache_key(settings: Any) -> tuple[str, str]:
-    return (settings.app_mode, settings.database_url)
+    return ops_runtime.readiness_cache_key(settings)
 
 
 def _cache_readiness_snapshot(
@@ -503,38 +413,19 @@ def _cache_readiness_snapshot(
     fetched_at: datetime,
     snapshot: dict[str, Any],
 ) -> dict[str, Any]:
-    cached_snapshot = deepcopy(snapshot)
-    entry = {
-        "fetched_at": fetched_at,
-        "snapshot": cached_snapshot,
-    }
-    _READINESS_CACHE[cache_key] = entry
-    return entry
-
-
-def _readiness_snapshot_has_runtime_errors(snapshot: dict[str, Any]) -> bool:
-    database = snapshot.get("database", {})
-    if isinstance(database, dict) and database.get("error"):
-        return True
-    tables = snapshot.get("tables", {})
-    if not isinstance(tables, dict):
-        return False
-    return any(
-        isinstance(item, dict) and bool(item.get("error"))
-        for item in tables.values()
+    return ops_runtime.cache_readiness_snapshot(
+        cache_key,
+        fetched_at=fetched_at,
+        snapshot=snapshot,
     )
 
 
+def _readiness_snapshot_has_runtime_errors(snapshot: dict[str, Any]) -> bool:
+    return ops_runtime.readiness_snapshot_has_runtime_errors(snapshot)
+
+
 def _readiness_failure_reason(snapshot: dict[str, Any]) -> str:
-    database = snapshot.get("database", {})
-    if isinstance(database, dict) and database.get("error"):
-        return str(database["error"])
-    tables = snapshot.get("tables", {})
-    if isinstance(tables, dict):
-        for name, item in tables.items():
-            if isinstance(item, dict) and item.get("error"):
-                return f"{name}: {item['error']}"
-    return "unknown"
+    return ops_runtime.readiness_failure_reason(snapshot)
 
 
 def _compute_and_store_readiness_snapshot(
@@ -550,9 +441,11 @@ def _compute_and_store_readiness_snapshot(
     )
     snapshot = _compute_readiness_snapshot(settings)
     fetched_at = _now()
-    with _READINESS_CACHE_LOCK:
-        _cache_readiness_snapshot(cache_key, fetched_at=fetched_at, snapshot=snapshot)
-        _READINESS_REFRESH_IN_PROGRESS.discard(cache_key)
+    ops_runtime.store_readiness_snapshot(
+        cache_key,
+        fetched_at=fetched_at,
+        snapshot=snapshot,
+    )
     if _readiness_snapshot_has_runtime_errors(snapshot):
         logger.warning(
             "event=readiness_refresh_failed background=%s app_mode=%s error=%s",
@@ -585,8 +478,12 @@ def _refresh_readiness_snapshot_in_background(
             )
             return
         fetched_at = _now()
-        with _READINESS_CACHE_LOCK:
-            _cache_readiness_snapshot(cache_key, fetched_at=fetched_at, snapshot=snapshot)
+        ops_runtime.store_readiness_snapshot(
+            cache_key,
+            fetched_at=fetched_at,
+            snapshot=snapshot,
+            clear_refresh_flag=False,
+        )
         logger.info(
             "event=readiness_refresh_succeeded background=%s app_mode=%s ok=%s",
             True,
@@ -601,8 +498,7 @@ def _refresh_readiness_snapshot_in_background(
             exc,
         )
     finally:
-        with _READINESS_CACHE_LOCK:
-            _READINESS_REFRESH_IN_PROGRESS.discard(cache_key)
+        ops_runtime.clear_readiness_refresh_flag(cache_key)
 
 
 def _start_background_readiness_refresh(
@@ -614,12 +510,10 @@ def _start_background_readiness_refresh(
         True,
         settings.app_mode,
     )
-    thread = threading.Thread(
+    ops_runtime.start_background_readiness_refresh(
         target=_refresh_readiness_snapshot_in_background,
         args=(cache_key, settings),
-        daemon=True,
     )
-    thread.start()
 
 
 def _rollback_readiness_connection(conn: DBConnection) -> None:
@@ -646,36 +540,27 @@ def _compute_readiness_snapshot(settings: Any) -> dict[str, Any]:
 
     try:
         readiness["database"] = {"ok": True, "error": None}
-        for table in SYNC_DATASET_TABLES:
-            try:
-                item = repo.get_dataset_sync_state(conn, table)
-                policy = PUBLIC_READY_DATASET_POLICIES.get(table, "optional")
-                table_state = {"ok": True, "policy": policy, **item}
-                if (
-                    public_readonly
-                    and policy == "core"
-                    and (
-                        not item.get("row_count")
-                        or item.get("last_synced_at") is None
-                    )
-                ):
-                    readiness["ok"] = False
-                    table_state["ok"] = False
-                    table_state["reason"] = "empty_or_unsynced"
-                readiness["tables"][table] = table_state
-            except Exception as exc:
-                readiness["ok"] = False
-                readiness["tables"][table] = {"ok": False, "error": str(exc)}
-                logger.warning("event=readiness_check_failed check=%s error=%s", table, exc)
-                _rollback_readiness_connection(conn)
-        try:
-            repo.list_sync_runs(conn, limit=1)
-            readiness["tables"]["sync_runs"] = {"ok": True}
-        except Exception as exc:
-            readiness["ok"] = False
-            readiness["tables"]["sync_runs"] = {"ok": False, "error": str(exc)}
-            logger.warning("event=readiness_check_failed check=sync_runs error=%s", exc)
-            _rollback_readiness_connection(conn)
+        dataset_states, datasets_ok = ops_runtime.collect_dataset_sync_states(
+            conn,
+            tables=SYNC_DATASET_TABLES,
+            public_readonly=public_readonly,
+            dataset_policies=PUBLIC_READY_DATASET_POLICIES,
+            capture_errors=True,
+            rollback_connection=_rollback_readiness_connection,
+            logger=logger,
+            error_event_name="readiness_check_failed",
+        )
+        readiness["tables"].update(dataset_states)
+        readiness["ok"] = readiness["ok"] and datasets_ok
+        sync_runs_state, sync_runs_ok = ops_runtime.collect_sync_runs_table_state(
+            conn,
+            capture_errors=True,
+            rollback_connection=_rollback_readiness_connection,
+            logger=logger,
+            error_event_name="readiness_check_failed",
+        )
+        readiness["tables"]["sync_runs"] = sync_runs_state
+        readiness["ok"] = readiness["ok"] and sync_runs_ok
     finally:
         _rollback_readiness_connection(conn)
         conn.close()
@@ -689,25 +574,12 @@ def _compute_readiness_snapshot(settings: Any) -> dict[str, Any]:
 def get_readiness_snapshot() -> dict[str, Any]:
     settings = get_settings()
     cache_key = _readiness_cache_key(settings)
-    ttl = timedelta(seconds=READINESS_CACHE_TTL_SECONDS)
-    max_stale = timedelta(seconds=READINESS_CACHE_MAX_STALE_SECONDS)
-    start_background_refresh = False
     current = _now()
-    with _READINESS_CACHE_LOCK:
-        cached = _READINESS_CACHE.get(cache_key)
-        if cached is not None and current - cached["fetched_at"] < ttl:
-            return deepcopy(cached["snapshot"])
-        if (
-            cached is not None
-            and current - cached["fetched_at"] <= max_stale
-            and not _readiness_snapshot_has_runtime_errors(cached["snapshot"])
-        ):
-            if cache_key not in _READINESS_REFRESH_IN_PROGRESS:
-                _READINESS_REFRESH_IN_PROGRESS.add(cache_key)
-                start_background_refresh = True
-            snapshot = deepcopy(cached["snapshot"])
-        else:
-            snapshot = None
+    snapshot, start_background_refresh = ops_runtime.get_cached_readiness_snapshot(
+        cache_key,
+        current=current,
+        is_snapshot_error=_readiness_snapshot_has_runtime_errors,
+    )
 
     if snapshot is not None:
         if start_background_refresh:
@@ -728,38 +600,29 @@ def get_observability_snapshot(
     *,
     runs_limit: int = 20,
 ) -> ObservabilitySnapshot:
-    state = deepcopy(_OBSERVABILITY_STATE)
-    return ObservabilitySnapshot(
-        process_started_at=state["process_started_at"],
-        cache=CacheObservability.model_validate(state["cache"]),
-        sync=SyncObservability.model_validate(state["sync"]),
-        automation=get_automation_status(conn),
-        datasets=[repo.get_dataset_sync_state(conn, table) for table in SYNC_DATASET_TABLES],
-        recent_sync_runs=list_sync_runs(conn, limit=runs_limit),
+    settings = get_settings()
+    return ops_runtime.build_observability_snapshot(
+        conn,
+        runs_limit=runs_limit,
+        now=_coerce_datetime(),
+        public_readonly=settings.app_mode == "public_readonly",
+        tables=SYNC_DATASET_TABLES,
+        dataset_policies=PUBLIC_READY_DATASET_POLICIES,
+        list_sync_runs_fn=list_sync_runs,
     )
 
 
 def _automation_interval_minutes(target: str) -> int:
-    settings = get_settings()
-    if target == "snapshot":
-        return settings.automation_snapshot_interval_minutes
-    if target == "library_seat_prewarm":
-        return settings.library_seat_prewarm_interval_minutes
-    if target == "cache_cleanup":
-        return settings.automation_cache_cleanup_interval_minutes
-    raise InvalidRequestError(f"Unsupported automation target: {target}")
+    try:
+        return ops_runtime.automation_interval_minutes(target)
+    except ValueError as exc:
+        raise InvalidRequestError(str(exc)) from exc
 
 
 def _sync_run_completed_at(run: dict[str, Any] | SyncRun | None) -> str | None:
-    if run is None:
-        return None
-    if isinstance(run, dict):
-        finished_at = run.get("finished_at")
-        started_at = run.get("started_at")
-    else:
-        finished_at = run.finished_at
-        started_at = run.started_at
-    return finished_at or started_at
+    if isinstance(run, SyncRun):
+        return run.finished_at or run.started_at
+    return ops_runtime.sync_run_completed_at(run)
 
 
 def _automation_job_snapshot(
@@ -768,27 +631,10 @@ def _automation_job_snapshot(
     target: str,
     now: datetime | None = None,
 ) -> AutomationJobObservability:
-    current = _coerce_datetime(now)
-    latest = repo.get_latest_sync_run(conn, target=target, trigger="automation")
-    latest_success = repo.get_latest_sync_run(
+    return ops_runtime.automation_job_snapshot(
         conn,
         target=target,
-        trigger="automation",
-        status="success",
-    )
-    interval_minutes = _automation_interval_minutes(target)
-    latest_success_at = _sync_run_completed_at(latest_success)
-    if latest_success_at:
-        next_due = datetime.fromisoformat(latest_success_at) + timedelta(minutes=interval_minutes)
-        next_due_at = next_due.isoformat(timespec="seconds")
-    else:
-        next_due_at = current.isoformat(timespec="seconds")
-    return AutomationJobObservability(
-        name=target,
-        interval_minutes=interval_minutes,
-        last_run_at=_sync_run_completed_at(latest),
-        last_status=(latest or {}).get("status") if latest else None,
-        next_due_at=next_due_at,
+        now=_coerce_datetime(now),
     )
 
 
@@ -797,27 +643,24 @@ def get_automation_status(
     *,
     now: datetime | None = None,
 ) -> AutomationObservability:
-    settings = get_settings()
-    return AutomationObservability(
-        enabled=settings.automation_enabled,
-        leader=bool(_OBSERVABILITY_STATE["automation"]["leader"]),
-        jobs=[
-            _automation_job_snapshot(conn, target=target, now=now)
-            for target in ("snapshot", "library_seat_prewarm", "cache_cleanup")
-        ],
+    return ops_runtime.get_automation_status(
+        conn,
+        now=_coerce_datetime(now),
     )
 
 
 def try_acquire_automation_leader(conn: DBConnection) -> bool:
-    locked = repo.try_advisory_lock(conn, AUTOMATION_LOCK_KEY)
-    set_automation_leader(locked)
-    return locked
+    return ops_runtime.try_acquire_automation_leader(
+        conn,
+        lock_key=AUTOMATION_LOCK_KEY,
+    )
 
 
 def release_automation_leader(conn: DBConnection) -> bool:
-    unlocked = repo.release_advisory_lock(conn, AUTOMATION_LOCK_KEY)
-    set_automation_leader(False)
-    return unlocked
+    return ops_runtime.release_automation_leader(
+        conn,
+        lock_key=AUTOMATION_LOCK_KEY,
+    )
 
 
 def _is_automation_job_due(
@@ -826,8 +669,11 @@ def _is_automation_job_due(
     target: str,
     now: datetime | None = None,
 ) -> bool:
-    snapshot = _automation_job_snapshot(conn, target=target, now=now)
-    return _coerce_datetime(now) >= datetime.fromisoformat(snapshot.next_due_at or _now_iso())
+    return ops_runtime.is_automation_job_due(
+        conn,
+        target=target,
+        now=_coerce_datetime(now),
+    )
 
 
 def _current_year_and_semester(now: datetime | None = None) -> tuple[int, int]:
@@ -3862,8 +3708,16 @@ def get_sync_dashboard_state(
     *,
     runs_limit: int = 20,
 ) -> dict[str, Any]:
+    settings = get_settings()
+    dataset_states, _ = ops_runtime.collect_dataset_sync_states(
+        conn,
+        tables=SYNC_DATASET_TABLES,
+        public_readonly=settings.app_mode == "public_readonly",
+        dataset_policies=PUBLIC_READY_DATASET_POLICIES,
+        capture_errors=False,
+    )
     return {
-        "datasets": [repo.get_dataset_sync_state(conn, table) for table in SYNC_DATASET_TABLES],
+        "datasets": ops_runtime.observability_dataset_payloads(dataset_states),
         "recent_runs": list_sync_runs(conn, limit=runs_limit),
         "automation": get_automation_status(conn),
     }
