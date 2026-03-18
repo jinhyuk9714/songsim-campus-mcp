@@ -32,6 +32,7 @@ def test_run_admin_sync_records_success_history_for_snapshot(app_env, monkeypatc
             "notices": 7,
             "certificate_guides": 2,
             "leave_of_absence_guides": 4,
+            "academic_status_guides": 3,
             "scholarship_guides": 4,
             "academic_support_guides": 3,
             "transport_guides": 1,
@@ -50,6 +51,7 @@ def test_run_admin_sync_records_success_history_for_snapshot(app_env, monkeypatc
         "notices": 7,
         "certificate_guides": 2,
         "leave_of_absence_guides": 4,
+        "academic_status_guides": 3,
         "scholarship_guides": 4,
         "academic_support_guides": 3,
         "transport_guides": 1,
@@ -98,6 +100,10 @@ def test_run_admin_sync_dispatches_target_specific_parameters(app_env, monkeypat
         seen["scholarship_guides"] = {"fetched_at": fetched_at}
         return []
 
+    def fake_academic_status_guides(conn, *, fetched_at: str | None = None, sources=None):
+        seen["academic_status_guides"] = {"fetched_at": fetched_at}
+        return []
+
     def fake_academic_support_guides(conn, *, fetched_at: str | None = None, source=None):
         seen["academic_support_guides"] = {"fetched_at": fetched_at}
         return []
@@ -136,6 +142,10 @@ def test_run_admin_sync_dispatches_target_specific_parameters(app_env, monkeypat
         fake_scholarship_guides,
     )
     monkeypatch.setattr(
+        "songsim_campus.services.refresh_academic_status_guides_from_source",
+        fake_academic_status_guides,
+    )
+    monkeypatch.setattr(
         "songsim_campus.services.refresh_academic_support_guides_from_source",
         fake_academic_support_guides,
     )
@@ -147,6 +157,7 @@ def test_run_admin_sync_dispatches_target_specific_parameters(app_env, monkeypat
     places_run = run_admin_sync(target="places", campus="9")
     dining_run = run_admin_sync(target="dining_menus")
     leave_run = run_admin_sync(target="leave_of_absence_guides")
+    status_run = run_admin_sync(target="academic_status_guides")
     scholarship_run = run_admin_sync(target="scholarship_guides")
     library_run = run_admin_sync(target="library_seat_status")
     support_run = run_admin_sync(target="academic_support_guides")
@@ -156,6 +167,7 @@ def test_run_admin_sync_dispatches_target_specific_parameters(app_env, monkeypat
     assert places_run.summary == {"places": 0}
     assert dining_run.summary == {"dining_menus": 0}
     assert leave_run.summary == {"leave_of_absence_guides": 0}
+    assert status_run.summary == {"academic_status_guides": 0}
     assert scholarship_run.summary == {"scholarship_guides": 0}
     assert support_run.summary == {"academic_support_guides": 0}
     assert library_run.summary == {"library_seat_status": 1}
@@ -164,6 +176,7 @@ def test_run_admin_sync_dispatches_target_specific_parameters(app_env, monkeypat
     assert seen["places"] == {"campus": "9", "fetched_at": None}
     assert seen["dining_menus"] == {"fetched_at": None}
     assert seen["leave_of_absence_guides"] == {"fetched_at": None}
+    assert seen["academic_status_guides"] == {"fetched_at": None}
     assert seen["scholarship_guides"] == {"fetched_at": None}
     assert seen["academic_support_guides"] == {"fetched_at": None}
     assert seen["library_seat_status"] == {"fetched_at": None}
@@ -264,6 +277,7 @@ def test_get_sync_dashboard_state_reports_row_counts_and_last_synced(app_env):
     assert datasets["campus_dining_menus"]["row_count"] == 0
     assert datasets["certificate_guides"]["row_count"] == 0
     assert datasets["leave_of_absence_guides"]["row_count"] == 0
+    assert datasets["academic_status_guides"]["row_count"] == 0
     assert datasets["scholarship_guides"]["row_count"] == 0
     assert datasets["academic_support_guides"]["row_count"] == 0
     assert datasets["notices"]["row_count"] > 0
@@ -272,6 +286,7 @@ def test_get_sync_dashboard_state_reports_row_counts_and_last_synced(app_env):
     assert datasets["campus_dining_menus"]["last_synced_at"] is None
     assert datasets["certificate_guides"]["last_synced_at"] is None
     assert datasets["leave_of_absence_guides"]["last_synced_at"] is None
+    assert datasets["academic_status_guides"]["last_synced_at"] is None
     assert datasets["scholarship_guides"]["last_synced_at"] is None
     assert datasets["academic_support_guides"]["last_synced_at"] is None
     assert datasets["transport_guides"]["last_synced_at"] is None

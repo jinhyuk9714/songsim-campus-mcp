@@ -1093,6 +1093,131 @@ class LeaveOfAbsenceGuideSource:
         return _normalize_note_text(" ".join(parts))
 
 
+def _extract_alert_steps(box) -> list[str]:
+    steps: list[str] = []
+    for node in box.select(".alert-txt li, .alert-txt p, p.alert-txt"):
+        text = _normalize_note_text(node.get_text(" ", strip=True))
+        if text:
+            steps.append(text)
+    return _unique(steps)
+
+
+def _extract_con_box_paragraph_steps(box) -> list[str]:
+    steps: list[str] = []
+    for node in box.find_all(["p", "div"], recursive=False):
+        classes = set(node.get("class", []))
+        if {"h4-tit01", "h3-tit01"} & classes:
+            continue
+        if {"alert-txt", "link-box", "table-wrap"} & classes:
+            continue
+        if node.find("table", recursive=False):
+            continue
+        text = _normalize_note_text(node.get_text(" ", strip=True))
+        if text:
+            steps.append(text)
+    return _unique(steps)
+
+
+def _normalize_academic_status_title(title: str) -> str:
+    normalized = _clean_text(title)
+    if normalized.startswith("자퇴 신청 방법"):
+        return "자퇴 신청 방법"
+    return normalized
+
+
+def _parse_academic_status_sections(
+    html: str,
+    *,
+    base_url: str,
+    source_tag: str,
+    status: str,
+    fetched_at: str,
+) -> list[dict]:
+    soup = BeautifulSoup(html, "html.parser")
+    root = soup.select_one(".content-box") or soup
+    boxes = root.find_all("div", class_="con-box", recursive=False)
+    rows: list[dict] = []
+    for box in boxes:
+        title_node = box.select_one(".h4-tit01") or box.select_one(".h3-tit01")
+        title = _normalize_academic_status_title(
+            title_node.get_text(" ", strip=True) if title_node else ""
+        )
+        if not title:
+            continue
+        steps = _extract_con_box_paragraph_steps(box)
+        steps.extend(LeaveOfAbsenceGuideSource._extract_nested_list_steps(box.select_one("ul")))
+        table = box.select_one("table")
+        if table is not None:
+            steps.extend(_extract_table_steps(table))
+        steps.extend(_extract_alert_steps(box))
+        steps = _unique(steps)
+        summary = steps[0] if steps else ""
+        rows.append(
+            {
+                "status": status,
+                "title": title,
+                "summary": summary,
+                "steps": steps,
+                "links": _extract_link_items(box.select_one(".link-box") or box, base_url=base_url),
+                "source_url": base_url,
+                "source_tag": source_tag,
+                "last_synced_at": fetched_at,
+            }
+        )
+    return rows
+
+
+class AcademicStatusGuideSourceBase:
+    """Shared parser for the academic-status guide family."""
+
+    source_tag = "cuk_academic_status_guides"
+    status = ""
+
+    def __init__(self, url: str):
+        self.url = url
+
+    def fetch(self) -> str:
+        response = httpx.get(self.url, timeout=20)
+        response.raise_for_status()
+        return response.text
+
+    def parse(self, html: str, *, fetched_at: str) -> list[dict]:
+        return _parse_academic_status_sections(
+            html,
+            base_url=self.url,
+            source_tag=self.source_tag,
+            status=self.status,
+            fetched_at=fetched_at,
+        )
+
+
+class ReturnFromLeaveOfAbsenceGuideSource(AcademicStatusGuideSourceBase):
+    """Parser for the 복학 안내 page."""
+
+    status = "return_from_leave"
+
+    def __init__(self, url: str = "https://www.catholic.ac.kr/ko/support/return_from_leave_of_absence.do"):
+        super().__init__(url)
+
+
+class DropoutGuideSource(AcademicStatusGuideSourceBase):
+    """Parser for the 자퇴 안내 page."""
+
+    status = "dropout"
+
+    def __init__(self, url: str = "https://www.catholic.ac.kr/ko/support/dropout.do"):
+        super().__init__(url)
+
+
+class ReAdmissionGuideSource(AcademicStatusGuideSourceBase):
+    """Parser for the 재입학 안내 page."""
+
+    status = "re_admission"
+
+    def __init__(self, url: str = "https://www.catholic.ac.kr/ko/support/re_admission.do"):
+        super().__init__(url)
+
+
 class ScholarshipGuideSource:
     """Official static scholarship-guide parser for Songsim campus."""
 

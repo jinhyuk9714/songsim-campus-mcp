@@ -30,6 +30,7 @@ from songsim_campus.services import (
     get_place,
     investigate_course_query_coverage,
     list_academic_calendar,
+    list_academic_status_guides,
     list_academic_support_guides,
     list_certificate_guides,
     list_estimated_empty_classrooms,
@@ -39,6 +40,7 @@ from songsim_campus.services import (
     list_transport_guides,
     list_wifi_guides,
     refresh_academic_calendar_from_source,
+    refresh_academic_status_guides_from_source,
     refresh_academic_support_guides_from_source,
     refresh_campus_dining_menus_from_facilities_page,
     refresh_certificate_guides_from_certificate_page,
@@ -3619,6 +3621,34 @@ class FakeAcademicSupportSource:
         ]
 
 
+class FakeAcademicStatusSource:
+    def __init__(self, status: str, rows: list[dict[str, object]]):
+        self.status = status
+        self.rows = rows
+
+    def fetch(self):
+        return f"<{self.status}></{self.status}>"
+
+    def parse(self, html: str, *, fetched_at: str):
+        assert html == f"<{self.status}></{self.status}>"
+        assert fetched_at == "2026-03-17T15:00:00+09:00"
+        source_urls = {
+            "return_from_leave": "https://www.catholic.ac.kr/ko/support/return_from_leave_of_absence.do",
+            "dropout": "https://www.catholic.ac.kr/ko/support/dropout.do",
+            "re_admission": "https://www.catholic.ac.kr/ko/support/re_admission.do",
+        }
+        return [
+            {
+                **row,
+                "status": self.status,
+                "source_url": source_urls[self.status],
+                "source_tag": "cuk_academic_status_guides",
+                "last_synced_at": fetched_at,
+            }
+            for row in self.rows
+        ]
+
+
 def test_refresh_library_hours_merges_opening_hours_into_existing_place(app_env):
     init_db()
     seed_demo(force=True)
@@ -3838,6 +3868,62 @@ def test_refresh_academic_support_guides_replaces_rows(app_env):
     assert guides[0].title == "업무안내"
     assert guides[0].contacts == ["02-2164-4510", "02-2164-4288"]
     assert guides[0].source_tag == "cuk_academic_support_guides"
+
+
+def test_refresh_academic_status_guides_replaces_rows_and_filters_by_status(app_env):
+    init_db()
+
+    with connection() as conn:
+        refresh_academic_status_guides_from_source(
+            conn,
+            sources=[
+                FakeAcademicStatusSource(
+                    "return_from_leave",
+                    [
+                        {
+                            "title": "신청방법",
+                            "summary": "TRINITY 복학신청",
+                            "steps": ["TRINITY ⇒ 학적/졸업 ⇒ 복학신청"],
+                            "links": [],
+                        }
+                    ],
+                ),
+                FakeAcademicStatusSource(
+                    "dropout",
+                    [
+                        {
+                            "title": "자퇴 신청 방법",
+                            "summary": "방문신청",
+                            "steps": ["학사지원팀에 자퇴원 제출"],
+                            "links": [],
+                        }
+                    ],
+                ),
+                FakeAcademicStatusSource(
+                    "re_admission",
+                    [
+                        {
+                            "title": "지원자격",
+                            "summary": "제적 후 1년 경과",
+                            "steps": ["제적, 자퇴 후 1년이 경과한 자"],
+                            "links": [],
+                        }
+                    ],
+                ),
+            ],
+            fetched_at="2026-03-17T15:00:00+09:00",
+        )
+        guides = list_academic_status_guides(conn)
+        dropout_guides = list_academic_status_guides(conn, status="dropout")
+
+    assert len(guides) == 3
+    assert [guide.status for guide in guides] == [
+        "return_from_leave",
+        "dropout",
+        "re_admission",
+    ]
+    assert dropout_guides[0].title == "자퇴 신청 방법"
+    assert dropout_guides[0].source_tag == "cuk_academic_status_guides"
 
 
 def test_list_wifi_guides_preserves_snapshot_order_and_limit(app_env):

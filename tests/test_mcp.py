@@ -19,6 +19,7 @@ from songsim_campus.repo import (
 from songsim_campus.seed import seed_demo
 from songsim_campus.services import (
     refresh_academic_calendar_from_source,
+    refresh_academic_status_guides_from_source,
     refresh_academic_support_guides_from_source,
     refresh_certificate_guides_from_certificate_page,
     refresh_leave_of_absence_guides_from_source,
@@ -176,6 +177,33 @@ class McpAcademicSupportSource:
                 "source_tag": "cuk_academic_support_guides",
                 "last_synced_at": fetched_at,
             }
+        ]
+
+
+class McpAcademicStatusSource:
+    def __init__(self, status: str, rows: list[dict[str, object]]):
+        self.status = status
+        self.rows = rows
+
+    def fetch(self):
+        return f"<{self.status}></{self.status}>"
+
+    def parse(self, html: str, *, fetched_at: str):
+        assert html == f"<{self.status}></{self.status}>"
+        source_urls = {
+            "return_from_leave": "https://www.catholic.ac.kr/ko/support/return_from_leave_of_absence.do",
+            "dropout": "https://www.catholic.ac.kr/ko/support/dropout.do",
+            "re_admission": "https://www.catholic.ac.kr/ko/support/re_admission.do",
+        }
+        return [
+            {
+                **row,
+                "status": self.status,
+                "source_url": source_urls[self.status],
+                "source_tag": "cuk_academic_status_guides",
+                "last_synced_at": fetched_at,
+            }
+            for row in self.rows
         ]
 
 
@@ -343,6 +371,70 @@ def test_mcp_academic_support_tool_and_resource_share_service_data(app_env):
     assert tool_payload["title"] == "휴·복학"
     assert tool_payload["contacts"] == ["02-2164-4288"]
     assert resource_payload[0]["title"] == "휴·복학"
+
+
+def test_mcp_academic_status_tool_and_resource_share_service_data(app_env):
+    pytest.importorskip("mcp.server.fastmcp")
+    init_db()
+    seed_demo(force=True)
+    with connection() as conn:
+        refresh_academic_status_guides_from_source(
+            conn,
+            sources=[
+                McpAcademicStatusSource(
+                    "return_from_leave",
+                    [
+                        {
+                            "title": "신청방법",
+                            "summary": "TRINITY 복학신청",
+                            "steps": ["TRINITY ⇒ 학적/졸업 ⇒ 복학신청"],
+                            "links": [],
+                        }
+                    ],
+                ),
+                McpAcademicStatusSource(
+                    "dropout",
+                    [
+                        {
+                            "title": "자퇴 신청 방법",
+                            "summary": "방문신청",
+                            "steps": ["학사지원팀에 자퇴원 제출"],
+                            "links": [],
+                        }
+                    ],
+                ),
+                McpAcademicStatusSource(
+                    "re_admission",
+                    [
+                        {
+                            "title": "지원자격",
+                            "summary": "제적 후 1년 경과",
+                            "steps": ["제적, 자퇴 후 1년이 경과한 자"],
+                            "links": [],
+                        }
+                    ],
+                ),
+            ],
+        )
+
+    async def main():
+        mcp = build_mcp()
+        tool_result = await mcp.call_tool(
+            "tool_list_academic_status_guides",
+            {"status": "dropout", "limit": 10},
+        )
+        resource_result = await mcp.read_resource("songsim://academic-status-guide")
+        return tool_result, list(resource_result)
+
+    tool_result, resource_result = asyncio.run(main())
+
+    tool_payload = json.loads(tool_result[0].text)
+    resource_payload = json.loads(resource_result[0].content)
+
+    assert tool_payload["status"] == "dropout"
+    assert tool_payload["title"] == "자퇴 신청 방법"
+    assert tool_payload["links"] == []
+    assert resource_payload[0]["source_tag"] == "cuk_academic_status_guides"
 
 
 def test_mcp_transport_tool_accepts_query_and_mode_precedence(app_env, monkeypatch):
@@ -688,6 +780,7 @@ def test_mcp_public_readonly_mode_registers_only_read_only_tools(app_env, monkey
         "tool_search_courses",
         "tool_list_academic_calendar",
         "tool_list_academic_support_guides",
+        "tool_list_academic_status_guides",
         "tool_list_certificate_guides",
         "tool_list_leave_of_absence_guides",
         "tool_list_scholarship_guides",
@@ -706,6 +799,7 @@ def test_mcp_public_readonly_mode_registers_only_read_only_tools(app_env, monkey
     assert "songsim://source-registry" in resource_uris
     assert "songsim://academic-calendar" in resource_uris
     assert "songsim://academic-support-guide" in resource_uris
+    assert "songsim://academic-status-guide" in resource_uris
     assert "songsim://certificate-guide" in resource_uris
     assert "songsim://leave-of-absence-guide" in resource_uris
     assert "songsim://scholarship-guide" in resource_uris
@@ -746,6 +840,7 @@ def test_mcp_public_readonly_mode_registers_prompts_and_extended_resources(app_e
         "songsim://source-registry",
         "songsim://academic-calendar",
         "songsim://academic-support-guide",
+        "songsim://academic-status-guide",
         "songsim://certificate-guide",
         "songsim://leave-of-absence-guide",
         "songsim://scholarship-guide",
@@ -801,6 +896,8 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
     assert "휴복학" in tools["tool_list_academic_support_guides"]["description"]
     assert "학점교류" in tools["tool_list_academic_support_guides"]["description"]
     assert "문의처" in tools["tool_list_academic_support_guides"]["description"]
+    assert "학적변동" in tools["tool_list_academic_status_guides"]["description"]
+    assert "자퇴" in tools["tool_list_academic_status_guides"]["description"]
     assert "장학제도" in tools["tool_list_scholarship_guides"]["description"]
     assert "공식 문서" in tools["tool_list_scholarship_guides"]["description"]
     assert "무선랜" in tools["tool_list_wifi_guides"]["description"]
@@ -865,8 +962,14 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
     assert "1-12" in (
         tools["tool_list_academic_calendar"]["inputSchema"]["properties"]["month"]["description"]
     )
+    assert "return_from_leave" in (
+        tools["tool_list_academic_status_guides"]["inputSchema"]["properties"]["status"]["description"]
+    )
     assert "최대 결과 수" in (
         tools["tool_list_academic_support_guides"]["inputSchema"]["properties"]["limit"]["description"]
+    )
+    assert "최대 결과 수" in (
+        tools["tool_list_academic_status_guides"]["inputSchema"]["properties"]["limit"]["description"]
     )
     assert "최대 결과 수" in (
         tools["tool_list_certificate_guides"]["inputSchema"]["properties"]["limit"]["description"]
@@ -1024,6 +1127,7 @@ def test_mcp_public_usage_and_class_period_resources_are_readable(app_env, monke
     assert "tool_search_restaurants" in usage_content
     assert "tool_list_academic_calendar" in usage_content
     assert "tool_list_academic_support_guides" in usage_content
+    assert "tool_list_academic_status_guides" in usage_content
     assert "tool_list_scholarship_guides" in usage_content
     assert "tool_list_leave_of_absence_guides" in usage_content
     assert "tool_list_wifi_guides" in usage_content
@@ -1037,6 +1141,8 @@ def test_mcp_public_usage_and_class_period_resources_are_readable(app_env, monke
     assert "매머드커피" in usage_content
     assert "학점교류 담당 전화번호" in usage_content
     assert "휴복학 문의" in usage_content
+    assert "복학 신청 방법" in usage_content
+    assert "재입학 지원자격" in usage_content
     assert "헬스장" in usage_content
     assert "편의점" in usage_content
     assert "/gpt/" not in usage_content

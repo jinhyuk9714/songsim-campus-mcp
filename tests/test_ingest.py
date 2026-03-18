@@ -11,10 +11,13 @@ from songsim_campus.ingest.official_sources import (
     CampusMapSource,
     CertificateGuideSource,
     CourseCatalogSource,
+    DropoutGuideSource,
     LeaveOfAbsenceGuideSource,
     LibraryHoursSource,
     LibrarySeatStatusSource,
     NoticeSource,
+    ReAdmissionGuideSource,
+    ReturnFromLeaveOfAbsenceGuideSource,
     ScholarshipGuideSource,
     TransportGuideSource,
     WifiGuideSource,
@@ -196,6 +199,55 @@ def test_notice_category_rules_prioritize_academic_board_category_over_urgent_ke
         )
         == "academic"
     )
+
+
+def test_return_from_leave_parser_extracts_sections_and_links():
+    source = ReturnFromLeaveOfAbsenceGuideSource()
+
+    rows = source.parse(
+        _fixture("return_from_leave_of_absence.html"),
+        fetched_at="2026-03-15T00:00:00+09:00",
+    )
+
+    titles = {row["title"] for row in rows}
+    assert titles == {"신청방법", "참고사항"}
+    main = next(row for row in rows if row["title"] == "신청방법")
+    assert main["status"] == "return_from_leave"
+    assert any("복학신청" in step for step in main["steps"])
+    assert main["links"] and main["links"][0]["label"] == "복귀일정"
+    assert main["source_tag"] == "cuk_academic_status_guides"
+
+
+def test_dropout_parser_keeps_required_sections_and_alert_notes():
+    source = DropoutGuideSource()
+
+    rows = source.parse(
+        _fixture("dropout.html"),
+        fetched_at="2026-03-15T00:00:00+09:00",
+    )
+
+    titles = {row["title"] for row in rows}
+    assert {"자퇴원서 제출", "자퇴 신청 방법", "등록금 반환기준"} <= titles
+    alert_row = next(row for row in rows if row["title"] == "등록금 반환기준")
+    assert any("자퇴이전 등록금" in step for step in alert_row["steps"])
+    assert alert_row["status"] == "dropout"
+
+
+def test_readmission_parser_keeps_required_sections():
+    source = ReAdmissionGuideSource()
+
+    rows = source.parse(
+        _fixture("re_admission.html"),
+        fetched_at="2026-03-15T00:00:00+09:00",
+    )
+
+    titles = {row["title"] for row in rows}
+    assert {"지원자격", "선발일정", "선발기준"} <= titles
+    schedule_row = next(row for row in rows if row["title"] == "선발일정")
+    assert schedule_row["summary"] == "매 학기(6월 초, 12월 초) 홈페이지를 통해 공지"
+    criteria_row = next(row for row in rows if row["title"] == "선발기준")
+    assert criteria_row["status"] == "re_admission"
+    assert any("이수학기가 많은 자" in step for step in criteria_row["steps"])
 
 
 def test_library_hours_parser_extracts_room_labels_and_schedules():

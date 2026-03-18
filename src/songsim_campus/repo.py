@@ -21,6 +21,7 @@ JSON_COLUMNS = {
     "scholarship_guides": {"steps_json": "steps", "links_json": "links"},
     "wifi_guides": {"ssids_json": "ssids", "steps_json": "steps"},
     "academic_support_guides": {"steps_json": "steps", "contacts_json": "contacts"},
+    "academic_status_guides": {"steps_json": "steps", "links_json": "links"},
     "academic_calendar": {"campuses_json": "campuses"},
     "profile_notice_preferences": {
         "categories_json": "categories",
@@ -788,6 +789,31 @@ def replace_academic_support_guides(conn: psycopg.Connection, rows: list[dict[st
     )
 
 
+def replace_academic_status_guides(conn: psycopg.Connection, rows: list[dict[str, Any]]) -> None:
+    conn.execute("TRUNCATE TABLE academic_status_guides RESTART IDENTITY CASCADE")
+    _executemany(
+        conn,
+        """
+        INSERT INTO academic_status_guides (
+            status, title, summary, steps_json, links_json, source_url, source_tag, last_synced_at
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """,
+        [
+            (
+                row["status"],
+                row["title"],
+                row.get("summary", ""),
+                Jsonb(row.get("steps", [])),
+                Jsonb(row.get("links", [])),
+                row.get("source_url"),
+                row.get("source_tag", "demo"),
+                row["last_synced_at"],
+            )
+            for row in rows
+        ],
+    )
+
+
 def replace_academic_calendar(conn: psycopg.Connection, rows: list[dict[str, Any]]) -> None:
     conn.execute("TRUNCATE TABLE academic_calendar RESTART IDENTITY CASCADE")
     _executemany(
@@ -1037,6 +1063,26 @@ def list_academic_support_guides(
     return [_row_to_dict("academic_support_guides", row) for row in rows]
 
 
+def list_academic_status_guides(
+    conn: psycopg.Connection,
+    *,
+    status: str | None = None,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    sql = """
+        SELECT *
+        FROM academic_status_guides
+    """
+    params: list[Any] = []
+    if status:
+        sql += " WHERE status = %s"
+        params.append(status)
+    sql += " ORDER BY id, title LIMIT %s"
+    params.append(limit)
+    rows = conn.execute(sql, params).fetchall()
+    return [_row_to_dict("academic_status_guides", row) for row in rows]
+
+
 def create_sync_run(
     conn: psycopg.Connection,
     *,
@@ -1156,6 +1202,7 @@ def get_dataset_sync_state(conn: psycopg.Connection, table: str) -> dict[str, An
         "scholarship_guides",
         "wifi_guides",
         "academic_support_guides",
+        "academic_status_guides",
         "academic_calendar",
         "campus_dining_menus",
     }

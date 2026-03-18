@@ -35,10 +35,13 @@ from .ingest.official_sources import (
     CampusMapSource,
     CertificateGuideSource,
     CourseCatalogSource,
+    DropoutGuideSource,
     LeaveOfAbsenceGuideSource,
     LibraryHoursSource,
     LibrarySeatStatusSource,
     NoticeSource,
+    ReAdmissionGuideSource,
+    ReturnFromLeaveOfAbsenceGuideSource,
     ScholarshipGuideSource,
     TransportGuideSource,
     WifiGuideSource,
@@ -46,6 +49,7 @@ from .ingest.official_sources import (
 )
 from .schemas import (
     AcademicCalendarEvent,
+    AcademicStatusGuide,
     AcademicSupportGuide,
     AutomationJobObservability,
     AutomationObservability,
@@ -98,6 +102,9 @@ SCHOLARSHIP_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/scholarshi
 WIFI_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/campuslife/wifi.do"
 ACADEMIC_CALENDAR_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/calendar2024_list.do"
 ACADEMIC_SUPPORT_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/academic_contact_information.do"
+RETURN_FROM_LEAVE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/return_from_leave_of_absence.do"
+DROPOUT_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/dropout.do"
+RE_ADMISSION_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/re_admission.do"
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 CAMPUS_WALK_GRAPH_PATH = DATA_DIR / "campus_walk_graph.json"
 PERSONALIZATION_RULES_PATH = DATA_DIR / "personalization_rules.json"
@@ -114,6 +121,7 @@ SYNC_DATASET_TABLES = (
     "academic_calendar",
     "certificate_guides",
     "leave_of_absence_guides",
+    "academic_status_guides",
     "scholarship_guides",
     "wifi_guides",
     "academic_support_guides",
@@ -133,6 +141,7 @@ ADMIN_SYNC_TARGETS = {
     "notices",
     "academic_calendar",
     "leave_of_absence_guides",
+    "academic_status_guides",
     "scholarship_guides",
     "academic_support_guides",
     "wifi_guides",
@@ -213,6 +222,7 @@ DINING_MENU_QUERY_FILLER_TERMS = (
     "이번주",
     "주간",
 )
+ACADEMIC_STATUS_GUIDE_VALUES = {"return_from_leave", "dropout", "re_admission"}
 
 
 class NotFoundError(ValueError):
@@ -3314,6 +3324,28 @@ def list_academic_support_guides(
     ]
 
 
+def list_academic_status_guides(
+    conn: sqlite3.Connection,
+    *,
+    status: str | None = None,
+    limit: int = 20,
+) -> list[AcademicStatusGuide]:
+    normalized_limit = max(1, min(limit, 50))
+    normalized_status = status.strip() if status else None
+    if normalized_status and normalized_status not in ACADEMIC_STATUS_GUIDE_VALUES:
+        raise InvalidRequestError(
+            "status must be one of return_from_leave, dropout, re_admission."
+        )
+    return [
+        AcademicStatusGuide.model_validate(item)
+        for item in repo.list_academic_status_guides(
+            conn,
+            status=normalized_status,
+            limit=normalized_limit,
+        )
+    ]
+
+
 def list_academic_calendar(
     conn: sqlite3.Connection,
     *,
@@ -3459,6 +3491,8 @@ def _run_admin_sync_target(
         return {"academic_calendar": len(refresh_academic_calendar_from_source(conn))}
     if target == "leave_of_absence_guides":
         return {"leave_of_absence_guides": len(refresh_leave_of_absence_guides_from_source(conn))}
+    if target == "academic_status_guides":
+        return {"academic_status_guides": len(refresh_academic_status_guides_from_source(conn))}
     if target == "scholarship_guides":
         return {"scholarship_guides": len(refresh_scholarship_guides_from_source(conn))}
     if target == "wifi_guides":
@@ -5214,6 +5248,28 @@ def refresh_academic_support_guides_from_source(
     ]
 
 
+def refresh_academic_status_guides_from_source(
+    conn: sqlite3.Connection,
+    *,
+    sources: list[Any] | None = None,
+    fetched_at: str | None = None,
+) -> list[AcademicStatusGuide]:
+    synced_at = fetched_at or _now_iso()
+    resolved_sources = sources or [
+        ReturnFromLeaveOfAbsenceGuideSource(RETURN_FROM_LEAVE_SOURCE_URL),
+        DropoutGuideSource(DROPOUT_GUIDE_SOURCE_URL),
+        ReAdmissionGuideSource(RE_ADMISSION_GUIDE_SOURCE_URL),
+    ]
+    rows: list[dict[str, Any]] = []
+    for source in resolved_sources:
+        rows.extend(source.parse(source.fetch(), fetched_at=synced_at))
+    repo.replace_academic_status_guides(conn, rows)
+    return [
+        AcademicStatusGuide.model_validate(item)
+        for item in repo.list_academic_status_guides(conn, limit=max(len(rows), 1))
+    ]
+
+
 def sync_official_snapshot(
     conn: sqlite3.Connection,
     *,
@@ -5244,6 +5300,7 @@ def sync_official_snapshot(
     academic_calendar = refresh_academic_calendar_from_source(conn)
     certificate_guides = refresh_certificate_guides_from_certificate_page(conn)
     leave_of_absence_guides = refresh_leave_of_absence_guides_from_source(conn)
+    academic_status_guides = refresh_academic_status_guides_from_source(conn)
     scholarship_guides = refresh_scholarship_guides_from_source(conn)
     academic_support_guides = refresh_academic_support_guides_from_source(conn)
     wifi_guides = refresh_wifi_guides_from_source(conn)
@@ -5256,6 +5313,7 @@ def sync_official_snapshot(
         "academic_calendar": len(academic_calendar),
         "certificate_guides": len(certificate_guides),
         "leave_of_absence_guides": len(leave_of_absence_guides),
+        "academic_status_guides": len(academic_status_guides),
         "scholarship_guides": len(scholarship_guides),
         "academic_support_guides": len(academic_support_guides),
         "wifi_guides": len(wifi_guides),

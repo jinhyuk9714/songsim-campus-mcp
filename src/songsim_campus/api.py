@@ -16,6 +16,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from .db import connection, get_connection, init_db
 from .schemas import (
     AcademicCalendarEvent,
+    AcademicStatusGuide,
     AcademicSupportGuide,
     CampusDiningMenu,
     CertificateGuide,
@@ -71,6 +72,7 @@ from .services import (
     get_readiness_snapshot,
     get_sync_dashboard_state,
     list_academic_calendar,
+    list_academic_status_guides,
     list_academic_support_guides,
     list_certificate_guides,
     list_estimated_empty_classrooms,
@@ -622,6 +624,7 @@ def create_app() -> FastAPI:
             },
             {"title": "academic_calendar", "fields": []},
             {"title": "academic_support_guides", "fields": []},
+            {"title": "academic_status_guides", "fields": []},
             {"title": "leave_of_absence_guides", "fields": []},
             {"title": "scholarship_guides", "fields": []},
             {"title": "wifi_guides", "fields": []},
@@ -1005,6 +1008,10 @@ def create_app() -> FastAPI:
             <li>
               <code>/academic-support-guides</code> academic office contacts and
               responsibilities
+            </li>
+            <li>
+              <code>/academic-status-guides</code> return-from-leave, dropout, and
+              re-admission guides
             </li>
             <li><code>/certificate-guides</code> certificate issuance guides</li>
             <li><code>/leave-of-absence-guides</code> leave-of-absence application guides</li>
@@ -1533,6 +1540,17 @@ def create_app() -> FastAPI:
     ) -> list[AcademicSupportGuide]:
         with connection() as conn:
             return list_academic_support_guides(conn, limit=limit)
+
+    @app.get("/academic-status-guides", response_model=list[AcademicStatusGuide])
+    def academic_status_guides(
+        status: str | None = Query(default=None, description="학적변동 유형 필터"),
+        limit: int = Query(default=20, ge=1, le=50),
+    ) -> list[AcademicStatusGuide]:
+        with connection() as conn:
+            try:
+                return list_academic_status_guides(conn, status=status, limit=limit)
+            except InvalidRequestError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/leave-of-absence-guides", response_model=list[LeaveOfAbsenceGuide])
     def leave_of_absence_guides(

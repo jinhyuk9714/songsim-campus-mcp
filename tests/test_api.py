@@ -19,6 +19,7 @@ from songsim_campus.repo import (
 )
 from songsim_campus.services import (
     refresh_academic_calendar_from_source,
+    refresh_academic_status_guides_from_source,
     refresh_academic_support_guides_from_source,
     refresh_campus_dining_menus_from_facilities_page,
     refresh_certificate_guides_from_certificate_page,
@@ -237,6 +238,7 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     assert "https://songsim-api.onrender.com" in landing.text
     assert "https://songsim-mcp.onrender.com/mcp" in landing.text
     assert "/academic-support-guides" in landing.text
+    assert "/academic-status-guides" in landing.text
     assert "configured without OAuth" in landing.text
     assert "GPT Actions OpenAPI" not in landing.text
     assert "/gpt/*" not in landing.text
@@ -246,6 +248,7 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     assert create_profile.status_code == 404
     assert admin_sync.status_code == 404
     assert "/academic-support-guides" in openapi.text
+    assert "/academic-status-guides" in openapi.text
     assert "/profiles" not in openapi.text
     assert "/admin/sync" not in openapi.text
 
@@ -1288,6 +1291,7 @@ def test_admin_sync_dashboard_runs_snapshot_and_shows_recent_history(admin_clien
             "courses": 10,
             "notices": 4,
             "academic_support_guides": 5,
+            "academic_status_guides": 3,
             "certificate_guides": 3,
             "leave_of_absence_guides": 2,
             "scholarship_guides": 4,
@@ -1318,6 +1322,7 @@ def test_admin_sync_dashboard_runs_snapshot_and_shows_recent_history(admin_clien
     assert "snapshot" in page.text
     assert "success" in page.text
     assert "academic_support_guides" in page.text
+    assert "academic_status_guides" in page.text
     assert "certificate_guides" in page.text
     assert "leave_of_absence_guides" in page.text
     assert "scholarship_guides" in page.text
@@ -1340,6 +1345,7 @@ def test_admin_observability_pages_render_runtime_state(admin_client, client, mo
             "courses": 10,
             "notices": 4,
             "academic_support_guides": 5,
+            "academic_status_guides": 3,
             "certificate_guides": 3,
             "leave_of_absence_guides": 2,
             "scholarship_guides": 4,
@@ -2245,6 +2251,33 @@ class ApiAcademicSupportSource:
         ]
 
 
+class ApiAcademicStatusSource:
+    def __init__(self, status: str, rows: list[dict[str, object]]):
+        self.status = status
+        self.rows = rows
+
+    def fetch(self):
+        return f"<{self.status}></{self.status}>"
+
+    def parse(self, html: str, *, fetched_at: str):
+        assert html == f"<{self.status}></{self.status}>"
+        source_urls = {
+            "return_from_leave": "https://www.catholic.ac.kr/ko/support/return_from_leave_of_absence.do",
+            "dropout": "https://www.catholic.ac.kr/ko/support/dropout.do",
+            "re_admission": "https://www.catholic.ac.kr/ko/support/re_admission.do",
+        }
+        return [
+            {
+                **row,
+                "status": self.status,
+                "source_url": source_urls[self.status],
+                "source_tag": "cuk_academic_status_guides",
+                "last_synced_at": fetched_at,
+            }
+            for row in self.rows
+        ]
+
+
 def test_place_detail_returns_merged_opening_hours(client):
     with connection() as conn:
         refresh_facility_hours_from_facilities_page(conn, source=ApiFacilitiesSource())
@@ -2513,6 +2546,66 @@ def test_academic_support_guides_endpoint_returns_guides(client):
             "contacts": ["02-2164-4510", "02-2164-4048"],
             "source_url": "https://www.catholic.ac.kr/ko/support/academic_contact_information.do",
             "source_tag": "cuk_academic_support_guides",
+            "last_synced_at": items[0]["last_synced_at"],
+        }
+    ]
+
+
+def test_academic_status_guides_endpoint_returns_guides_and_filters_by_status(client):
+    with connection() as conn:
+        refresh_academic_status_guides_from_source(
+            conn,
+            sources=[
+                ApiAcademicStatusSource(
+                    "return_from_leave",
+                    [
+                        {
+                            "title": "신청방법",
+                            "summary": "TRINITY 복학신청",
+                            "steps": ["TRINITY ⇒ 학적/졸업 ⇒ 복학신청"],
+                            "links": [],
+                        }
+                    ],
+                ),
+                ApiAcademicStatusSource(
+                    "dropout",
+                    [
+                        {
+                            "title": "자퇴 신청 방법",
+                            "summary": "방문신청",
+                            "steps": ["학사지원팀에 자퇴원 제출"],
+                            "links": [],
+                        }
+                    ],
+                ),
+                ApiAcademicStatusSource(
+                    "re_admission",
+                    [
+                        {
+                            "title": "지원자격",
+                            "summary": "제적 후 1년 경과",
+                            "steps": ["제적, 자퇴 후 1년이 경과한 자"],
+                            "links": [],
+                        }
+                    ],
+                ),
+            ],
+        )
+
+    response = client.get("/academic-status-guides", params={"status": "dropout"})
+    items = response.json()
+
+    assert response.status_code == 200
+    assert items == [
+        {
+            "id": 2,
+            "status": "dropout",
+            "title": "자퇴 신청 방법",
+            "summary": "방문신청",
+            "steps": ["학사지원팀에 자퇴원 제출"],
+            "links": [],
+            "source_url": "https://www.catholic.ac.kr/ko/support/dropout.do",
+            "source_tag": "cuk_academic_status_guides",
             "last_synced_at": items[0]["last_synced_at"],
         }
     ]
