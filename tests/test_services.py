@@ -43,6 +43,7 @@ from songsim_campus.services import (
     refresh_academic_status_guides_from_source,
     refresh_academic_support_guides_from_source,
     refresh_campus_dining_menus_from_facilities_page,
+    refresh_campus_facilities_from_source,
     refresh_certificate_guides_from_certificate_page,
     refresh_courses_from_subject_search,
     refresh_facility_hours_from_facilities_page,
@@ -714,6 +715,158 @@ def test_search_places_matches_generic_facility_nouns_to_related_buildings(app_e
     assert [place.slug for place in copy_places] == ["student-center"]
     assert [place.slug for place in atm_places] == ["student-center"]
     assert [place.slug for place in gymnasium_places] == ["great-field"]
+
+
+def test_refresh_campus_facilities_replaces_rows_and_maps_place_slugs(app_env):
+    init_db()
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                _place_row(
+                    slug="dormitory-stephen",
+                    name="스테파노기숙사",
+                    aliases=["K관"],
+                    category="dormitory",
+                ),
+                _place_row(
+                    slug="central-library",
+                    name="중앙도서관",
+                    aliases=["중도"],
+                    category="library",
+                ),
+            ],
+        )
+
+        class FacilitySnapshotSource:
+            def fetch(self):
+                return "<facilities></facilities>"
+
+            def parse(self, html: str, *, fetched_at: str):
+                assert html == "<facilities></facilities>"
+                return [
+                    {
+                        "facility_name": "교내복사실",
+                        "category": "복사실",
+                        "phone": "02-2164-4725",
+                        "location": "K관 1층",
+                        "hours_text": "평일 08:50~19:00 (토/일/공휴일휴무)",
+                        "source_tag": "cuk_facilities",
+                        "last_synced_at": fetched_at,
+                    },
+                    {
+                        "facility_name": "카페드림",
+                        "category": "카페",
+                        "phone": "010-9517-9417",
+                        "location": "중앙도서관 2층",
+                        "hours_text": "평일 08:00~19:00 토 10:00~16:00 (일/공휴일휴무)",
+                        "source_tag": "cuk_facilities",
+                        "last_synced_at": fetched_at,
+                    },
+                ]
+
+        refresh_campus_facilities_from_source(conn, source=FacilitySnapshotSource())
+        rows = repo.list_campus_facilities(conn, limit=10)
+
+    assert [row["facility_name"] for row in rows] == ["교내복사실", "카페드림"]
+    assert rows[0]["phone"] == "02-2164-4725"
+    assert rows[0]["location_text"] == "K관 1층"
+    assert rows[0]["place_slug"] == "dormitory-stephen"
+    assert rows[1]["phone"] == "010-9517-9417"
+    assert rows[1]["place_slug"] == "central-library"
+
+
+def test_search_places_sentence_queries_prefer_exact_facility_match_with_metadata(app_env):
+    init_db()
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                _place_row(
+                    slug="student-center",
+                    name="학생회관",
+                    category="facility",
+                    aliases=["학회관", "트러스트짐"],
+                    description="학생 편의시설이 많은 건물",
+                ),
+                _place_row(
+                    slug="dormitory-stephen",
+                    name="스테파노기숙사",
+                    category="dormitory",
+                    aliases=["K관"],
+                    description="기숙사 생활시설 건물",
+                ),
+                _place_row(
+                    slug="central-library",
+                    name="중앙도서관",
+                    category="library",
+                    aliases=["중도"],
+                    description="자료 열람과 시험 준비를 위한 핵심 공간",
+                ),
+            ],
+        )
+        repo.replace_campus_facilities(
+            conn,
+            [
+                {
+                    "facility_name": "트러스트짐",
+                    "category": "피트니스센터",
+                    "phone": "032-342-5406",
+                    "location_text": "K관 1층",
+                    "hours_text": "평일 07:00~22:30 토 09:30~18:00 (일/공휴일휴무)",
+                    "place_slug": "dormitory-stephen",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-18T10:00:00+09:00",
+                },
+                {
+                    "facility_name": "우리은행",
+                    "category": "은행",
+                    "phone": "032-342-2641",
+                    "location_text": "K관 1층",
+                    "hours_text": "평일 09:00~16:00 (토,일/공휴일휴무)",
+                    "place_slug": "dormitory-stephen",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-18T10:00:00+09:00",
+                },
+                {
+                    "facility_name": "카페드림",
+                    "category": "카페",
+                    "phone": "010-9517-9417",
+                    "location_text": "중앙도서관 2층",
+                    "hours_text": "평일 08:00~19:00 토 10:00~16:00 (일/공휴일휴무)",
+                    "place_slug": "central-library",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-18T10:00:00+09:00",
+                },
+            ],
+        )
+
+        gym_places = search_places(conn, query="트러스트짐 어디야?", limit=1)
+        bank_places = search_places(conn, query="우리은행 전화번호 알려줘", limit=1)
+        cafe_places = search_places(conn, query="카페드림 어디야?", limit=1)
+        library_places = search_places(conn, query="중앙도서관이 어디야?", limit=1)
+
+    assert gym_places[0].slug == "dormitory-stephen"
+    assert gym_places[0].matched_facility is not None
+    assert gym_places[0].matched_facility.name == "트러스트짐"
+    assert gym_places[0].matched_facility.location_hint == "K관 1층"
+    assert gym_places[0].matched_facility.phone == "032-342-5406"
+
+    assert bank_places[0].slug == "dormitory-stephen"
+    assert bank_places[0].matched_facility is not None
+    assert bank_places[0].matched_facility.name == "우리은행"
+    assert bank_places[0].matched_facility.phone == "032-342-2641"
+
+    assert cafe_places[0].slug == "central-library"
+    assert cafe_places[0].matched_facility is not None
+    assert cafe_places[0].matched_facility.name == "카페드림"
+    assert cafe_places[0].matched_facility.location_hint == "중앙도서관 2층"
+
+    assert library_places[0].slug == "central-library"
+    assert library_places[0].matched_facility is None
 
 
 def test_search_restaurants_matches_brand_alias_with_spacing_normalization(app_env):

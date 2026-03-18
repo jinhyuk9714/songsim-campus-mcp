@@ -160,6 +160,7 @@ def _serialize_public_place(place: Place) -> dict[str, object]:
         ),
         coordinates=coordinates,
         highlights=highlights,
+        matched_facility=place.matched_facility,
     ).model_dump(exclude_none=True)
 
 

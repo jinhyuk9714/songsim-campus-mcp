@@ -869,6 +869,33 @@ def replace_campus_dining_menus(conn: psycopg.Connection, rows: list[dict[str, A
     )
 
 
+def replace_campus_facilities(conn: psycopg.Connection, rows: list[dict[str, Any]]) -> None:
+    conn.execute("TRUNCATE TABLE campus_facilities RESTART IDENTITY CASCADE")
+    _executemany(
+        conn,
+        """
+        INSERT INTO campus_facilities (
+            facility_name, category, phone, location_text, hours_text, place_slug,
+            source_url, source_tag, last_synced_at
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """,
+        [
+            (
+                row["facility_name"],
+                row.get("category"),
+                row.get("phone"),
+                row.get("location_text"),
+                row.get("hours_text"),
+                row.get("place_slug"),
+                row.get("source_url"),
+                row.get("source_tag", "demo"),
+                row["last_synced_at"],
+            )
+            for row in rows
+        ],
+    )
+
+
 def list_campus_dining_menus(
     conn: psycopg.Connection,
     *,
@@ -1083,6 +1110,24 @@ def list_academic_status_guides(
     return [_row_to_dict("academic_status_guides", row) for row in rows]
 
 
+def list_campus_facilities(
+    conn: psycopg.Connection,
+    *,
+    limit: int | None = None,
+) -> list[dict[str, Any]]:
+    sql = """
+        SELECT *
+        FROM campus_facilities
+        ORDER BY id, facility_name
+    """
+    params: list[Any] = []
+    if limit is not None:
+        sql += " LIMIT %s"
+        params.append(limit)
+    rows = conn.execute(sql, params).fetchall()
+    return [_row_to_dict("campus_facilities", row) for row in rows]
+
+
 def create_sync_run(
     conn: psycopg.Connection,
     *,
@@ -1205,6 +1250,7 @@ def get_dataset_sync_state(conn: psycopg.Connection, table: str) -> dict[str, An
         "academic_status_guides",
         "academic_calendar",
         "campus_dining_menus",
+        "campus_facilities",
     }
     if table not in allowed:
         raise ValueError(f"Unsupported dataset table: {table}")

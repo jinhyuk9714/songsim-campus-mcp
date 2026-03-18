@@ -670,6 +670,7 @@ class CampusFacilitiesSource:
                 ),
                 None,
             )
+            contact_value = _normalize_phone(details.get("전화번호"))
             if not facility_name or not location or not hours_text:
                 continue
             rows.append(
@@ -677,6 +678,7 @@ class CampusFacilitiesSource:
                     "facility_name": facility_name,
                     "location": location,
                     "hours_text": hours_text,
+                    "phone": contact_value,
                     "menu_week_label": (
                         _clean_text(menu_anchor.get_text()) if menu_anchor else None
                     ),
@@ -699,12 +701,17 @@ class CampusFacilitiesSource:
         for row in grid[1:]:
             if len(row) < 5:
                 continue
-            category, facility_name, _, location, hours_text = row[:5]
+            category = row[0]
+            facility_name = row[1]
+            phone = _normalize_phone(row[2])
+            location = row[3]
+            hours_text = row[4]
             rows.append(
                 {
                     "facility_name": facility_name,
                     "location": location,
                     "hours_text": hours_text,
+                    "phone": phone,
                     "category": category,
                     "source_tag": "cuk_facilities",
                     "last_synced_at": fetched_at,
@@ -1447,6 +1454,15 @@ def _clean_contact_cell(cell) -> list[str]:
         if cleaned:
             parts.append(cleaned)
     return parts
+
+
+def _normalize_phone(value: str | None) -> str | None:
+    if not value:
+        return None
+    normalized = _clean_text(value)
+    if normalized in {"-", ""}:
+        return None
+    return normalized
 
 
 def _extract_list_or_text(cell) -> list[str]:

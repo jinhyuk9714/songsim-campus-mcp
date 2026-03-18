@@ -228,6 +228,19 @@ CREATE TABLE IF NOT EXISTS campus_dining_menus (
     last_synced_at TIMESTAMPTZ NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS campus_facilities (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    facility_name TEXT NOT NULL,
+    category TEXT,
+    phone TEXT,
+    location_text TEXT,
+    hours_text TEXT,
+    place_slug TEXT,
+    source_url TEXT,
+    source_tag TEXT NOT NULL DEFAULT 'demo',
+    last_synced_at TIMESTAMPTZ NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS profiles (
     id TEXT PRIMARY KEY,
     display_name TEXT NOT NULL DEFAULT '',

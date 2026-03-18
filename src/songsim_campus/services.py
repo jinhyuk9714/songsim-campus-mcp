@@ -64,6 +64,7 @@ from .schemas import (
     LibrarySeatStatus,
     LibrarySeatStatusResponse,
     MatchedCourse,
+    MatchedFacility,
     MatchedNotice,
     MealRecommendation,
     MealRecommendationResponse,
@@ -113,8 +114,18 @@ PLACE_FACILITY_KEYWORDS_PATH = DATA_DIR / "place_facility_keywords.json"
 PLACE_SHORT_QUERY_PREFERENCES_PATH = DATA_DIR / "place_short_query_preferences.json"
 RESTAURANT_SEARCH_ALIASES_PATH = DATA_DIR / "restaurant_search_aliases.json"
 RESTAURANT_SEARCH_NOISE_TERMS_PATH = DATA_DIR / "restaurant_search_noise_terms.json"
+PLACE_QUERY_FILLER_PATTERNS = (
+    r"[?？!！]+",
+    r"(전화번호|연락처)\s*(알려\s*줘|알려줘|좀|부탁해)?",
+    r"운영\s*시간\s*(알려\s*줘|알려줘|좀|부탁해)?",
+    r"몇\s*시(까지)?",
+    r"위치\s*(알려\s*줘|알려줘|좀|부탁해)?",
+    r"어디\s*(야|에요|예요|지|인지|있어|있어요|있나|있나요)?",
+    r"(알려\s*줘|알려줘|말해\s*줘|말해줘|보여\s*줘|보여줘)",
+)
 SYNC_DATASET_TABLES = (
     "places",
+    "campus_facilities",
     "campus_dining_menus",
     "courses",
     "notices",
@@ -133,6 +144,7 @@ PUBLIC_READY_REQUIRED_DATASETS = frozenset(
 ADMIN_SYNC_TARGETS = {
     "snapshot",
     "places",
+    "campus_facilities",
     "library_hours",
     "library_seat_status",
     "facility_hours",
@@ -1190,6 +1202,27 @@ def _normalized_query_variants(value: str | None) -> tuple[str | None, str | Non
     return collapsed, compacted or None
 
 
+def _strip_terminal_query_particles(value: str) -> str:
+    cleaned = value.strip()
+    while len(cleaned) > 1 and cleaned[-1] in {"이", "가", "은", "는", "을", "를"}:
+        cleaned = cleaned[:-1].strip()
+    return cleaned
+
+
+def _normalize_place_search_query(value: str | None) -> tuple[str | None, str | None]:
+    collapsed, compacted = _normalized_query_variants(value)
+    if collapsed is None:
+        return None, None
+    normalized = collapsed
+    for pattern in PLACE_QUERY_FILLER_PATTERNS:
+        normalized = re.sub(pattern, " ", normalized)
+    normalized = _collapse_whitespace(normalized)
+    normalized = _strip_terminal_query_particles(normalized)
+    if not normalized:
+        normalized = collapsed
+    return _normalized_query_variants(normalized)
+
+
 def _matches_exact_text_candidate(
     text: str | None,
     *,
@@ -1928,14 +1961,10 @@ def _place_search_targets(item: dict[str, Any], *, facility_tokens: list[str]) -
     )
 
 
-def _place_generic_facility_keywords(
-    item: dict[str, Any],
-    *,
-    facility_tokens: list[str],
-) -> list[str]:
+def _generic_facility_keywords_for_targets(targets: list[str]) -> list[str]:
     normalized_targets = {
         _normalize_facility_name(target)
-        for target in _place_search_targets(item, facility_tokens=facility_tokens)
+        for target in targets
         if _normalize_facility_name(target)
     }
     keywords: list[str] = []
@@ -1952,6 +1981,16 @@ def _place_generic_facility_keywords(
         ):
             keywords.append(generic_keyword)
     return _unique_stripped(keywords)
+
+
+def _place_generic_facility_keywords(
+    item: dict[str, Any],
+    *,
+    facility_tokens: list[str],
+) -> list[str]:
+    return _generic_facility_keywords_for_targets(
+        _place_search_targets(item, facility_tokens=facility_tokens)
+    )
 
 
 def _build_place_search_facility_index(
@@ -1971,6 +2010,194 @@ def _build_place_search_facility_index(
             }
         )
     return index
+
+
+def _normalize_campus_facility_phone(value: str | None) -> str | None:
+    cleaned = _normalize_optional_text(value)
+    if cleaned in {None, "-"}:
+        return None
+    return cleaned
+
+
+def _normalize_campus_facility_location(value: str | None) -> str | None:
+    cleaned = _normalize_optional_text(value)
+    if cleaned in {None, "-"}:
+        return None
+    return cleaned
+
+
+def _matched_facility_from_row(row: dict[str, Any]) -> MatchedFacility:
+    return MatchedFacility(
+        name=str(row.get("facility_name") or ""),
+        category=_normalize_optional_text(row.get("category")),
+        phone=_normalize_campus_facility_phone(row.get("phone")),
+        location_hint=_normalize_campus_facility_location(row.get("location_text")),
+        opening_hours=_normalize_optional_text(row.get("hours_text")),
+    )
+
+
+def _facility_search_targets(row: dict[str, Any]) -> list[str]:
+    targets = [str(row.get("facility_name") or "")]
+    if row.get("category"):
+        targets.append(str(row.get("category")))
+    if row.get("location_text"):
+        targets.append(str(row.get("location_text")))
+    if row.get("phone"):
+        targets.append(str(row.get("phone")))
+    return _unique_stripped(targets)
+
+
+def _rank_campus_facility_candidate(
+    row: dict[str, Any],
+    *,
+    collapsed_query: str,
+    compact_query: str | None,
+) -> int | None:
+    name = str(row.get("facility_name") or "")
+    category = str(row.get("category") or "")
+    location_text = str(row.get("location_text") or "")
+    phone = str(row.get("phone") or "")
+    generic_keywords = _generic_facility_keywords_for_targets([name, category])
+    if _matches_exact_text_candidate(
+        name,
+        collapsed_query=collapsed_query,
+        compact_query=compact_query,
+    ):
+        return 0
+    if _matches_exact_text_candidate(
+        category,
+        collapsed_query=collapsed_query,
+        compact_query=compact_query,
+    ):
+        return 1
+    if any(
+        _matches_exact_text_candidate(
+            keyword,
+            collapsed_query=collapsed_query,
+            compact_query=compact_query,
+        )
+        for keyword in generic_keywords
+    ):
+        return 2
+    if _matches_exact_text_candidate(
+        phone,
+        collapsed_query=collapsed_query,
+        compact_query=compact_query,
+    ):
+        return 3
+    if _matches_partial_text_candidate(
+        name,
+        collapsed_query=collapsed_query,
+        compact_query=compact_query,
+    ):
+        return 4
+    if _matches_partial_text_candidate(
+        category,
+        collapsed_query=collapsed_query,
+        compact_query=compact_query,
+    ):
+        return 5
+    if any(
+        _matches_partial_text_candidate(
+            keyword,
+            collapsed_query=collapsed_query,
+            compact_query=compact_query,
+        )
+        for keyword in generic_keywords
+    ):
+        return 6
+    if _matches_partial_text_candidate(
+        location_text,
+        collapsed_query=collapsed_query,
+        compact_query=compact_query,
+    ):
+        return 7
+    if _matches_partial_text_candidate(
+        phone,
+        collapsed_query=collapsed_query,
+        compact_query=compact_query,
+    ):
+        return 8
+    return None
+
+
+def _facility_phase_for_rank(rank: int) -> tuple[int, int]:
+    if rank == 0:
+        return 0, rank
+    if rank <= 3:
+        return 1, rank
+    return 3, rank
+
+
+def _place_phase_for_rank(rank: int) -> tuple[int, int]:
+    if rank <= 2:
+        return 2, rank
+    return 3, rank
+
+
+def _build_searchable_campus_facilities(
+    conn: sqlite3.Connection,
+    *,
+    place_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    rows = repo.list_campus_facilities(conn)
+    place_lookup = _build_place_slug_lookup(place_rows)
+    seen: set[tuple[str, str]] = set()
+    searchable: list[dict[str, Any]] = []
+
+    for row in rows:
+        facility_name = str(row.get("facility_name") or "").strip()
+        if not facility_name:
+            continue
+        place_slug = _normalize_optional_text(row.get("place_slug"))
+        if place_slug is None:
+            for candidate in _location_candidates(str(row.get("location_text") or "")):
+                place_slug = place_lookup.get(_normalize_place_key(candidate))
+                if place_slug:
+                    break
+        key = (place_slug or "", _normalize_facility_name(facility_name))
+        if key in seen:
+            continue
+        seen.add(key)
+        searchable.append(
+            {
+                "facility_name": facility_name,
+                "category": _normalize_optional_text(row.get("category")),
+                "phone": _normalize_campus_facility_phone(row.get("phone")),
+                "location_text": _normalize_campus_facility_location(row.get("location_text")),
+                "hours_text": _normalize_optional_text(row.get("hours_text")),
+                "place_slug": place_slug,
+                "source_url": row.get("source_url"),
+                "source_tag": row.get("source_tag", "demo"),
+                "last_synced_at": row.get("last_synced_at"),
+            }
+        )
+
+    for place in place_rows:
+        place_slug = str(place.get("slug") or "").strip()
+        for facility_name, hours_text in place.get("opening_hours", {}).items():
+            facility_name = str(facility_name)
+            if _is_generic_opening_hours_key(facility_name):
+                continue
+            key = (place_slug, _normalize_facility_name(facility_name))
+            if key in seen:
+                continue
+            seen.add(key)
+            searchable.append(
+                {
+                    "facility_name": facility_name,
+                    "category": None,
+                    "phone": None,
+                    "location_text": None,
+                    "hours_text": str(hours_text) if hours_text is not None else None,
+                    "place_slug": place_slug,
+                    "source_url": None,
+                    "source_tag": place.get("source_tag", "demo"),
+                    "last_synced_at": place.get("last_synced_at"),
+                }
+            )
+
+    return searchable
 
 
 def _minutes_from_time_string(value: str) -> int | None:
@@ -2864,34 +3091,68 @@ def search_places(
     places = repo.list_places(conn)
     if category is not None:
         places = [item for item in places if item["category"] == category]
-    collapsed_query, compact_query = _normalized_query_variants(query)
+    collapsed_query, compact_query = _normalize_place_search_query(query)
     if collapsed_query is None:
         return [Place.model_validate(item) for item in places[:limit]]
 
     facility_index = _build_place_search_facility_index(places)
-    preferred_slugs = _preferred_place_slugs_for_query(query, context="place_search")
+    searchable_facilities = _build_searchable_campus_facilities(conn, place_rows=places)
+    preferred_slugs = _preferred_place_slugs_for_query(collapsed_query, context="place_search")
     preferred_slug_set = set(preferred_slugs)
-    ranked: list[tuple[int, int, int, dict[str, Any]]] = []
+    facility_best_by_slug: dict[str, tuple[int, int, dict[str, Any]]] = {}
+    for facility_index_value, row in enumerate(searchable_facilities):
+        place_slug = str(row.get("place_slug") or "").strip()
+        if not place_slug:
+            continue
+        rank = _rank_campus_facility_candidate(
+            row,
+            collapsed_query=collapsed_query,
+            compact_query=compact_query,
+        )
+        if rank is None:
+            continue
+        existing = facility_best_by_slug.get(place_slug)
+        if existing is None or (rank, facility_index_value) < (existing[0], existing[1]):
+            facility_best_by_slug[place_slug] = (rank, facility_index_value, row)
+
+    ranked: list[tuple[int, int, int, int, dict[str, Any]]] = []
     for index, item in enumerate(places):
-        rank = _rank_place_search_candidate(
+        place_rank = _rank_place_search_candidate(
             item,
             collapsed_query=collapsed_query,
             compact_query=compact_query,
             facility_tokens=facility_index[index]["facility_tokens"],
             generic_keywords=facility_index[index]["generic_keywords"],
         )
-        if rank is None:
+        facility_match = facility_best_by_slug.get(str(item.get("slug") or "").strip())
+        if place_rank is None and facility_match is None:
             continue
+        payload = item
+        facility_sort = (
+            _facility_phase_for_rank(facility_match[0]) if facility_match is not None else None
+        )
+        place_sort = _place_phase_for_rank(place_rank) if place_rank is not None else None
+        if facility_sort is not None and (place_sort is None or facility_sort < place_sort):
+            phase, subrank = facility_sort
+            payload = {
+                **item,
+                "matched_facility": _matched_facility_from_row(facility_match[2]).model_dump(
+                    exclude_none=True
+                ),
+            }
+        else:
+            assert place_sort is not None
+            phase, subrank = place_sort
         preference_rank = 0 if str(item.get("slug") or "").strip() in preferred_slug_set else 1
-        ranked.append((rank, preference_rank, index, item))
-    ranked.sort(key=lambda item: (item[0], item[1], item[2]))
+        ranked.append((phase, subrank, preference_rank, index, payload))
+    ranked.sort(key=lambda item: (item[0], item[1], item[2], item[3]))
     if preferred_slugs:
         ranked = [
             item
             for item in ranked
-            if str(item[3].get("slug") or "").strip() in preferred_slug_set
+            if str(item[4].get("slug") or "").strip() in preferred_slug_set
         ]
-    return [Place.model_validate(item) for _, _, _, item in ranked[:limit]]
+    return [Place.model_validate(item) for _, _, _, _, item in ranked[:limit]]
 
 
 def search_courses(
@@ -3460,6 +3721,8 @@ def _run_admin_sync_target(
                 )
             )
         }
+    if target == "campus_facilities":
+        return {"campus_facilities": len(refresh_campus_facilities_from_source(conn))}
     if target == "library_hours":
         return {"updated_places": len(refresh_library_hours_from_library_page(conn))}
     if target in {"library_seat_status", "library_seat_prewarm"}:
@@ -4955,6 +5218,40 @@ def refresh_library_hours_from_library_page(
     return updated
 
 
+def refresh_campus_facilities_from_source(
+    conn: sqlite3.Connection,
+    *,
+    source: CampusFacilitiesSource | Any | None = None,
+    fetched_at: str | None = None,
+) -> list[dict[str, Any]]:
+    source = source or CampusFacilitiesSource(FACILITIES_SOURCE_URL)
+    synced_at = fetched_at or _now_iso()
+    rows = source.parse(source.fetch(), fetched_at=synced_at)
+    place_lookup = _place_index(conn)
+    prepared_rows: list[dict[str, Any]] = []
+    for row in rows:
+        slug = None
+        for candidate in _location_candidates(str(row.get("location") or "")):
+            slug = place_lookup.get(_normalize_place_key(candidate))
+            if slug:
+                break
+        prepared_rows.append(
+            {
+                "facility_name": str(row.get("facility_name") or ""),
+                "category": _normalize_optional_text(row.get("category")),
+                "phone": _normalize_campus_facility_phone(row.get("phone")),
+                "location_text": _normalize_campus_facility_location(row.get("location")),
+                "hours_text": _normalize_optional_text(row.get("hours_text")),
+                "place_slug": slug,
+                "source_url": FACILITIES_SOURCE_URL,
+                "source_tag": row.get("source_tag", "cuk_facilities"),
+                "last_synced_at": row.get("last_synced_at", synced_at),
+            }
+        )
+    repo.replace_campus_facilities(conn, prepared_rows)
+    return repo.list_campus_facilities(conn, limit=max(len(prepared_rows), 1))
+
+
 def refresh_facility_hours_from_facilities_page(
     conn: sqlite3.Connection,
     *,
@@ -5285,6 +5582,7 @@ def sync_official_snapshot(
         conn,
         campus=campus or settings.official_campus_id,
     )
+    campus_facilities = refresh_campus_facilities_from_source(conn)
     refresh_library_hours_from_library_page(conn)
     refresh_facility_hours_from_facilities_page(conn)
     dining_menus = refresh_campus_dining_menus_from_facilities_page(conn)
@@ -5307,6 +5605,7 @@ def sync_official_snapshot(
     transport_guides = refresh_transport_guides_from_location_page(conn)
     return {
         "places": len(places),
+        "campus_facilities": len(campus_facilities),
         "dining_menus": len(dining_menus),
         "courses": len(courses),
         "notices": len(notices),

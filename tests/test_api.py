@@ -10,6 +10,7 @@ from songsim_campus import services
 from songsim_campus.api import create_app
 from songsim_campus.db import connection
 from songsim_campus.repo import (
+    replace_campus_facilities,
     replace_courses,
     replace_notices,
     replace_places,
@@ -452,6 +453,111 @@ def test_places_endpoint_matches_generic_facility_nouns(client):
     assert atm_response.status_code == 200
     assert [item["slug"] for item in atm_response.json()] == ["student-center"]
 
+
+def test_places_endpoint_exposes_matched_facility_metadata(client):
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                {
+                    "slug": "student-center",
+                    "name": "학생회관",
+                    "category": "facility",
+                    "aliases": ["학회관", "트러스트짐"],
+                    "description": "학생 편의시설과 복사/은행/카페가 있는 공간",
+                    "opening_hours": {
+                        "복사실": "평일 08:50~19:00",
+                        "우리은행": "평일 09:00~16:00",
+                        "카페드림": "평일 08:00~22:00",
+                        "트러스트짐": "평일 07:00~22:30",
+                    },
+                    "latitude": 37.48652,
+                    "longitude": 126.80216,
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "slug": "central-library",
+                    "name": "중앙도서관",
+                    "category": "library",
+                    "aliases": ["중도"],
+                    "description": "자료 열람과 시험 준비를 위한 핵심 공간",
+                    "latitude": 37.48643,
+                    "longitude": 126.80164,
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+        replace_campus_facilities(
+            conn,
+            [
+                {
+                    "facility_name": "복사실",
+                    "category": "복사실",
+                    "phone": "02-2164-4725",
+                    "location_text": "학생회관 1층",
+                    "hours_text": "평일 08:50~19:00",
+                    "place_slug": "student-center",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "facility_name": "우리은행",
+                    "category": "은행",
+                    "phone": "032-342-2641",
+                    "location_text": "학생회관 1층",
+                    "hours_text": "평일 09:00~16:00",
+                    "place_slug": "student-center",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "facility_name": "카페드림",
+                    "category": "카페",
+                    "phone": "010-9517-9417",
+                    "location_text": "학생회관 1층",
+                    "hours_text": "평일 08:00~22:00",
+                    "place_slug": "student-center",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "facility_name": "트러스트짐",
+                    "category": "피트니스센터",
+                    "phone": "032-342-5406",
+                    "location_text": "학생회관 1층",
+                    "hours_text": "평일 07:00~22:30",
+                    "place_slug": "student-center",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+
+    facility_expectations = {
+        "복사실이 어디야?": ("복사실", "02-2164-4725"),
+        "우리은행 전화번호 알려줘": ("우리은행", "032-342-2641"),
+        "카페드림 어디야?": ("카페드림", "010-9517-9417"),
+        "트러스트짐 어디야?": ("트러스트짐", "032-342-5406"),
+    }
+    for query, (facility_name, phone) in facility_expectations.items():
+        response = client.get("/places", params={"query": query, "limit": 1})
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload
+        assert payload[0]["slug"] == "student-center"
+        assert "matched_facility" in payload[0]
+        assert payload[0]["matched_facility"]["name"] == facility_name
+        assert payload[0]["matched_facility"]["phone"] == phone
+        assert payload[0]["matched_facility"]["location_hint"] == "학생회관 1층"
+
+    library_response = client.get("/places", params={"query": "중앙도서관이 어디야?", "limit": 1})
+    assert library_response.json()[0].get("matched_facility") is None
 
 def test_restaurants_search_endpoint_matches_brand_alias(client):
     with connection() as conn:

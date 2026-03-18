@@ -5,6 +5,14 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
+class MatchedFacility(BaseModel):
+    name: str
+    category: str | None = None
+    phone: str | None = None
+    location_hint: str | None = None
+    opening_hours: str | None = None
+
+
 class Place(BaseModel):
     id: int
     slug: str
@@ -15,6 +23,7 @@ class Place(BaseModel):
     latitude: float | None = None
     longitude: float | None = None
     opening_hours: dict[str, str] = Field(default_factory=dict)
+    matched_facility: MatchedFacility | None = None
     source_tag: str = "demo"
     last_synced_at: str
 
@@ -184,6 +193,7 @@ class McpPlaceResult(BaseModel):
     short_location: str | None = None
     coordinates: McpCoordinates | None = None
     highlights: list[str] = Field(default_factory=list)
+    matched_facility: MatchedFacility | None = None
 
 
 class McpNoticeResult(BaseModel):

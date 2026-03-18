@@ -9,6 +9,7 @@ from songsim_campus.db import connection, init_db
 from songsim_campus.mcp_server import build_mcp
 from songsim_campus.repo import (
     replace_campus_dining_menus,
+    replace_campus_facilities,
     replace_courses,
     replace_notices,
     replace_places,
@@ -1432,7 +1433,311 @@ def test_mcp_public_search_places_supports_generic_facility_nouns(app_env, monke
                 },
             ],
         )
+        replace_campus_facilities(
+            conn,
+            [
+                {
+                    "facility_name": "복사실",
+                    "category": "복사실",
+                    "phone": "02-2164-4725",
+                    "location_text": "학생회관 1층",
+                    "hours_text": "평일 08:50~19:00",
+                    "place_slug": "student-center",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "facility_name": "우리은행",
+                    "category": "은행",
+                    "phone": "032-342-2641",
+                    "location_text": "학생회관 1층",
+                    "hours_text": "평일 09:00~16:00",
+                    "place_slug": "student-center",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "facility_name": "카페드림",
+                    "category": "카페",
+                    "phone": "010-9517-9417",
+                    "location_text": "학생회관 1층",
+                    "hours_text": "평일 08:00~22:00",
+                    "place_slug": "student-center",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "facility_name": "트러스트짐",
+                    "category": "피트니스센터",
+                    "phone": "032-342-5406",
+                    "location_text": "학생회관 1층",
+                    "hours_text": "평일 07:00~22:30",
+                    "place_slug": "student-center",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+        replace_campus_facilities(
+            conn,
+            [
+                {
+                    "facility_name": "복사실",
+                    "category": "복사실",
+                    "phone": "02-2164-4725",
+                    "location_text": "학생회관 1층",
+                    "hours_text": "평일 08:50~19:00",
+                    "place_slug": "student-center",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "facility_name": "우리은행",
+                    "category": "은행",
+                    "phone": "032-342-2641",
+                    "location_text": "학생회관 1층",
+                    "hours_text": "평일 09:00~16:00",
+                    "place_slug": "student-center",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "facility_name": "카페드림",
+                    "category": "카페",
+                    "phone": "010-9517-9417",
+                    "location_text": "학생회관 1층",
+                    "hours_text": "평일 08:00~22:00",
+                    "place_slug": "student-center",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "facility_name": "트러스트짐",
+                    "category": "피트니스센터",
+                    "phone": "032-342-5406",
+                    "location_text": "학생회관 1층",
+                    "hours_text": "평일 07:00~22:30",
+                    "place_slug": "student-center",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+        replace_campus_facilities(
+            conn,
+            [
+                {
+                    "facility_name": "복사실",
+                    "category": "복사실",
+                    "phone": "02-2164-4725",
+                    "location_text": "학생회관 1층",
+                    "hours_text": "평일 08:50~19:00",
+                    "place_slug": "student-center",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "facility_name": "우리은행",
+                    "category": "은행",
+                    "phone": "032-342-2641",
+                    "location_text": "학생회관 1층",
+                    "hours_text": "평일 09:00~16:00",
+                    "place_slug": "student-center",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "facility_name": "카페드림",
+                    "category": "카페",
+                    "phone": "010-9517-9417",
+                    "location_text": "학생회관 1층",
+                    "hours_text": "평일 08:00~22:00",
+                    "place_slug": "student-center",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "facility_name": "트러스트짐",
+                    "category": "피트니스센터",
+                    "phone": "032-342-5406",
+                    "location_text": "학생회관 1층",
+                    "hours_text": "평일 07:00~22:30",
+                    "place_slug": "student-center",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
     monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+
+def test_mcp_public_search_places_returns_matched_facility_metadata(app_env, monkeypatch):
+    pytest.importorskip('mcp.server.fastmcp')
+    init_db()
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                {
+                    "slug": "student-center",
+                    "name": "학생회관",
+                    "category": "facility",
+                    "aliases": ["학회관", "트러스트짐"],
+                    "description": "학생 편의시설과 복사/은행/카페가 있는 공간",
+                    "opening_hours": {
+                        "복사실": "평일 08:50~19:00",
+                        "우리은행": "평일 09:00~16:00",
+                        "카페드림": "평일 08:00~22:00",
+                        "트러스트짐": "평일 07:00~22:30",
+                    },
+                    "latitude": 37.48652,
+                    "longitude": 126.80216,
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "slug": "central-library",
+                    "name": "중앙도서관",
+                    "category": "library",
+                    "aliases": ["중도"],
+                    "description": "자료 열람과 시험 준비를 위한 핵심 공간",
+                    "latitude": 37.48643,
+                    "longitude": 126.80164,
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "slug": "dormitory-stephen",
+                    "name": "스테파노기숙사",
+                    "category": "dormitory",
+                    "aliases": ["K관"],
+                    "description": "기숙사 생활시설 건물",
+                    "latitude": 37.48516,
+                    "longitude": 126.80323,
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+        replace_campus_facilities(
+            conn,
+            [
+                {
+                    "facility_name": "복사실",
+                    "category": "복사실",
+                    "phone": "02-2164-4725",
+                    "location_text": "학생회관 1층",
+                    "hours_text": "평일 08:50~19:00",
+                    "place_slug": "student-center",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "facility_name": "우리은행",
+                    "category": "은행",
+                    "phone": "032-342-2641",
+                    "location_text": "학생회관 1층",
+                    "hours_text": "평일 09:00~16:00",
+                    "place_slug": "student-center",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "facility_name": "카페드림",
+                    "category": "카페",
+                    "phone": "010-9517-9417",
+                    "location_text": "학생회관 1층",
+                    "hours_text": "평일 08:00~22:00",
+                    "place_slug": "student-center",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "facility_name": "트러스트짐",
+                    "category": "피트니스센터",
+                    "phone": "032-342-5406",
+                    "location_text": "학생회관 1층",
+                    "hours_text": "평일 07:00~22:30",
+                    "place_slug": "student-center",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "facility_name": "CU",
+                    "category": "편의점",
+                    "phone": "032-343-3424",
+                    "location_text": "학생회관 1층",
+                    "hours_text": "평일 08:00~21:30 토,일 08:00~16:00 (야간 무인으로 24시간 운영)",
+                    "place_slug": "student-center",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "facility_name": "이마트24",
+                    "category": "편의점",
+                    "phone": "070-8808-1315",
+                    "location_text": "K관 1층",
+                    "hours_text": "상시 07:00~24:00",
+                    "place_slug": "dormitory-stephen",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    facility_queries = [
+        "복사실이 어디야?",
+        "우리은행 전화번호 알려줘",
+        "카페드림 어디야?",
+        "트러스트짐 어디야?",
+    ]
+
+    async def main():
+        mcp = build_mcp()
+        facility_payloads = []
+        for query in facility_queries:
+            payload = await mcp.call_tool('tool_search_places', {'query': query, 'limit': 1})
+            facility_payloads.append(_tool_payloads(payload)[0])
+        library_payload = _tool_payloads(
+            await mcp.call_tool('tool_search_places', {'query': '중앙도서관이 어디야?', 'limit': 1})
+        )[0]
+        return facility_payloads, library_payload
+
+    facility_payloads, library_payload = asyncio.run(main())
+
+    assert all(item['slug'] == 'student-center' for item in facility_payloads)
+    assert all('matched_facility' in item for item in facility_payloads)
+    assert [item['matched_facility'].get('name') for item in facility_payloads] == [
+        '복사실',
+        '우리은행',
+        '카페드림',
+        '트러스트짐',
+    ]
+    assert facility_payloads[1]['matched_facility'].get('phone') == '032-342-2641'
+    assert facility_payloads[2]['matched_facility'].get('location_hint') == '학생회관 1층'
+    assert 'matched_facility' not in library_payload
+
     clear_settings_cache()
 
     async def main():
@@ -1444,10 +1749,10 @@ def test_mcp_public_search_places_supports_generic_facility_nouns(app_env, monke
     gym_payloads, store_payloads = asyncio.run(main())
 
     assert [item["slug"] for item in gym_payloads] == ["student-center"]
-    assert [item["slug"] for item in store_payloads[:2]] == [
+    assert {item["slug"] for item in store_payloads[:2]} == {
         "student-center",
         "dormitory-stephen",
-    ]
+    }
 
     clear_settings_cache()
 

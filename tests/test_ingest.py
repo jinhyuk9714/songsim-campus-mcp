@@ -330,6 +330,7 @@ def test_facility_hours_parser_extracts_cards_and_table_rows():
     assert rows[0]["facility_name"] == "Buon Pranzo 부온 프란조"
     assert rows[0]["location"] == "학생미래인재관 2층"
     assert rows[0]["hours_text"] == "중식 11:30 ~ 14:00"
+    assert rows[0]["phone"] == "02-2164-4736"
     assert rows[0]["category"] == "식당안내"
     assert rows[0]["menu_week_label"] == "3월 3주차 메뉴표 확인하기"
     assert rows[0]["menu_source_url"].startswith(
@@ -338,10 +339,12 @@ def test_facility_hours_parser_extracts_cards_and_table_rows():
 
     cafe = next(item for item in rows if item["facility_name"] == "카페드림")
     assert cafe["location"] == "중앙도서관 2층"
+    assert cafe["phone"] == "010-9517-9417"
     assert cafe["hours_text"] == "평일 08:00~19:00 토 10:00~16:00 (일/공휴일휴무)"
 
     mensa = next(item for item in rows if item["facility_name"] == "Café Mensa 카페 멘사")
     assert mensa["location"] == "김수환관 1층"
+    assert mensa["phone"] is None
     assert mensa["menu_week_label"] == "3월 3주차 메뉴표 확인하기"
     assert mensa["menu_source_url"].startswith(
         "https://www.catholic.ac.kr/cms/etcResourceOpen.do"
@@ -349,6 +352,7 @@ def test_facility_hours_parser_extracts_cards_and_table_rows():
 
     market = next(item for item in rows if item["facility_name"] == "CU")
     assert market["category"] == "편의점"
+    assert market["phone"] == "032-343-3424"
     assert market["hours_text"].endswith("(야간 무인으로 24시간 운영)")
 
 
