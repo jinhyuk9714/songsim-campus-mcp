@@ -3,11 +3,18 @@ from __future__ import annotations
 import threading
 import time
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
 from songsim_campus import services
 from songsim_campus.api import create_app
+from songsim_campus.api_docs import build_filtered_openapi
+from songsim_campus.api_pages import (
+    render_admin_observability_page,
+    render_admin_sync_page,
+    render_landing_page,
+)
 from songsim_campus.db import connection
 from songsim_campus.repo import (
     replace_campus_facilities,
@@ -255,6 +262,137 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     assert "/academic-status-guides" in openapi.text
     assert "/profiles" not in openapi.text
     assert "/admin/sync" not in openapi.text
+
+
+def test_api_docs_helper_preserves_filtered_openapi_shape(app_env, monkeypatch):
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    app = create_app()
+    request = SimpleNamespace(base_url="https://fallback-api.onrender.com/")
+    settings = SimpleNamespace(public_http_url="https://songsim-api.onrender.com")
+
+    payload = build_filtered_openapi(
+        app,
+        request,
+        settings=settings,
+        title="Songsim Test Schema",
+        description="Test filtered schema",
+        path_metadata={
+            "/places": {
+                "operationId": "searchPlaces",
+                "summary": "Search campus places",
+                "description": "Places only",
+            },
+            "/courses": {
+                "operationId": "searchCourses",
+                "summary": "Search courses",
+                "description": "Courses only",
+            },
+        },
+    )
+
+    clear_settings_cache()
+
+    assert payload["info"]["title"] == "Songsim Test Schema"
+    assert payload["info"]["description"] == "Test filtered schema"
+    assert payload["servers"] == [{"url": "https://songsim-api.onrender.com"}]
+    assert set(payload["paths"]) == {"/places", "/courses"}
+    assert payload["paths"]["/places"]["get"]["operationId"] == "searchPlaces"
+    assert "components" in payload
+
+
+def test_api_page_helpers_render_expected_strings():
+    landing_html = render_landing_page(
+        public_http_url="https://songsim-api.onrender.com",
+        mcp_url="https://songsim-mcp.onrender.com/mcp",
+        public_readonly=True,
+        oauth_enabled=False,
+        admin_link_html="",
+        gpt_actions_links_html="",
+    )
+    assert "Songsim Campus MCP" in landing_html
+    assert "https://songsim-api.onrender.com" in landing_html
+    assert "https://songsim-mcp.onrender.com/mcp" in landing_html
+    assert "/academic-support-guides" in landing_html
+    assert "configured without OAuth" in landing_html
+    assert "GPT Actions OpenAPI" not in landing_html
+    assert "Admin Sync" not in landing_html
+
+    sync_html = render_admin_sync_page(
+        state={
+            "datasets": [
+                {
+                    "name": "academic_support_guides",
+                    "row_count": 3,
+                    "last_synced_at": "2026-03-18T10:00:00+09:00",
+                }
+            ],
+            "recent_runs": [],
+            "automation": SimpleNamespace(enabled=False, leader=False, jobs=[]),
+        },
+        official_campus_id="1",
+        official_course_year=2026,
+        official_course_semester=1,
+        official_notice_pages=2,
+    )
+    assert "Songsim Admin Sync" in sync_html
+    assert "Automation Status" in sync_html
+    assert "academic_support_guides" in sync_html
+
+    observability_html = render_admin_observability_page(
+        state={
+            "readiness": {
+                "ok": True,
+                "database": {"ok": True, "error": None},
+                "tables": {"places": {"ok": True, "row_count": 1, "last_synced_at": "2026-03-18"}},
+            },
+            "observability": {
+                "process_started_at": "2026-03-18T10:00:00+09:00",
+                "datasets": [
+                    {
+                        "name": "places",
+                        "row_count": 1,
+                        "last_synced_at": "2026-03-18T10:00:00+09:00",
+                    }
+                ],
+                "cache": {
+                    "fresh_hit": 0,
+                    "stale_hit": 0,
+                    "live_fetch_success": 0,
+                    "live_fetch_error": 0,
+                    "local_fallback": 1,
+                    "restaurant_hours_fresh_hit": 0,
+                    "restaurant_hours_stale_hit": 0,
+                    "restaurant_hours_live_fetch_success": 0,
+                    "restaurant_hours_live_fetch_error": 0,
+                    "recent_events": [],
+                },
+                "sync": {
+                    "recent_events": [],
+                    "last_failure_at": None,
+                    "last_failure_message": None,
+                },
+                "automation": {
+                    "enabled": False,
+                    "leader": False,
+                    "jobs": [
+                        {
+                            "name": "snapshot",
+                            "interval_minutes": 60,
+                            "last_run_at": None,
+                            "last_status": None,
+                            "next_due_at": "2026-03-18T11:00:00+09:00",
+                        }
+                    ],
+                },
+                "recent_sync_runs": [],
+            },
+        }
+    )
+    assert "Songsim Observability" in observability_html
+    assert "Recent Cache Events" in observability_html
+    assert "snapshot" in observability_html
 
 
 def test_public_readonly_mode_exposes_gpt_actions_openapi(app_env, monkeypatch):
