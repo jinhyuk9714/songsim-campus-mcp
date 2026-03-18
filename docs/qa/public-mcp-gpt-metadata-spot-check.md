@@ -42,6 +42,6 @@
 
 ## 관련 문서
 
-- [Public MCP Hidden Risk Summary](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-hidden-risk-summary.md)
-- [Public MCP Live Validation Summary](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-live-validation-summary.md)
-- [Public MCP Shared GPT UI Sample Check](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-shared-gpt-ui-sample-check.md)
+- [Public MCP Hidden Risk Summary](public-mcp-hidden-risk-summary.md)
+- [Public MCP Live Validation Summary](public-mcp-live-validation-summary.md)
+- [Public MCP Shared GPT UI Sample Check](public-mcp-shared-gpt-ui-sample-check.md)

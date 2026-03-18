@@ -92,6 +92,6 @@
 
 ## 관련 문서
 
-- [공개 MCP 500문장 코퍼스](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-corpus-500.md)
-- [공개 MCP 라이브 판정표 50](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-live-validation-50.md)
-- [공개 MCP 라이브 판정 요약](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-live-validation-summary.md)
+- [공개 MCP 500문장 코퍼스](public-mcp-corpus-500.md)
+- [공개 MCP 라이브 판정표 50](public-mcp-live-validation-50.md)
+- [공개 MCP 라이브 판정 요약](public-mcp-live-validation-summary.md)

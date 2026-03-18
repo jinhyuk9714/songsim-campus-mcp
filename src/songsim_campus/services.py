@@ -5,7 +5,6 @@ import json
 import logging
 import math
 import re
-import sqlite3
 import threading
 import unicodedata
 import uuid
@@ -20,7 +19,7 @@ import httpx
 from pypdf import PdfReader
 
 from . import repo
-from .db import connection, get_connection
+from .db import DBConnection, connection, get_connection
 from .ingest.kakao_places import (
     KakaoLocalClient,
     KakaoPlace,
@@ -138,9 +137,33 @@ SYNC_DATASET_TABLES = (
     "academic_support_guides",
     "transport_guides",
 )
-PUBLIC_READY_REQUIRED_DATASETS = frozenset(
-    {"places", "notices", "certificate_guides", "transport_guides"}
+PUBLIC_READY_CORE_DATASETS = frozenset(
+    {
+        "places",
+        "notices",
+        "academic_calendar",
+        "certificate_guides",
+        "leave_of_absence_guides",
+        "academic_status_guides",
+        "scholarship_guides",
+        "academic_support_guides",
+        "wifi_guides",
+        "transport_guides",
+    }
 )
+PUBLIC_READY_BEST_EFFORT_DATASETS = frozenset({"campus_facilities", "campus_dining_menus"})
+PUBLIC_READY_OPTIONAL_DATASETS = frozenset({"courses"})
+PUBLIC_READY_REQUIRED_DATASETS = PUBLIC_READY_CORE_DATASETS
+PUBLIC_READY_DATASET_POLICIES = {
+    table: (
+        "core"
+        if table in PUBLIC_READY_CORE_DATASETS
+        else "best_effort"
+        if table in PUBLIC_READY_BEST_EFFORT_DATASETS
+        else "optional"
+    )
+    for table in SYNC_DATASET_TABLES
+}
 ADMIN_SYNC_TARGETS = {
     "snapshot",
     "places",
@@ -599,7 +622,7 @@ def _start_background_readiness_refresh(
     thread.start()
 
 
-def _rollback_readiness_connection(conn: sqlite3.Connection) -> None:
+def _rollback_readiness_connection(conn: DBConnection) -> None:
     try:
         conn.rollback()
     except Exception:
@@ -626,10 +649,11 @@ def _compute_readiness_snapshot(settings: Any) -> dict[str, Any]:
         for table in SYNC_DATASET_TABLES:
             try:
                 item = repo.get_dataset_sync_state(conn, table)
-                table_state = {"ok": True, **item}
+                policy = PUBLIC_READY_DATASET_POLICIES.get(table, "optional")
+                table_state = {"ok": True, "policy": policy, **item}
                 if (
                     public_readonly
-                    and table in PUBLIC_READY_REQUIRED_DATASETS
+                    and policy == "core"
                     and (
                         not item.get("row_count")
                         or item.get("last_synced_at") is None
@@ -700,7 +724,7 @@ def get_readiness_snapshot() -> dict[str, Any]:
 
 
 def get_observability_snapshot(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     *,
     runs_limit: int = 20,
 ) -> ObservabilitySnapshot:
@@ -739,7 +763,7 @@ def _sync_run_completed_at(run: dict[str, Any] | SyncRun | None) -> str | None:
 
 
 def _automation_job_snapshot(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     *,
     target: str,
     now: datetime | None = None,
@@ -769,7 +793,7 @@ def _automation_job_snapshot(
 
 
 def get_automation_status(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     *,
     now: datetime | None = None,
 ) -> AutomationObservability:
@@ -784,20 +808,20 @@ def get_automation_status(
     )
 
 
-def try_acquire_automation_leader(conn: sqlite3.Connection) -> bool:
+def try_acquire_automation_leader(conn: DBConnection) -> bool:
     locked = repo.try_advisory_lock(conn, AUTOMATION_LOCK_KEY)
     set_automation_leader(locked)
     return locked
 
 
-def release_automation_leader(conn: sqlite3.Connection) -> bool:
+def release_automation_leader(conn: DBConnection) -> bool:
     unlocked = repo.release_advisory_lock(conn, AUTOMATION_LOCK_KEY)
     set_automation_leader(False)
     return unlocked
 
 
 def _is_automation_job_due(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     *,
     target: str,
     now: datetime | None = None,
@@ -832,7 +856,7 @@ def _normalize_place_key(value: str) -> str:
     return normalized
 
 
-def _place_index(conn: sqlite3.Connection) -> dict[str, str]:
+def _place_index(conn: DBConnection) -> dict[str, str]:
     return _build_place_slug_lookup(repo.list_places(conn))
 
 
@@ -1977,7 +2001,7 @@ def _extract_campus_dining_menu_week_range(
 
 
 def _resolve_campus_dining_menu_place(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     *,
     facility_name: str,
     location: str,
@@ -2026,7 +2050,7 @@ def _is_generic_opening_hours_key(value: str) -> bool:
     }
 
 
-def _facility_hours_index(conn: sqlite3.Connection) -> dict[str, str]:
+def _facility_hours_index(conn: DBConnection) -> dict[str, str]:
     index: dict[str, str] = {}
     for place in repo.list_places(conn):
         for name, hours_text in place.get("opening_hours", {}).items():
@@ -2233,7 +2257,7 @@ def _place_phase_for_rank(rank: int) -> tuple[int, int]:
 
 
 def _build_searchable_campus_facilities(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     *,
     place_rows: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
@@ -2573,7 +2597,7 @@ def _coerce_library_seat_status_source(
 
 
 def refresh_library_seat_status_cache(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     *,
     fetched_at: str | None = None,
     source: LibrarySeatStatusSource | Any | None = None,
@@ -2618,7 +2642,7 @@ def _evaluate_open_now_from_map(opening_hours: dict[str, str], at: datetime) -> 
 
 
 def _restaurant_open_now(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     restaurant_row: dict[str, Any],
     facility_hours: dict[str, str],
     at: datetime,
@@ -2764,7 +2788,7 @@ def _direct_walk_minutes_from_coords(
     return max(1, round(_haversine_meters(lat1, lon1, lat2, lon2) / WALKING_METERS_PER_MINUTE))
 
 
-def _campus_gate_places(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+def _campus_gate_places(conn: DBConnection) -> list[dict[str, Any]]:
     graph_nodes: frozenset[str] = _load_campus_walk_graph()["nodes"]
     return [
         place
@@ -2781,7 +2805,7 @@ def _is_external_restaurant_route(source_tag: str | None) -> bool:
 
 
 def _estimate_place_to_restaurant_walk_minutes(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     *,
     origin_place: dict[str, Any],
     restaurant_row: dict[str, Any],
@@ -2813,7 +2837,7 @@ def _estimate_place_to_restaurant_walk_minutes(
 
 
 def _estimate_restaurant_to_place_walk_minutes(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     *,
     restaurant_latitude: float,
     restaurant_longitude: float,
@@ -2846,7 +2870,7 @@ def _estimate_restaurant_to_place_walk_minutes(
     return best_minutes or direct_minutes
 
 
-def _resolve_place_from_room(conn: sqlite3.Connection, room: str | None) -> Place | None:
+def _resolve_place_from_room(conn: DBConnection, room: str | None) -> Place | None:
     place_rows = repo.list_places(conn)
     return _resolve_place_from_room_with_maps(
         room,
@@ -2887,7 +2911,7 @@ def _resolve_place_from_room_with_maps(
 
 
 def _resolve_places_from_rooms(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     rooms: set[str],
 ) -> dict[str, Place]:
     if not rooms:
@@ -2909,7 +2933,7 @@ def _resolve_places_from_rooms(
     return resolved
 
 
-def _ensure_profile(conn: sqlite3.Connection, profile_id: str) -> Profile:
+def _ensure_profile(conn: DBConnection, profile_id: str) -> Profile:
     row = repo.get_profile(conn, profile_id)
     if not row:
         raise NotFoundError(f"Profile not found: {profile_id}")
@@ -3141,7 +3165,7 @@ def get_notice_categories() -> list[NoticeCategoryInfo]:
 
 
 def get_library_seat_status(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     query: str | None = None,
     *,
     source: LibrarySeatStatusSource | Any | None = None,
@@ -3199,7 +3223,7 @@ def get_library_seat_status(
 
 
 def search_campus_dining_menus(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     query: str | None = None,
     *,
     limit: int = 10,
@@ -3224,7 +3248,7 @@ def search_campus_dining_menus(
 
 
 def search_places(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     query: str = "",
     category: str | None = None,
     limit: int = 10,
@@ -3327,7 +3351,7 @@ def search_places(
 
 
 def search_courses(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     query: str = "",
     *,
     year: int | None = None,
@@ -3394,7 +3418,7 @@ def search_courses(
 
 
 def search_restaurants(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     query: str = "",
     *,
     origin: str | None = None,
@@ -3606,7 +3630,7 @@ def _course_match_preview(
 
 
 def investigate_course_query_coverage(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     *,
     queries: list[str],
     source: CourseCatalogSource | Any | None = None,
@@ -3686,7 +3710,7 @@ def investigate_course_query_coverage(
 
 
 def list_latest_notices(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     category: str | None = None,
     limit: int = 10,
 ) -> list[Notice]:
@@ -3703,7 +3727,7 @@ def list_latest_notices(
 
 
 def list_certificate_guides(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     limit: int = 20,
 ) -> list[CertificateGuide]:
     return [
@@ -3713,7 +3737,7 @@ def list_certificate_guides(
 
 
 def list_leave_of_absence_guides(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     limit: int = 20,
 ) -> list[LeaveOfAbsenceGuide]:
     normalized_limit = max(1, min(limit, 50))
@@ -3724,7 +3748,7 @@ def list_leave_of_absence_guides(
 
 
 def list_scholarship_guides(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     limit: int = 20,
 ) -> list[ScholarshipGuide]:
     normalized_limit = max(1, min(limit, 50))
@@ -3735,7 +3759,7 @@ def list_scholarship_guides(
 
 
 def list_wifi_guides(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     limit: int = 20,
 ) -> list[WifiGuide]:
     normalized_limit = max(1, min(limit, 50))
@@ -3746,7 +3770,7 @@ def list_wifi_guides(
 
 
 def list_academic_support_guides(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     limit: int = 20,
 ) -> list[AcademicSupportGuide]:
     normalized_limit = max(1, min(limit, 50))
@@ -3757,7 +3781,7 @@ def list_academic_support_guides(
 
 
 def list_academic_status_guides(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     *,
     status: str | None = None,
     limit: int = 20,
@@ -3779,7 +3803,7 @@ def list_academic_status_guides(
 
 
 def list_academic_calendar(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     *,
     academic_year: int | None = None,
     month: int | None = None,
@@ -3809,7 +3833,7 @@ def list_academic_calendar(
 
 
 def list_transport_guides(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     mode: str | None = None,
     query: str | None = None,
     limit: int = 20,
@@ -3829,12 +3853,12 @@ def list_transport_guides(
     return _rank_transport_guides(guides, query=query, limit=limit)
 
 
-def list_sync_runs(conn: sqlite3.Connection, limit: int = 20) -> list[SyncRun]:
+def list_sync_runs(conn: DBConnection, limit: int = 20) -> list[SyncRun]:
     return [SyncRun.model_validate(item) for item in repo.list_sync_runs(conn, limit=limit)]
 
 
 def get_sync_dashboard_state(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     *,
     runs_limit: int = 20,
 ) -> dict[str, Any]:
@@ -3866,7 +3890,7 @@ def _sync_run_params(
 
 
 def _run_admin_sync_target(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     *,
     target: str,
     campus: str | None,
@@ -4032,7 +4056,7 @@ def run_admin_sync(
 
 
 def cleanup_stale_restaurant_caches(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     *,
     now: datetime | None = None,
 ) -> dict[str, int]:
@@ -4108,7 +4132,7 @@ def run_automation_tick(
                 lock_conn.close()
 
 
-def create_profile(conn: sqlite3.Connection, display_name: str = "") -> Profile:
+def create_profile(conn: DBConnection, display_name: str = "") -> Profile:
     created_at = _now_iso()
     profile_id = uuid.uuid4().hex
     repo.create_profile(
@@ -4122,7 +4146,7 @@ def create_profile(conn: sqlite3.Connection, display_name: str = "") -> Profile:
 
 
 def update_profile(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     profile_id: str,
     payload: ProfileUpdateRequest,
 ) -> Profile:
@@ -4144,7 +4168,7 @@ def update_profile(
 
 
 def set_profile_timetable(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     profile_id: str,
     courses: list[ProfileCourseRef],
 ) -> list[Course]:
@@ -4193,7 +4217,7 @@ def set_profile_timetable(
 
 
 def get_profile_timetable(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     profile_id: str,
     *,
     year: int | None = None,
@@ -4216,7 +4240,7 @@ def get_profile_timetable(
 
 
 def set_profile_notice_preferences(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     profile_id: str,
     preferences: ProfileNoticePreferences,
 ) -> ProfileNoticePreferences:
@@ -4238,7 +4262,7 @@ def set_profile_notice_preferences(
 
 
 def set_profile_interests(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     profile_id: str,
     interests: ProfileInterests,
 ) -> ProfileInterests:
@@ -4253,14 +4277,14 @@ def set_profile_interests(
     return ProfileInterests(tags=tags)
 
 
-def get_profile_interests(conn: sqlite3.Connection, profile_id: str) -> ProfileInterests:
+def get_profile_interests(conn: DBConnection, profile_id: str) -> ProfileInterests:
     _ensure_profile(conn, profile_id)
     row = repo.get_profile_interests(conn, profile_id)
     return ProfileInterests(tags=(row["tags"] if row else []))
 
 
 def list_profile_notices(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     profile_id: str,
     *,
     limit: int = 10,
@@ -4306,7 +4330,7 @@ def list_profile_notices(
 
 
 def get_profile_course_recommendations(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     profile_id: str,
     *,
     year: int | None = None,
@@ -4370,7 +4394,7 @@ def get_profile_course_recommendations(
 
 
 def get_profile_meal_recommendations(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     profile_id: str,
     *,
     origin: str,
@@ -4485,7 +4509,7 @@ def get_profile_meal_recommendations(
 
 
 def list_estimated_empty_classrooms(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     *,
     building: str,
     at: datetime | None = None,
@@ -4713,7 +4737,7 @@ def _restaurant_brand_cache_key(
 
 
 def _rank_restaurant_search_results(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     rows: list[dict[str, Any]],
     *,
     collapsed_query: str | None,
@@ -4824,7 +4848,7 @@ def _format_ambiguous_place_error(
 
 
 def _resolve_place_reference(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     identifier: str,
     *,
     label: str,
@@ -4891,7 +4915,7 @@ def _resolve_place_reference(
     raise NotFoundError(f"{not_found_prefix}: {cleaned_identifier}")
 
 
-def _resolve_origin_place(conn: sqlite3.Connection, origin: str) -> dict[str, Any]:
+def _resolve_origin_place(conn: DBConnection, origin: str) -> dict[str, Any]:
     return _resolve_place_reference(
         conn,
         origin,
@@ -4902,7 +4926,7 @@ def _resolve_origin_place(conn: sqlite3.Connection, origin: str) -> dict[str, An
 
 
 def _default_restaurant_search_origin(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     *,
     collapsed_query: str | None,
 ) -> dict[str, Any] | None:
@@ -4917,7 +4941,7 @@ def _default_restaurant_search_origin(
     return place
 
 
-def _resolve_building_place(conn: sqlite3.Connection, building: str) -> Place:
+def _resolve_building_place(conn: DBConnection, building: str) -> Place:
     row = _resolve_place_reference(
         conn,
         building,
@@ -5107,7 +5131,7 @@ def _cache_status(fetched_at: str, now: datetime) -> str:
 
 
 def _cache_rows_for_key(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     *,
     origin_slug: str,
     kakao_query: str,
@@ -5155,7 +5179,7 @@ def _live_restaurant_rows(
 
 
 def find_nearby_restaurants(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     *,
     origin: str,
     category: str | None = None,
@@ -5343,7 +5367,7 @@ def find_nearby_restaurants(
 
 
 def refresh_places_from_campus_map(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     *,
     source: CampusMapSource | Any | None = None,
     campus: str = "1",
@@ -5361,7 +5385,7 @@ def refresh_places_from_campus_map(
 
 
 def refresh_library_hours_from_library_page(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     *,
     source: LibraryHoursSource | Any | None = None,
     fetched_at: str | None = None,
@@ -5390,7 +5414,7 @@ def refresh_library_hours_from_library_page(
 
 
 def refresh_campus_facilities_from_source(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     *,
     source: CampusFacilitiesSource | Any | None = None,
     fetched_at: str | None = None,
@@ -5423,7 +5447,7 @@ def refresh_campus_facilities_from_source(
 
 
 def refresh_facility_hours_from_facilities_page(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     *,
     source: CampusFacilitiesSource | Any | None = None,
     fetched_at: str | None = None,
@@ -5455,7 +5479,7 @@ def refresh_facility_hours_from_facilities_page(
 
 
 def refresh_campus_dining_menus_from_facilities_page(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     *,
     source: CampusFacilitiesSource | Any | None = None,
     fetched_at: str | None = None,
@@ -5506,7 +5530,7 @@ def refresh_campus_dining_menus_from_facilities_page(
 
 
 def refresh_courses_from_subject_search(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     *,
     source: CourseCatalogSource | Any | None = None,
     year: int | None = None,
@@ -5538,7 +5562,7 @@ def refresh_courses_from_subject_search(
 
 
 def refresh_notices_from_notice_board(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     *,
     source: NoticeSource | Any | None = None,
     pages: int = 1,
@@ -5597,7 +5621,7 @@ def refresh_notices_from_notice_board(
 
 
 def refresh_academic_calendar_from_source(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     *,
     source: AcademicCalendarSource | Any | None = None,
     academic_year: int | None = None,
@@ -5619,7 +5643,7 @@ def refresh_academic_calendar_from_source(
 
 
 def refresh_transport_guides_from_location_page(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     *,
     source: TransportGuideSource | Any | None = None,
     fetched_at: str | None = None,
@@ -5635,7 +5659,7 @@ def refresh_transport_guides_from_location_page(
 
 
 def refresh_certificate_guides_from_certificate_page(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     *,
     source: CertificateGuideSource | Any | None = None,
     fetched_at: str | None = None,
@@ -5651,7 +5675,7 @@ def refresh_certificate_guides_from_certificate_page(
 
 
 def refresh_leave_of_absence_guides_from_source(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     *,
     source: LeaveOfAbsenceGuideSource | Any | None = None,
     fetched_at: str | None = None,
@@ -5667,7 +5691,7 @@ def refresh_leave_of_absence_guides_from_source(
 
 
 def refresh_scholarship_guides_from_source(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     *,
     source: ScholarshipGuideSource | Any | None = None,
     fetched_at: str | None = None,
@@ -5683,7 +5707,7 @@ def refresh_scholarship_guides_from_source(
 
 
 def refresh_wifi_guides_from_source(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     *,
     source: WifiGuideSource | Any | None = None,
     fetched_at: str | None = None,
@@ -5699,7 +5723,7 @@ def refresh_wifi_guides_from_source(
 
 
 def refresh_academic_support_guides_from_source(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     *,
     source: AcademicSupportGuideSource | Any | None = None,
     fetched_at: str | None = None,
@@ -5715,7 +5739,7 @@ def refresh_academic_support_guides_from_source(
 
 
 def refresh_academic_status_guides_from_source(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     *,
     sources: list[Any] | None = None,
     fetched_at: str | None = None,
@@ -5737,7 +5761,7 @@ def refresh_academic_status_guides_from_source(
 
 
 def sync_official_snapshot(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     *,
     campus: str | None = None,
     year: int | None = None,
@@ -5789,12 +5813,12 @@ def sync_official_snapshot(
     }
 
 
-def get_place(conn: sqlite3.Connection, identifier: str) -> Place:
+def get_place(conn: DBConnection, identifier: str) -> Place:
     place = repo.get_place_by_slug_or_name(conn, identifier)
     if not place:
         raise NotFoundError(f"Place not found: {identifier}")
     return Place.model_validate(place)
 
 
-def list_restaurants(conn: sqlite3.Connection) -> list[Restaurant]:
+def list_restaurants(conn: DBConnection) -> list[Restaurant]:
     return [Restaurant.model_validate(item) for item in repo.list_restaurants(conn)]

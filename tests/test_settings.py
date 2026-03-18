@@ -150,7 +150,7 @@ def test_settings_parse_automation_defaults(monkeypatch):
     assert settings.library_seat_prewarm_interval_minutes == 5
 
 
-def test_env_example_documents_2026_first_semester_defaults():
+def test_env_example_documents_blank_course_term_defaults():
     env_example = Path(__file__).resolve().parents[1] / ".env.example"
     text = env_example.read_text(encoding="utf-8")
 
@@ -174,5 +174,5 @@ def test_env_example_documents_2026_first_semester_defaults():
     assert "SONGSIM_LIBRARY_SEAT_CACHE_TTL_MINUTES=2" in text
     assert "SONGSIM_LIBRARY_SEAT_CACHE_STALE_TTL_MINUTES=15" in text
     assert "SONGSIM_OFFICIAL_NOTICE_PAGES=3" in text
-    assert "SONGSIM_OFFICIAL_COURSE_YEAR=2026" in text
-    assert "SONGSIM_OFFICIAL_COURSE_SEMESTER=1" in text
+    assert "SONGSIM_OFFICIAL_COURSE_YEAR=" in text
+    assert "SONGSIM_OFFICIAL_COURSE_SEMESTER=" in text

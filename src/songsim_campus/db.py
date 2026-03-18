@@ -11,9 +11,10 @@ from .settings import get_settings
 
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 SCHEMA_INIT_LOCK_KEY = 608_489_971_338_014_235
+DBConnection = psycopg.Connection
 
 
-def get_connection() -> psycopg.Connection:
+def get_connection() -> DBConnection:
     settings = get_settings()
     return psycopg.connect(
         settings.database_url,
@@ -33,7 +34,7 @@ def init_db() -> None:
 
 
 @contextmanager
-def connection() -> Iterator[psycopg.Connection]:
+def connection() -> Iterator[DBConnection]:
     conn = get_connection()
     try:
         yield conn

@@ -3,9 +3,9 @@ requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "songsim-campus-starterkit"
+name = "songsim-campus-mcp"
 version = "0.1.0"
-description = "Campus-specific MCP + HTTP starter kit for Catholic University Songsim campus"
+description = "Catholic University Songsim campus MCP + HTTP API"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

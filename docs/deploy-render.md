@@ -24,7 +24,7 @@
 ## 2. Render 배포
 
 1. GitHub 저장소를 Render에 연결합니다.
-2. 저장소 루트의 [render.yaml](/Users/sungjh/Projects/songsim-campus-mcp/render.yaml)을 사용해 Blueprint 배포를 만듭니다.
+2. 저장소 루트의 [render.yaml](../render.yaml)을 사용해 Blueprint 배포를 만듭니다.
 3. 두 서비스 모두에 아래 secret env를 채웁니다.
    - `SONGSIM_DATABASE_URL`
    - `SONGSIM_KAKAO_REST_API_KEY`
@@ -62,6 +62,11 @@ Render Blueprint health check는 `songsim-public-api`에서 `/healthz`를 사용
 `/readyz`는 운영자 수동 확인용 cached readiness로 보고, public data freshness나 DB 연결 상태를 점검할 때 별도로 확인합니다.
 steady-state polling이 있어도 DB 부하가 커지지 않도록 readiness snapshot은 프로세스 로컬 stale-while-revalidate cache를 사용합니다.
 fresh TTL은 짧게 유지하고, 최근 정상 snapshot은 최대 10분까지 stale fallback으로 재사용합니다.
+공개 배포 기준 readiness는 3단계 정책으로 해석합니다.
+
+- `core`: `places`, `notices`, `academic_calendar`, 주요 guide/transport snapshot. 비어 있거나 unsynced면 `/readyz`가 실패합니다.
+- `best_effort`: `campus_facilities`, `campus_dining_menus`. 비어 있어도 `/readyz`를 즉시 깨지는 않지만, 운영자가 sync 상태를 함께 봐야 합니다.
+- `optional`: `courses`. 공개 제품에 유용하지만 학기 전환 전후 운영자가 대상 연도/학기를 명시하기 전까지는 readiness gate에 직접 묶지 않습니다.
 
 ## 5. 주의
 
@@ -70,3 +75,4 @@ fresh TTL은 짧게 유지하고, 최근 정상 snapshot은 최대 10분까지 s
 - 공개 배포는 read-only입니다. profile/admin 경로는 숨겨집니다.
 - `songsim-public-api` automation은 `snapshot`, `library_seat_prewarm`, `cache_cleanup`을 실행합니다.
 - ChatGPT Actions는 HTTP API를 쓰므로 MCP OAuth와 무관합니다. MCP OAuth는 원할 때만 켜면 됩니다.
+- `SONGSIM_OFFICIAL_COURSE_YEAR`, `SONGSIM_OFFICIAL_COURSE_SEMESTER`는 intentionally 비워 두고, 운영 시점의 대상 학기를 명시해서 넣는 편이 안전합니다.

@@ -104,7 +104,7 @@ Codex에서는 이 MCP가 공개 제품의 기준 표면입니다. 학생-facing
 
 전체 검증 자산은 `docs/qa/` 아래에서 운영합니다. Codex는 public MCP를 기준 표면으로 쓰고, GPT 표면은 선택적 포장층으로만 다룹니다.
 
-- [공개 MCP 500문장 코퍼스](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-corpus-500.md)
-- [공개 MCP 릴리즈팩 50](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-release-pack-50.md)
-- [공개 MCP 라이브 판정표 50](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-live-validation-50.md)
-- [공개 MCP 라이브 판정 요약](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-live-validation-summary.md)
+- [공개 MCP 500문장 코퍼스](qa/public-mcp-corpus-500.md)
+- [공개 MCP 릴리즈팩 50](qa/public-mcp-release-pack-50.md)
+- [공개 MCP 라이브 판정표 50](qa/public-mcp-live-validation-50.md)
+- [공개 MCP 라이브 판정 요약](qa/public-mcp-live-validation-summary.md)

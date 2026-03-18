@@ -299,10 +299,14 @@ def test_readiness_snapshot_requires_non_empty_required_public_datasets(app_env,
     assert readiness["ok"] is False
     assert readiness["database"]["ok"] is True
     assert readiness["tables"]["certificate_guides"]["ok"] is False
+    assert readiness["tables"]["certificate_guides"]["policy"] == "core"
     assert readiness["tables"]["certificate_guides"]["reason"] == "empty_or_unsynced"
 
 
-def test_readiness_snapshot_allows_empty_optional_public_datasets(app_env, monkeypatch):
+def test_readiness_snapshot_allows_empty_best_effort_and_optional_public_datasets(
+    app_env,
+    monkeypatch,
+):
     init_db()
     monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
     clear_settings_cache()
@@ -324,7 +328,9 @@ def test_readiness_snapshot_allows_empty_optional_public_datasets(app_env, monke
 
     assert readiness["ok"] is True
     assert readiness["tables"]["campus_dining_menus"]["ok"] is True
+    assert readiness["tables"]["campus_dining_menus"]["policy"] == "best_effort"
     assert readiness["tables"]["courses"]["ok"] is True
+    assert readiness["tables"]["courses"]["policy"] == "optional"
 
 
 def test_readiness_snapshot_caches_success_within_ttl(app_env, monkeypatch):

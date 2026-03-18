@@ -100,4 +100,4 @@
 - place, restaurants, notices, classrooms, transport는 실제 public API 응답을 기반으로 채웠습니다.
 - course는 current public snapshot 기준으로 판정했고, 질의가 비어 있어도 릴리즈팩 기대를 충족하지 못하면 `soft_fail`로 기록했습니다.
 - resource-only 케이스는 API 우선 실행 특성상 `soft_pass` 또는 policy-based `pass`로 판정했습니다.
-- 다음 단계는 [공개 MCP 라이브 판정 요약](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-live-validation-summary.md)의 이슈 순위대로 보정하면 됩니다.
+- 다음 단계는 [공개 MCP 라이브 판정 요약](public-mcp-live-validation-summary.md)의 이슈 순위대로 보정하면 됩니다.

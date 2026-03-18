@@ -86,9 +86,9 @@
 
 ## 관련 문서
 
-- [Hidden Risk Audit](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-hidden-risk-audit.md)
-- [Public MCP Release Pack 50](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-release-pack-50.md)
-- [Public MCP Live Validation Summary](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-live-validation-summary.md)
-- [Public MCP Course Watchlist](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-course-watchlist.md)
-- [Public MCP GPT Metadata Spot Check](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-gpt-metadata-spot-check.md)
-- [Public MCP Shared GPT UI Sample Check](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-shared-gpt-ui-sample-check.md)
+- [Hidden Risk Audit](public-mcp-hidden-risk-audit.md)
+- [Public MCP Release Pack 50](public-mcp-release-pack-50.md)
+- [Public MCP Live Validation Summary](public-mcp-live-validation-summary.md)
+- [Public MCP Course Watchlist](public-mcp-course-watchlist.md)
+- [Public MCP GPT Metadata Spot Check](public-mcp-gpt-metadata-spot-check.md)
+- [Public MCP Shared GPT UI Sample Check](public-mcp-shared-gpt-ui-sample-check.md)

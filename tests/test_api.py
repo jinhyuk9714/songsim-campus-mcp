@@ -47,7 +47,9 @@ def test_readyz_reports_database_and_table_status(client):
     assert payload["ok"] is True
     assert payload["database"]["ok"] is True
     assert payload["tables"]["places"]["ok"] is True
+    assert payload["tables"]["places"]["policy"] == "core"
     assert payload["tables"]["courses"]["ok"] is True
+    assert payload["tables"]["courses"]["policy"] == "optional"
     assert payload["tables"]["sync_runs"]["ok"] is True
 
 
@@ -76,6 +78,7 @@ def test_readyz_marks_empty_required_public_dataset_as_not_ready(app_env, monkey
     payload = response.json()
     assert payload["ok"] is False
     assert payload["tables"]["certificate_guides"]["ok"] is False
+    assert payload["tables"]["certificate_guides"]["policy"] == "core"
     assert payload["tables"]["certificate_guides"]["reason"] == "empty_or_unsynced"
 
 

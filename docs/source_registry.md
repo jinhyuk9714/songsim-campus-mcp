@@ -16,7 +16,6 @@
 | cuk_academic_status_guides | 공식 | https://www.catholic.ac.kr/ko/support/return_from_leave_of_absence.do | 중간 | implemented | 복학, 자퇴, 재입학 정적 페이지 3개를 `academic_status_guides` current snapshot family로 정규화 |
 | cuk_scholarship_guides | 공식 | https://www.catholic.ac.kr/ko/support/scholarship_songsim.do | 중간 | implemented | 장학제도 안내 HTML과 공식 문서 링크를 `scholarship_guides` current snapshot으로 정규화 |
 | cuk_academic_support_guides | 공식 | https://www.catholic.ac.kr/ko/support/academic_contact_information.do | 중간 | implemented | 학사지원팀 업무안내 표를 `academic_support_guides` current snapshot으로 정규화 |
-| cuk_academic_status_guides | 공식 | https://www.catholic.ac.kr/ko/support/academic_contact_information.do | 중간 | implemented | 학적변동 관련 업무안내 표를 `academic_status_guides` current snapshot으로 정규화 |
 | cuk_wifi_guides | 공식 | https://www.catholic.ac.kr/ko/campuslife/wifi.do | 중간 | implemented | 무선랜서비스 HTML 표를 `wifi_guides` current snapshot으로 정규화 |
 | cuk_academic_calendar | 공식 | https://www.catholic.ac.kr/ko/support/calendar2024_list.do | 중간 | implemented | 공개 JSON feed(`mode=getCalendarData`)를 `academic_calendar` current snapshot으로 정규화 |
 | kakao_local | 외부 API | https://developers.kakao.com/docs/latest/ko/local/common | 높음 | implemented | API 키가 있으면 `/restaurants/nearby`와 개인화 식사 추천에서 lazy cache 기반 실시간 장소 검색 사용 |

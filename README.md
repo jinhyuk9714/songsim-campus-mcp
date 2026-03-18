@@ -74,20 +74,20 @@
 
 ## 관련 문서
 
-- [Codex 연결 가이드](/Users/sungjh/Projects/songsim-campus-mcp/docs/connect-codex.md)
-- [ChatGPT 연결 가이드](/Users/sungjh/Projects/songsim-campus-mcp/docs/connect-chatgpt.md)
-- [Claude 연결 가이드](/Users/sungjh/Projects/songsim-campus-mcp/docs/connect-claude.md)
-- [Source Registry](/Users/sungjh/Projects/songsim-campus-mcp/docs/source_registry.md)
-- [Render 배포 가이드](/Users/sungjh/Projects/songsim-campus-mcp/docs/deploy-render.md)
-- [공개 MCP 릴리즈팩 50](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-release-pack-50.md)
-- [공개 API 1000문장 라이브 검증](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-api-live-validation-1000.md)
+- [Codex 연결 가이드](docs/connect-codex.md)
+- [ChatGPT 연결 가이드](docs/connect-chatgpt.md)
+- [Claude 연결 가이드](docs/connect-claude.md)
+- [Source Registry](docs/source_registry.md)
+- [Render 배포 가이드](docs/deploy-render.md)
+- [공개 MCP 릴리즈팩 50](docs/qa/public-mcp-release-pack-50.md)
+- [공개 API 1000문장 라이브 검증](docs/qa/public-api-live-validation-1000.md)
 
 README는 capability map과 빠른 입구만 설명합니다. 클라이언트별 연결 절차와 더 긴 prompt 예시는 연결 가이드 문서에서 다룹니다.
 
 ## 프로젝트 구조
 
 ```text
-songsim-campus-starterkit/
+songsim-campus-mcp/
 ├─ AGENTS.md
 ├─ .codex/config.toml
 ├─ data/
@@ -173,15 +173,15 @@ uv run songsim-seed-demo --force
 공식 데이터:
 
 ```bash
-uv run songsim-sync --year 2026 --semester 1 --notice-pages 1
+uv run songsim-sync --year <current-year> --semester <1-or-2> --notice-pages 1
 ```
 
-앱 시작 시 공식 데이터를 자동 동기화하려면:
+앱 시작 시 공식 데이터를 자동 동기화하려면 대상 학기를 명시해서 넣는 편이 안전합니다.
 
 ```bash
 SONGSIM_SYNC_OFFICIAL_ON_START=true
-SONGSIM_OFFICIAL_COURSE_YEAR=2026
-SONGSIM_OFFICIAL_COURSE_SEMESTER=1
+SONGSIM_OFFICIAL_COURSE_YEAR=<current-year>
+SONGSIM_OFFICIAL_COURSE_SEMESTER=<1-or-2>
 ```
 
 처음 DB만 만들고 싶으면:
@@ -295,6 +295,7 @@ SONGSIM_ADMIN_ENABLED=true uv run songsim-api
 - 식당 추천의 이동시간은 캠퍼스 내부 구간만 정적 경로망으로 보정하고, 캠퍼스 밖 구간은 좌표 기반 추정을 유지합니다.
 - 외부 구간의 후보 식당 조회와 거리 계산은 PostGIS를 사용합니다.
 - `/admin/sync`는 `SONGSIM_ADMIN_ENABLED=true`일 때만 열리고, loopback 클라이언트에서만 접근됩니다.
-- `/readyz`는 DB와 핵심 테이블 접근성을 점검하고, `/admin/observability`와 `/admin/observability.json`은 최근 sync/cache 상태를 로컬에서만 보여줍니다.
+- `/readyz`는 DB와 공개 core snapshot(`places`, `notices`, `academic_calendar`, 주요 guide/transport`) 접근성을 점검합니다. `campus_facilities`, `campus_dining_menus`는 best-effort, `courses`는 운영 시점 학기 지정 전까지 optional로 봅니다.
+- `/admin/observability`와 `/admin/observability.json`은 최근 sync/cache 상태를 로컬에서만 보여줍니다.
 - `SONGSIM_AUTOMATION_ENABLED=true`이면 앱 내부 스케줄러가 advisory lock 기반으로 `snapshot`, `library_seat_prewarm`, `cache_cleanup` job을 자동 실행합니다.
 - `SONGSIM_APP_MODE=public_readonly`이면 공개 read-only surface만 노출하고 `/profiles/*`, `/admin/*`는 숨겨집니다.

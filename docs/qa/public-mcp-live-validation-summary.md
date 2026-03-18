@@ -109,10 +109,10 @@
 
 ## 관련 문서
 
-- [공개 MCP 500문장 코퍼스](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-corpus-500.md)
-- [공개 MCP 릴리즈팩 50](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-release-pack-50.md)
-- [공개 MCP 라이브 판정표 50](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-live-validation-50.md)
-- [기존 20문장 실측 리포트](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-live-validation-20.md)
-- [공개 MCP Course Watchlist](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-course-watchlist.md)
-- [공개 MCP GPT Metadata Spot Check](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-gpt-metadata-spot-check.md)
-- [공개 MCP Shared GPT UI 샘플 점검](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-shared-gpt-ui-sample-check.md)
+- [공개 MCP 500문장 코퍼스](public-mcp-corpus-500.md)
+- [공개 MCP 릴리즈팩 50](public-mcp-release-pack-50.md)
+- [공개 MCP 라이브 판정표 50](public-mcp-live-validation-50.md)
+- [기존 20문장 실측 리포트](public-mcp-live-validation-20.md)
+- [공개 MCP Course Watchlist](public-mcp-course-watchlist.md)
+- [공개 MCP GPT Metadata Spot Check](public-mcp-gpt-metadata-spot-check.md)
+- [공개 MCP Shared GPT UI 샘플 점검](public-mcp-shared-gpt-ui-sample-check.md)

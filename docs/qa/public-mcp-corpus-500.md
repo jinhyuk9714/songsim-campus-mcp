@@ -566,5 +566,5 @@
 ## 운영 메모
 
 - 500문장 코퍼스는 문장 생성과 분류 초안의 기준본입니다.
-- 실제 배포 게이트는 [공개 MCP 릴리즈팩 50](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-release-pack-50.md)과 [공개 MCP 라이브 판정표 50](/Users/sungjh/Projects/songsim-campus-mcp/docs/qa/public-mcp-live-validation-50.md)로 관리합니다.
+- 실제 배포 게이트는 [공개 MCP 릴리즈팩 50](public-mcp-release-pack-50.md)과 [공개 MCP 라이브 판정표 50](public-mcp-live-validation-50.md)로 관리합니다.
 - Shared GPT는 이 코퍼스 전체를 게이트로 삼지 않고, 릴리즈팩에서 핵심 10~15문장만 샘플 확인합니다.
