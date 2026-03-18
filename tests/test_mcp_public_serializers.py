@@ -6,9 +6,10 @@ from songsim_campus.mcp_public_serializers import (
     serialize_public_certificate_guide,
     serialize_public_course,
     serialize_public_error,
+    serialize_public_registration_guide,
     truncate_preview,
 )
-from songsim_campus.schemas import CertificateGuide, Course
+from songsim_campus.schemas import CertificateGuide, Course, RegistrationGuide
 from songsim_campus.services import InvalidRequestError, NotFoundError
 
 
@@ -91,3 +92,21 @@ def test_serialize_public_error_distinguishes_not_found_and_invalid_request():
         "type": "invalid_request",
         "message": "bad request",
     }
+
+
+def test_serialize_public_registration_guide_falls_back_to_first_step_summary():
+    guide = RegistrationGuide(
+        id=1,
+        topic="payment_and_return",
+        title="등록금 반환기준",
+        summary="",
+        steps=["개강 후 30일 전까지는 등록금의 5/6 반환", "다음 단계"],
+        links=[{"label": "등록", "url": "https://example.com/registration"}],
+        source_url="https://example.com/registration",
+        source_tag="test",
+        last_synced_at="2026-03-18T10:00:00+09:00",
+    )
+
+    payload = serialize_public_registration_guide(guide)
+
+    assert payload["guide_summary"] == "개강 후 30일 전까지는 등록금의 5/6 반환"

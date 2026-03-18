@@ -15,6 +15,7 @@ from .mcp_public_serializers import (
     serialize_public_nearby_restaurant,
     serialize_public_notice,
     serialize_public_place,
+    serialize_public_registration_guide,
     serialize_public_restaurant_search,
     serialize_public_scholarship_guide,
     serialize_public_transport_guide,
@@ -46,6 +47,7 @@ from .services import (
     list_latest_notices,
     list_leave_of_absence_guides,
     list_profile_notices,
+    list_registration_guides,
     list_scholarship_guides,
     list_transport_guides,
     list_wifi_guides,
@@ -232,6 +234,37 @@ def register_shared_tools(
             guides = list_academic_status_guides(conn, status=status, limit=limit)
             if public_readonly:
                 return [serialize_public_academic_status_guide(item) for item in guides]
+            return [item.model_dump() for item in guides]
+
+    @mcp.tool(
+        description=(
+            (
+                "학교 등록 안내를 읽을 때 사용합니다. 등록금 고지서 조회, 등록금 납부 방법, "
+                "등록금 반환 기준, 초과학기생/전액장학생 등록 같은 정적 안내를 "
+                "current snapshot으로 "
+                "돌려줍니다."
+            )
+            if public_readonly
+            else "학교 등록 안내 current snapshot을 가져옵니다."
+        ),
+        meta=tool_meta,
+    )
+    def tool_list_registration_guides(
+        topic: Annotated[
+            str | None,
+            Field(
+                description=(
+                    "등록 안내 유형 필터. bill_lookup, payment_and_return, "
+                    "payment_by_student 중 하나를 사용합니다."
+                )
+            ),
+        ] = None,
+        limit: Annotated[int, Field(description="최대 결과 수. 기본값은 20입니다.")] = 20,
+    ):
+        with connection_factory() as conn:
+            guides = list_registration_guides(conn, topic=topic, limit=limit)
+            if public_readonly:
+                return [serialize_public_registration_guide(item) for item in guides]
             return [item.model_dump() for item in guides]
 
     @mcp.tool(

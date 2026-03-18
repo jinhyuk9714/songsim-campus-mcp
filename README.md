@@ -17,7 +17,7 @@
   - 전화번호
   - 운영시간
   - 학사일정
-  - 증명서/휴학/복학/자퇴/장학 안내
+  - 등록/증명서/휴학/복학/자퇴/장학 안내
   - 공지
   - 학식/근처 식당
   - 도서관 좌석 / 빈 강의실
@@ -29,7 +29,7 @@
 | --- | --- | --- | --- | --- |
 | 장소 / 시설 | 건물, 별칭, 편의시설 위치와 시설 전화번호/운영시간 | `학생회관 어디야?` `복사실이 어디야?` `우리은행 전화번호 알려줘` `트러스트짐 운영시간 알려줘` | `songsim://usage-guide` `tool_search_places` `tool_get_place` | `/places` `/places/{identifier}` |
 | 과목 / 교시 / 학사일정 | 개설과목 검색, 교시 시간, 월별/키워드별 학사일정 | `7교시가 몇 시야?` `2026년 1학기 객체지향 과목 찾아줘` `2026학년도 3월 학사일정 보여줘` | `tool_search_courses` `tool_get_class_periods` `tool_list_academic_calendar` | `/courses` `/periods` `/academic-calendar` |
-| 학사지원 가이드 | 증명발급, 휴학, 복학/자퇴/재입학, 학사지원 업무안내, 장학제도 | `재학증명서 발급 방법 알려줘` `휴복학 문의 어디로 해야 해?` `자퇴 절차 알려줘` `장학제도 안내 알려줘` | `tool_list_certificate_guides` `tool_list_leave_of_absence_guides` `tool_list_academic_status_guides` `tool_list_academic_support_guides` `tool_list_scholarship_guides` | `/certificate-guides` `/leave-of-absence-guides` `/academic-status-guides` `/academic-support-guides` `/scholarship-guides` |
+| 학사지원 가이드 | 등록금 고지서/납부/반환, 증명발급, 휴학, 복학/자퇴/재입학, 학사지원 업무안내, 장학제도 | `등록금 고지서 조회 방법 알려줘` `등록금 반환 기준 알려줘` `재학증명서 발급 방법 알려줘` `자퇴 절차 알려줘` | `tool_list_registration_guides` `tool_list_certificate_guides` `tool_list_leave_of_absence_guides` `tool_list_academic_status_guides` `tool_list_academic_support_guides` `tool_list_scholarship_guides` | `/registration-guides` `/certificate-guides` `/leave-of-absence-guides` `/academic-status-guides` `/academic-support-guides` `/scholarship-guides` |
 | 공지 | 최신 공지 목록, 카테고리별 공지, 카테고리 정규화 | `최신 학사 공지 2개 보여줘` `최신 취업 공지 3개 보여줘` `employment랑 career 차이 알려줘` | `tool_list_latest_notices` `songsim://notice-categories` | `/notices` `/notice-categories` |
 | 식당 / 학식 | 교내 공식 학식 메뉴, 근처 식당 추천, 브랜드 검색 | `학생식당 메뉴 보여줘` `카페 보나 이번 주 메뉴 알려줘` `중앙도서관 근처 한식집 찾아줘` `매머드커피 어디 있어?` | `tool_search_dining_menus` `tool_find_nearby_restaurants` `tool_search_restaurants` | `/dining-menus` `/restaurants/nearby` `/restaurants/search` |
 | 도서관 / 빈 강의실 | 중앙도서관 열람실 좌석, 현재 빈 강의실 | `중앙도서관 열람실 남은 좌석 알려줘` `제1자유열람실 남은 좌석 알려줘` `K관 지금 빈 강의실 있어?` | `tool_get_library_seat_status` `tool_list_estimated_empty_classrooms` | `/library-seats` `/classrooms/empty` |
@@ -51,6 +51,9 @@
   - `2026학년도 3월 학사일정 보여줘`
   - `추가 등록기간 일정 알려줘`
 - **안내 / 절차**
+  - `등록금 납부 방법 알려줘`
+  - `등록금 반환 기준 알려줘`
+  - `초과학기생 등록은 어떻게 해?`
   - `재학증명서 발급 방법 알려줘`
   - `휴학 신청 방법 알려줘`
   - `재입학 지원자격 알려줘`
@@ -218,6 +221,7 @@ uv run songsim-mcp --transport streamable-http
 
 - `songsim://usage-guide`
 - `songsim://academic-calendar`
+- `songsim://registration-guide`
 - `songsim://certificate-guide`
 - `songsim://scholarship-guide`
 - `songsim://wifi-guide`

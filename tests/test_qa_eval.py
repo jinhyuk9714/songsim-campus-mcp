@@ -700,7 +700,7 @@ def test_default_eval_assets_match_distribution_plan() -> None:
     rows = load_eval_rows(DEFAULT_CORPUS_PATH)
     watchlist_rows = load_eval_rows(DEFAULT_WATCHLIST_PATH)
 
-    assert len(rows) == 1000
+    assert len(rows) == 1004
     assert len(watchlist_rows) == 5
 
     by_domain: dict[str, int] = {}
@@ -720,5 +720,6 @@ def test_default_eval_assets_match_distribution_plan() -> None:
         "wifi_guides": 40,
         "leave_of_absence_guides": 40,
         "academic_support_guides": 40,
+        "registration_guides": 4,
         "out_of_scope": 30,
     }

@@ -1138,6 +1138,16 @@ def _extract_con_box_paragraph_steps(box) -> list[str]:
     return _unique(steps)
 
 
+def _extract_guide_box_steps(box) -> list[str]:
+    steps = _extract_con_box_paragraph_steps(box)
+    steps.extend(LeaveOfAbsenceGuideSource._extract_nested_list_steps(box.select_one("ul")))
+    table = box.select_one("table")
+    if table is not None:
+        steps.extend(_extract_table_steps(table))
+    steps.extend(_extract_alert_steps(box))
+    return _unique(steps)
+
+
 def _normalize_academic_status_title(title: str) -> str:
     normalized = _clean_text(title)
     if normalized.startswith("자퇴 신청 방법"):
@@ -1164,13 +1174,7 @@ def _parse_academic_status_sections(
         )
         if not title:
             continue
-        steps = _extract_con_box_paragraph_steps(box)
-        steps.extend(LeaveOfAbsenceGuideSource._extract_nested_list_steps(box.select_one("ul")))
-        table = box.select_one("table")
-        if table is not None:
-            steps.extend(_extract_table_steps(table))
-        steps.extend(_extract_alert_steps(box))
-        steps = _unique(steps)
+        steps = _extract_guide_box_steps(box)
         summary = steps[0] if steps else ""
         rows.append(
             {
@@ -1235,6 +1239,86 @@ class ReAdmissionGuideSource(AcademicStatusGuideSourceBase):
     status = "re_admission"
 
     def __init__(self, url: str = "https://www.catholic.ac.kr/ko/support/re_admission.do"):
+        super().__init__(url)
+
+
+class RegistrationGuideSourceBase:
+    """Shared parser for the registration-guide family."""
+
+    source_tag = "cuk_registration_guides"
+    topic = ""
+
+    def __init__(self, url: str):
+        self.url = url
+
+    def fetch(self) -> str:
+        response = httpx.get(self.url, timeout=20)
+        response.raise_for_status()
+        return response.text
+
+    def parse(self, html: str, *, fetched_at: str) -> list[dict]:
+        soup = BeautifulSoup(html, "html.parser")
+        root = soup.select_one(".content-box") or soup
+        boxes = root.find_all("div", class_="con-box", recursive=False)
+        rows: list[dict] = []
+        for box in boxes:
+            title_node = box.select_one(".h4-tit01") or box.select_one(".h3-tit01")
+            title = _clean_text(title_node.get_text(" ", strip=True) if title_node else "")
+            if not title:
+                continue
+            steps = _extract_guide_box_steps(box)
+            summary = steps[0] if steps else ""
+            rows.append(
+                {
+                    "topic": self.topic,
+                    "title": title,
+                    "summary": summary,
+                    "steps": steps,
+                    "links": _extract_link_items(
+                        box.select_one(".link-box") or box,
+                        base_url=self.url,
+                    ),
+                    "source_url": self.url,
+                    "source_tag": self.source_tag,
+                    "last_synced_at": fetched_at,
+                }
+            )
+        return rows
+
+
+class RegistrationBillLookupGuideSource(RegistrationGuideSourceBase):
+    """Parser for the 재학생 고지서 조회 · 출력 방법 page."""
+
+    topic = "bill_lookup"
+
+    def __init__(
+        self,
+        url: str = "https://www.catholic.ac.kr/ko/support/tuition_fee_payment_schedule.do",
+    ):
+        super().__init__(url)
+
+
+class RegistrationPaymentAndReturnGuideSource(RegistrationGuideSourceBase):
+    """Parser for the 등록금 납부/반환 page."""
+
+    topic = "payment_and_return"
+
+    def __init__(
+        self,
+        url: str = "https://www.catholic.ac.kr/ko/support/tuition_payment_and_returning.do",
+    ):
+        super().__init__(url)
+
+
+class RegistrationPaymentByStudentGuideSource(RegistrationGuideSourceBase):
+    """Parser for the 대상별 등록금 납부 page."""
+
+    topic = "payment_by_student"
+
+    def __init__(
+        self,
+        url: str = "https://www.catholic.ac.kr/ko/support/tuition_payment_by_student.do",
+    ):
         super().__init__(url)
 
 

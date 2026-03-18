@@ -54,6 +54,7 @@ from .schemas import (
     ProfileInterests,
     ProfileNoticePreferences,
     ProfileUpdateRequest,
+    RegistrationGuide,
     Restaurant,
     RestaurantSearchResult,
     ScholarshipGuide,
@@ -86,6 +87,7 @@ from .services import (
     list_latest_notices,
     list_leave_of_absence_guides,
     list_profile_notices,
+    list_registration_guides,
     list_restaurants,
     list_scholarship_guides,
     list_transport_guides,
@@ -427,6 +429,17 @@ def create_app() -> FastAPI:
         with connection() as conn:
             try:
                 return list_academic_status_guides(conn, status=status, limit=limit)
+            except InvalidRequestError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/registration-guides", response_model=list[RegistrationGuide])
+    def registration_guides(
+        topic: str | None = Query(default=None, description="등록 안내 유형 필터"),
+        limit: int = Query(default=20, ge=1, le=50),
+    ) -> list[RegistrationGuide]:
+        with connection() as conn:
+            try:
+                return list_registration_guides(conn, topic=topic, limit=limit)
             except InvalidRequestError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
 

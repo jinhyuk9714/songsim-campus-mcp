@@ -298,6 +298,7 @@ def render_landing_page(
         "성심교정 중앙도서관 위치 알려줘",
         "2026년 1학기 객체지향 과목 찾아줘",
         "2026학년도 3월 학사일정 보여줘",
+        "등록금 납부 방법 알려줘",
         "재학증명서 발급 안내 알려줘",
         "장학제도 안내 알려줘",
         "니콜스관 WIFI 안내 알려줘",
@@ -451,6 +452,7 @@ def render_landing_page(
               <code>/academic-status-guides</code> return-from-leave, dropout, and
               re-admission guides
             </li>
+            <li><code>/registration-guides</code> tuition bill, payment, and refund guides</li>
             <li><code>/certificate-guides</code> certificate issuance guides</li>
             <li><code>/leave-of-absence-guides</code> leave-of-absence application guides</li>
             <li><code>/scholarship-guides</code> scholarship baseline guides</li>

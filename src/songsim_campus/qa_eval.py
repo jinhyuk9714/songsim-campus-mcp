@@ -24,6 +24,9 @@ from .ingest.official_sources import (
     CourseCatalogSource,
     LeaveOfAbsenceGuideSource,
     NoticeSource,
+    RegistrationBillLookupGuideSource,
+    RegistrationPaymentAndReturnGuideSource,
+    RegistrationPaymentByStudentGuideSource,
     ScholarshipGuideSource,
     TransportGuideSource,
     WifiGuideSource,
@@ -47,6 +50,7 @@ EvalDomain = Literal[
     "wifi_guides",
     "leave_of_absence_guides",
     "academic_support_guides",
+    "registration_guides",
     "out_of_scope",
 ]
 EvalStyle = Literal["normal", "alias", "composite", "typo", "ambiguous", "out_of_scope"]
@@ -268,6 +272,16 @@ def _summarize_payload(payload: Any, *, summary_kind: str) -> Any:
     if summary_kind == "leave_of_absence_guides_top5":
         rows = payload if isinstance(payload, list) else []
         return [{"title": item.get("title"), "summary": item.get("summary")} for item in rows[:5]]
+    if summary_kind == "registration_guides_top5":
+        rows = payload if isinstance(payload, list) else []
+        return [
+            {
+                "topic": item.get("topic"),
+                "title": item.get("title"),
+                "summary": item.get("summary"),
+            }
+            for item in rows[:5]
+        ]
     if summary_kind == "scholarship_guides_top5":
         rows = payload if isinstance(payload, list) else []
         return [{"title": item.get("title"), "summary": item.get("summary")} for item in rows[:5]]
@@ -464,6 +478,13 @@ def _payload_from_db(conn: psycopg.Connection, row: EvalCorpusRow) -> Any:
     if path == "/academic-support-guides":
         items = services.list_academic_support_guides(
             conn,
+            limit=_limit_from_row(row, 20),
+        )
+        return [item.model_dump() for item in items]
+    if path == "/registration-guides":
+        items = services.list_registration_guides(
+            conn,
+            topic=row.api_request.params.get("topic"),
             limit=_limit_from_row(row, 20),
         )
         return [item.model_dump() for item in items]
@@ -670,6 +691,25 @@ def _payload_from_sources(
             source = AcademicSupportGuideSource(services.ACADEMIC_SUPPORT_GUIDE_SOURCE_URL)
             source_cache[cache_key] = source.parse(source.fetch(), fetched_at=captured_at)
         return list(source_cache[cache_key])[:limit]
+    if path == "/registration-guides":
+        cache_key = "registration_guides"
+        if cache_key not in source_cache:
+            rows: list[dict[str, Any]] = []
+            for source in (
+                RegistrationBillLookupGuideSource(services.REGISTRATION_BILL_LOOKUP_SOURCE_URL),
+                RegistrationPaymentAndReturnGuideSource(
+                    services.REGISTRATION_PAYMENT_AND_RETURN_SOURCE_URL
+                ),
+                RegistrationPaymentByStudentGuideSource(
+                    services.REGISTRATION_PAYMENT_BY_STUDENT_SOURCE_URL
+                ),
+            ):
+                rows.extend(source.parse(source.fetch(), fetched_at=captured_at))
+            source_cache[cache_key] = rows
+        rows = list(source_cache[cache_key])
+        if topic := row.api_request.params.get("topic"):
+            rows = [item for item in rows if item.get("topic") == topic]
+        return rows[:limit]
     if path == "/academic-calendar":
         start_date, end_date = _current_academic_year_bounds()
         cache_key = f"academic_calendar:{start_date}:{end_date}"
@@ -1040,6 +1080,7 @@ def render_validation_report(
     guide_domains = [
         "academic_calendar",
         "certificate_guides",
+        "registration_guides",
         "scholarship_guides",
         "wifi_guides",
         "leave_of_absence_guides",
@@ -1119,7 +1160,7 @@ def render_validation_report(
     return (
         "\n".join(
             [
-                "# Public API Live Validation 1000",
+                "# Public API Live Validation Baseline",
                 "",
                 "API-first public student surface baseline with live-synced truth.",
                 "",

@@ -16,11 +16,13 @@ def test_public_usage_guide_text_contains_current_anchor_phrases():
     assert "tool_list_academic_calendar" in content
     assert "tool_list_academic_support_guides" in content
     assert "tool_list_academic_status_guides" in content
+    assert "tool_list_registration_guides" in content
     assert "tool_list_leave_of_absence_guides" in content
     assert "tool_list_scholarship_guides" in content
     assert "tool_list_wifi_guides" in content
     assert "tool_find_nearby_restaurants" in content
     assert "예상 공실" in content
+    assert "등록금 고지서 조회 방법" in content
     assert "학점교류 담당 전화번호" in content
     assert "재입학 지원자격" in content
     assert "/gpt/" not in content
@@ -92,5 +94,6 @@ def test_register_shared_resources_exposes_expected_resource_uris(tmp_path):
         "songsim://wifi-guide",
         "songsim://academic-support-guide",
         "songsim://academic-status-guide",
+        "songsim://registration-guide",
         "songsim://academic-calendar",
     }

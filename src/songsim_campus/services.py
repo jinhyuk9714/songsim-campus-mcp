@@ -39,6 +39,9 @@ from .ingest.official_sources import (
     LibrarySeatStatusSource,
     NoticeSource,
     ReAdmissionGuideSource,
+    RegistrationBillLookupGuideSource,
+    RegistrationPaymentAndReturnGuideSource,
+    RegistrationPaymentByStudentGuideSource,
     ReturnFromLeaveOfAbsenceGuideSource,
     ScholarshipGuideSource,
     TransportGuideSource,
@@ -75,6 +78,7 @@ from .schemas import (
     ProfileInterests,
     ProfileNoticePreferences,
     ProfileUpdateRequest,
+    RegistrationGuide,
     Restaurant,
     RestaurantSearchResult,
     ScholarshipGuide,
@@ -101,6 +105,15 @@ ACADEMIC_SUPPORT_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/acade
 RETURN_FROM_LEAVE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/return_from_leave_of_absence.do"
 DROPOUT_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/dropout.do"
 RE_ADMISSION_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/re_admission.do"
+REGISTRATION_BILL_LOOKUP_SOURCE_URL = (
+    "https://www.catholic.ac.kr/ko/support/tuition_fee_payment_schedule.do"
+)
+REGISTRATION_PAYMENT_AND_RETURN_SOURCE_URL = (
+    "https://www.catholic.ac.kr/ko/support/tuition_payment_and_returning.do"
+)
+REGISTRATION_PAYMENT_BY_STUDENT_SOURCE_URL = (
+    "https://www.catholic.ac.kr/ko/support/tuition_payment_by_student.do"
+)
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 CAMPUS_WALK_GRAPH_PATH = DATA_DIR / "campus_walk_graph.json"
 PERSONALIZATION_RULES_PATH = DATA_DIR / "personalization_rules.json"
@@ -116,6 +129,7 @@ SYNC_DATASET_TABLES = (
     "certificate_guides",
     "leave_of_absence_guides",
     "academic_status_guides",
+    "registration_guides",
     "scholarship_guides",
     "wifi_guides",
     "academic_support_guides",
@@ -129,6 +143,7 @@ PUBLIC_READY_CORE_DATASETS = frozenset(
         "certificate_guides",
         "leave_of_absence_guides",
         "academic_status_guides",
+        "registration_guides",
         "scholarship_guides",
         "academic_support_guides",
         "wifi_guides",
@@ -161,6 +176,7 @@ ADMIN_SYNC_TARGETS = {
     "academic_calendar",
     "leave_of_absence_guides",
     "academic_status_guides",
+    "registration_guides",
     "scholarship_guides",
     "academic_support_guides",
     "wifi_guides",
@@ -241,6 +257,7 @@ DINING_MENU_QUERY_FILLER_TERMS = (
     "주간",
 )
 ACADEMIC_STATUS_GUIDE_VALUES = {"return_from_leave", "dropout", "re_admission"}
+REGISTRATION_GUIDE_TOPICS = {"bill_lookup", "payment_and_return", "payment_by_student"}
 
 
 class NotFoundError(ValueError):
@@ -2846,6 +2863,28 @@ def list_academic_status_guides(
     ]
 
 
+def list_registration_guides(
+    conn: DBConnection,
+    *,
+    topic: str | None = None,
+    limit: int = 20,
+) -> list[RegistrationGuide]:
+    normalized_limit = max(1, min(limit, 50))
+    normalized_topic = topic.strip() if topic else None
+    if normalized_topic and normalized_topic not in REGISTRATION_GUIDE_TOPICS:
+        raise InvalidRequestError(
+            "topic must be one of bill_lookup, payment_and_return, payment_by_student."
+        )
+    return [
+        RegistrationGuide.model_validate(item)
+        for item in repo.list_registration_guides(
+            conn,
+            topic=normalized_topic,
+            limit=normalized_limit,
+        )
+    ]
+
+
 def list_academic_calendar(
     conn: DBConnection,
     *,
@@ -3003,6 +3042,8 @@ def _run_admin_sync_target(
         return {"leave_of_absence_guides": len(refresh_leave_of_absence_guides_from_source(conn))}
     if target == "academic_status_guides":
         return {"academic_status_guides": len(refresh_academic_status_guides_from_source(conn))}
+    if target == "registration_guides":
+        return {"registration_guides": len(refresh_registration_guides_from_source(conn))}
     if target == "scholarship_guides":
         return {"scholarship_guides": len(refresh_scholarship_guides_from_source(conn))}
     if target == "wifi_guides":
@@ -4721,6 +4762,28 @@ def refresh_academic_status_guides_from_source(
     ]
 
 
+def refresh_registration_guides_from_source(
+    conn: DBConnection,
+    *,
+    sources: list[Any] | None = None,
+    fetched_at: str | None = None,
+) -> list[RegistrationGuide]:
+    synced_at = fetched_at or _now_iso()
+    resolved_sources = sources or [
+        RegistrationBillLookupGuideSource(REGISTRATION_BILL_LOOKUP_SOURCE_URL),
+        RegistrationPaymentAndReturnGuideSource(REGISTRATION_PAYMENT_AND_RETURN_SOURCE_URL),
+        RegistrationPaymentByStudentGuideSource(REGISTRATION_PAYMENT_BY_STUDENT_SOURCE_URL),
+    ]
+    rows: list[dict[str, Any]] = []
+    for source in resolved_sources:
+        rows.extend(source.parse(source.fetch(), fetched_at=synced_at))
+    repo.replace_registration_guides(conn, rows)
+    return [
+        RegistrationGuide.model_validate(item)
+        for item in repo.list_registration_guides(conn, limit=max(len(rows), 1))
+    ]
+
+
 def sync_official_snapshot(
     conn: DBConnection,
     *,
@@ -4753,6 +4816,7 @@ def sync_official_snapshot(
     certificate_guides = refresh_certificate_guides_from_certificate_page(conn)
     leave_of_absence_guides = refresh_leave_of_absence_guides_from_source(conn)
     academic_status_guides = refresh_academic_status_guides_from_source(conn)
+    registration_guides = refresh_registration_guides_from_source(conn)
     scholarship_guides = refresh_scholarship_guides_from_source(conn)
     academic_support_guides = refresh_academic_support_guides_from_source(conn)
     wifi_guides = refresh_wifi_guides_from_source(conn)
@@ -4767,6 +4831,7 @@ def sync_official_snapshot(
         "certificate_guides": len(certificate_guides),
         "leave_of_absence_guides": len(leave_of_absence_guides),
         "academic_status_guides": len(academic_status_guides),
+        "registration_guides": len(registration_guides),
         "scholarship_guides": len(scholarship_guides),
         "academic_support_guides": len(academic_support_guides),
         "wifi_guides": len(wifi_guides),

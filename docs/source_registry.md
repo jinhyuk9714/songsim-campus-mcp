@@ -14,6 +14,7 @@
 | cuk_certificate_guides | 공식 | https://www.catholic.ac.kr/ko/support/certificate.do | 중간 | implemented | 증명서 발급 정적 안내를 `certificate_guides` current snapshot으로 정규화 |
 | cuk_leave_of_absence_guides | 공식 | https://www.catholic.ac.kr/ko/support/leave_of_absence.do | 중간 | implemented | 휴학 안내 정적 페이지를 `leave_of_absence_guides` current snapshot으로 정규화 |
 | cuk_academic_status_guides | 공식 | https://www.catholic.ac.kr/ko/support/return_from_leave_of_absence.do | 중간 | implemented | 복학, 자퇴, 재입학 정적 페이지 3개를 `academic_status_guides` current snapshot family로 정규화 |
+| cuk_registration_guides | 공식 | https://www.catholic.ac.kr/ko/support/tuition_fee_payment_schedule.do | 중간 | implemented | 등록 안내 정적 페이지 family(등록금 고지서 조회/출력, 등록금 납부·반환, 대상별 등록금 납부)를 `registration_guides` current snapshot으로 정규화 |
 | cuk_scholarship_guides | 공식 | https://www.catholic.ac.kr/ko/support/scholarship_songsim.do | 중간 | implemented | 장학제도 안내 HTML과 공식 문서 링크를 `scholarship_guides` current snapshot으로 정규화 |
 | cuk_academic_support_guides | 공식 | https://www.catholic.ac.kr/ko/support/academic_contact_information.do | 중간 | implemented | 학사지원팀 업무안내 표를 `academic_support_guides` current snapshot으로 정규화 |
 | cuk_wifi_guides | 공식 | https://www.catholic.ac.kr/ko/campuslife/wifi.do | 중간 | implemented | 무선랜서비스 HTML 표를 `wifi_guides` current snapshot으로 정규화 |

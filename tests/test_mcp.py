@@ -782,6 +782,7 @@ def test_mcp_public_readonly_mode_registers_only_read_only_tools(app_env, monkey
         "tool_list_academic_calendar",
         "tool_list_academic_support_guides",
         "tool_list_academic_status_guides",
+        "tool_list_registration_guides",
         "tool_list_certificate_guides",
         "tool_list_leave_of_absence_guides",
         "tool_list_scholarship_guides",
@@ -801,6 +802,7 @@ def test_mcp_public_readonly_mode_registers_only_read_only_tools(app_env, monkey
     assert "songsim://academic-calendar" in resource_uris
     assert "songsim://academic-support-guide" in resource_uris
     assert "songsim://academic-status-guide" in resource_uris
+    assert "songsim://registration-guide" in resource_uris
     assert "songsim://certificate-guide" in resource_uris
     assert "songsim://leave-of-absence-guide" in resource_uris
     assert "songsim://scholarship-guide" in resource_uris
@@ -842,6 +844,7 @@ def test_mcp_public_readonly_mode_registers_prompts_and_extended_resources(app_e
         "songsim://academic-calendar",
         "songsim://academic-support-guide",
         "songsim://academic-status-guide",
+        "songsim://registration-guide",
         "songsim://certificate-guide",
         "songsim://leave-of-absence-guide",
         "songsim://scholarship-guide",
@@ -899,6 +902,8 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
     assert "문의처" in tools["tool_list_academic_support_guides"]["description"]
     assert "학적변동" in tools["tool_list_academic_status_guides"]["description"]
     assert "자퇴" in tools["tool_list_academic_status_guides"]["description"]
+    assert "등록금 고지서" in tools["tool_list_registration_guides"]["description"]
+    assert "등록금 반환 기준" in tools["tool_list_registration_guides"]["description"]
     assert "장학제도" in tools["tool_list_scholarship_guides"]["description"]
     assert "공식 문서" in tools["tool_list_scholarship_guides"]["description"]
     assert "무선랜" in tools["tool_list_wifi_guides"]["description"]
@@ -966,11 +971,17 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
     assert "return_from_leave" in (
         tools["tool_list_academic_status_guides"]["inputSchema"]["properties"]["status"]["description"]
     )
+    assert "bill_lookup" in (
+        tools["tool_list_registration_guides"]["inputSchema"]["properties"]["topic"]["description"]
+    )
     assert "최대 결과 수" in (
         tools["tool_list_academic_support_guides"]["inputSchema"]["properties"]["limit"]["description"]
     )
     assert "최대 결과 수" in (
         tools["tool_list_academic_status_guides"]["inputSchema"]["properties"]["limit"]["description"]
+    )
+    assert "최대 결과 수" in (
+        tools["tool_list_registration_guides"]["inputSchema"]["properties"]["limit"]["description"]
     )
     assert "최대 결과 수" in (
         tools["tool_list_certificate_guides"]["inputSchema"]["properties"]["limit"]["description"]
@@ -1129,6 +1140,7 @@ def test_mcp_public_usage_and_class_period_resources_are_readable(app_env, monke
     assert "tool_list_academic_calendar" in usage_content
     assert "tool_list_academic_support_guides" in usage_content
     assert "tool_list_academic_status_guides" in usage_content
+    assert "tool_list_registration_guides" in usage_content
     assert "tool_list_scholarship_guides" in usage_content
     assert "tool_list_leave_of_absence_guides" in usage_content
     assert "tool_list_wifi_guides" in usage_content
@@ -1144,6 +1156,7 @@ def test_mcp_public_usage_and_class_period_resources_are_readable(app_env, monke
     assert "휴복학 문의" in usage_content
     assert "복학 신청 방법" in usage_content
     assert "재입학 지원자격" in usage_content
+    assert "등록금 납부 방법" in usage_content
     assert "헬스장" in usage_content
     assert "편의점" in usage_content
     assert "/gpt/" not in usage_content

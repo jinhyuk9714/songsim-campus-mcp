@@ -72,6 +72,7 @@ def test_render_landing_page_keeps_public_readonly_student_surface():
     assert "https://songsim-mcp.onrender.com/mcp" in html
     assert "/academic-support-guides" in html
     assert "/academic-status-guides" in html
+    assert "/registration-guides" in html
     assert "configured without OAuth" in html
     assert "GPT Actions OpenAPI" not in html
     assert "Admin Sync" not in html

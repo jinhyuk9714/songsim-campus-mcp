@@ -250,6 +250,7 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     assert "https://songsim-mcp.onrender.com/mcp" in landing.text
     assert "/academic-support-guides" in landing.text
     assert "/academic-status-guides" in landing.text
+    assert "/registration-guides" in landing.text
     assert "configured without OAuth" in landing.text
     assert "GPT Actions OpenAPI" not in landing.text
     assert "/gpt/*" not in landing.text
@@ -260,6 +261,7 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     assert admin_sync.status_code == 404
     assert "/academic-support-guides" in openapi.text
     assert "/academic-status-guides" in openapi.text
+    assert "/registration-guides" in openapi.text
     assert "/profiles" not in openapi.text
     assert "/admin/sync" not in openapi.text
 

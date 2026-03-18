@@ -14,6 +14,7 @@ from .services import (
     list_academic_support_guides,
     list_certificate_guides,
     list_leave_of_absence_guides,
+    list_registration_guides,
     list_scholarship_guides,
     list_transport_guides,
     list_wifi_guides,
@@ -36,7 +37,8 @@ def public_usage_guide_text() -> str:
             "This server is read-only.",
             (
                 "Available: places, courses, academic calendar, academic support guides, "
-                "academic status guides, certificate guides, leave-of-absence guides, "
+                "academic status guides, registration guides, certificate guides, "
+                "leave-of-absence guides, "
                 "scholarship guides, wifi guides, notices, dining menus, library seats, "
                 "empty classrooms, nearby restaurants, restaurant search, transport guides."
             ),
@@ -95,29 +97,34 @@ def public_usage_guide_text() -> str:
                 "복학 신청 방법, 자퇴 절차, or 재입학 지원자격 questions."
             ),
             (
-                "12. Use tool_list_certificate_guides for 증명서 발급 안내 such as "
+                "12. Use tool_list_registration_guides for 등록 안내 such as "
+                "등록금 고지서 조회 방법, "
+                "등록금 납부 방법, 등록금 반환 기준, or 초과학기생 등록 questions."
+            ),
+            (
+                "13. Use tool_list_certificate_guides for 증명서 발급 안내 such as "
                 "재학증명서 발급 방법, 졸업증명서 발급 안내, or 인터넷 증명발급 questions."
             ),
             (
-                "13. Use tool_list_leave_of_absence_guides for 휴학 안내 such as 휴학 신청방법, "
+                "14. Use tool_list_leave_of_absence_guides for 휴학 안내 such as 휴학 신청방법, "
                 "군휴학, 질병휴학, 등록금 반환 기준, or 휴복학 FAQ questions."
             ),
             (
-                "14. Use tool_list_scholarship_guides for 장학제도 baseline guidance such as "
+                "15. Use tool_list_scholarship_guides for 장학제도 baseline guidance such as "
                 "장학생 자격, 장학금 신청, 장학금 지급, or 장학제도 공식 문서 questions."
             ),
             (
-                "15. Use tool_list_wifi_guides for campus wifi guidance such as 니콜스관 "
+                "16. Use tool_list_wifi_guides for campus wifi guidance such as 니콜스관 "
                 "SSID, 중앙도서관 와이파이, or 무선랜 접속 방법 questions."
             ),
-            "16. Use tool_list_latest_notices for latest notices; category is optional.",
+            "17. Use tool_list_latest_notices for latest notices; category is optional.",
             (
-                "17. Use tool_list_transport_guides for static subway or bus access "
+                "18. Use tool_list_transport_guides for static subway or bus access "
                 "guidance. You can pass query with natural-language cues like 지하철, "
                 "1호선, 역곡역, or 버스. 셔틀은 현재 지원하지 않아 빈 결과가 정상입니다."
             ),
             (
-                "18. Optional reference resources exist for notice categories and class periods "
+                "19. Optional reference resources exist for notice categories and class periods "
                 "when you need them."
             ),
             "",
@@ -130,6 +137,10 @@ def public_usage_guide_text() -> str:
             "- 편의점 어디 있어?",
             "- 최신 장학 공지 3개 보여줘",
             "- 장학제도 안내 알려줘",
+            "- 등록금 고지서 조회 방법 알려줘",
+            "- 등록금 납부 방법 알려줘",
+            "- 등록금 반환 기준 알려줘",
+            "- 초과학기생 등록은 어떻게 해?",
             "- 휴복학 문의 어디로 해야 해?",
             "- 학점교류 담당 전화번호 알려줘",
             "- 복학 신청 방법 알려줘",
@@ -223,6 +234,16 @@ def register_shared_resources(mcp: Any, connection_factory: Any, docs_dir: Path)
         with connection_factory() as conn:
             return json.dumps(
                 [item.model_dump() for item in list_academic_status_guides(conn, limit=50)],
+                ensure_ascii=False,
+                indent=2,
+            )
+
+    @mcp.resource("songsim://registration-guide")
+    def registration_guide_resource() -> str:
+        """Return the latest registration guides as JSON."""
+        with connection_factory() as conn:
+            return json.dumps(
+                [item.model_dump() for item in list_registration_guides(conn, limit=50)],
                 ensure_ascii=False,
                 indent=2,
             )
