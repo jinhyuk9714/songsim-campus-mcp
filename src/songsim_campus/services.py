@@ -2141,6 +2141,8 @@ def _build_searchable_campus_facilities(
     place_rows: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     rows = repo.list_campus_facilities(conn)
+    if not rows:
+        rows = _load_source_backed_campus_facilities(place_rows)
     place_lookup = _build_place_slug_lookup(place_rows)
     seen: set[tuple[str, str]] = set()
     searchable: list[dict[str, Any]] = []
@@ -2198,6 +2200,52 @@ def _build_searchable_campus_facilities(
             )
 
     return searchable
+
+
+def _should_use_live_campus_facility_fallback() -> bool:
+    database_url = get_settings().database_url.lower()
+    local_markers = ("127.0.0.1", "localhost", "songsim_test", "sqlite")
+    return not any(marker in database_url for marker in local_markers)
+
+
+def _load_source_backed_campus_facilities(
+    place_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if not _should_use_live_campus_facility_fallback():
+        return []
+
+    try:
+        source = CampusFacilitiesSource(FACILITIES_SOURCE_URL)
+        rows = source.parse(source.fetch(), fetched_at=_now_iso())
+    except Exception:
+        return []
+
+    place_lookup = _build_place_slug_lookup(place_rows)
+    normalized_rows: list[dict[str, Any]] = []
+    for row in rows:
+        location_text = _normalize_campus_facility_location(
+            row.get("location_text") or row.get("location")
+        )
+        place_slug = None
+        if location_text is not None:
+            for candidate in _location_candidates(location_text):
+                place_slug = place_lookup.get(_normalize_place_key(candidate))
+                if place_slug:
+                    break
+        normalized_rows.append(
+            {
+                "facility_name": str(row.get("facility_name") or ""),
+                "category": _normalize_optional_text(row.get("category")),
+                "phone": _normalize_campus_facility_phone(row.get("phone") or row.get("contact")),
+                "location_text": location_text,
+                "hours_text": _normalize_optional_text(row.get("hours_text")),
+                "place_slug": place_slug,
+                "source_url": row.get("source_url") or FACILITIES_SOURCE_URL,
+                "source_tag": row.get("source_tag", "cuk_facilities"),
+                "last_synced_at": row.get("last_synced_at"),
+            }
+        )
+    return normalized_rows
 
 
 def _minutes_from_time_string(value: str) -> int | None:

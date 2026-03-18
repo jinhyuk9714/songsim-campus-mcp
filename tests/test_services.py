@@ -60,6 +60,7 @@ from songsim_campus.services import (
     search_restaurants,
     sync_official_snapshot,
 )
+from songsim_campus.settings import clear_settings_cache
 
 FIXTURES_DIR = Path(__file__).with_name("fixtures")
 SAMPLE_MENU_PDF_BASE64 = (
@@ -867,6 +868,60 @@ def test_search_places_sentence_queries_prefer_exact_facility_match_with_metadat
 
     assert library_places[0].slug == "central-library"
     assert library_places[0].matched_facility is None
+
+
+def test_search_places_uses_source_backed_facility_fallback_when_snapshot_is_empty(
+    app_env, monkeypatch
+):
+    init_db()
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                _place_row(
+                    slug="dormitory-stephen",
+                    name="스테파노기숙사",
+                    category="dormitory",
+                    aliases=["K관"],
+                ),
+            ],
+        )
+
+        class LiveFacilitySource:
+            def __init__(self, url: str):
+                self.url = url
+
+            def fetch(self):
+                return "<facilities></facilities>"
+
+            def parse(self, html: str, *, fetched_at: str):
+                assert html == "<facilities></facilities>"
+                return [
+                    {
+                        "facility_name": "교내복사실",
+                        "category": "복사실",
+                        "phone": "02-2164-4725",
+                        "location": "K관 1층",
+                        "hours_text": "평일 08:50~19:00 (토/일/공휴일휴무)",
+                        "source_tag": "cuk_facilities",
+                        "last_synced_at": fetched_at,
+                    }
+                ]
+
+        monkeypatch.setattr(services_module, "CampusFacilitiesSource", LiveFacilitySource)
+        monkeypatch.setenv(
+            "SONGSIM_DATABASE_URL",
+            "postgresql://songsim:secret@db.example.com:5432/songsim_public",
+        )
+        clear_settings_cache()
+
+        places = search_places(conn, query="복사실이 어디야?", limit=1)
+
+    assert places[0].slug == "dormitory-stephen"
+    assert places[0].matched_facility is not None
+    assert places[0].matched_facility.name == "교내복사실"
+    assert places[0].matched_facility.phone == "02-2164-4725"
+    assert places[0].matched_facility.location_hint == "K관 1층"
 
 
 def test_search_restaurants_matches_brand_alias_with_spacing_normalization(app_env):
