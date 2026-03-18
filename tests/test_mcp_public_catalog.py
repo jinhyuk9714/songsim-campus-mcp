@@ -1,0 +1,96 @@
+from __future__ import annotations
+
+import asyncio
+
+import pytest
+
+
+def test_public_usage_guide_text_contains_current_anchor_phrases():
+    from songsim_campus.mcp_public_catalog import public_usage_guide_text
+
+    content = public_usage_guide_text()
+
+    assert "read-only" in content
+    assert "tool_search_places" in content
+    assert "tool_search_restaurants" in content
+    assert "tool_list_academic_calendar" in content
+    assert "tool_list_academic_support_guides" in content
+    assert "tool_list_academic_status_guides" in content
+    assert "tool_list_leave_of_absence_guides" in content
+    assert "tool_list_scholarship_guides" in content
+    assert "tool_list_wifi_guides" in content
+    assert "tool_find_nearby_restaurants" in content
+    assert "예상 공실" in content
+    assert "학점교류 담당 전화번호" in content
+    assert "재입학 지원자격" in content
+    assert "/gpt/" not in content
+
+
+def test_register_public_resources_and_prompts_exposes_expected_catalog():
+    fastmcp = pytest.importorskip("mcp.server.fastmcp")
+
+    from songsim_campus.mcp_public_catalog import (
+        register_public_prompts,
+        register_public_resources,
+    )
+
+    async def main():
+        mcp = fastmcp.FastMCP("Catalog Test")
+        register_public_resources(mcp, connection_factory=lambda: None)
+        register_public_prompts(mcp)
+        resources = await mcp.list_resources()
+        prompts = await mcp.list_prompts()
+        return {str(resource.uri) for resource in resources}, {prompt.name for prompt in prompts}
+
+    resource_uris, prompt_names = asyncio.run(main())
+
+    assert resource_uris == {
+        "songsim://usage-guide",
+        "songsim://place-categories",
+        "songsim://notice-categories",
+        "songsim://class-periods",
+    }
+    assert prompt_names == {
+        "prompt_find_place",
+        "prompt_search_courses",
+        "prompt_academic_calendar",
+        "prompt_search_dining_menus",
+        "prompt_class_periods",
+        "prompt_library_seat_status",
+        "prompt_notice_categories",
+        "prompt_latest_notices",
+        "prompt_find_nearby_restaurants",
+        "prompt_search_restaurants",
+        "prompt_find_empty_classrooms",
+        "prompt_transport_guide",
+    }
+
+
+def test_register_shared_resources_exposes_expected_resource_uris(tmp_path):
+    fastmcp = pytest.importorskip("mcp.server.fastmcp")
+
+    from songsim_campus.mcp_public_catalog import register_shared_resources
+
+    async def main():
+        mcp = fastmcp.FastMCP("Catalog Test")
+        register_shared_resources(
+            mcp,
+            connection_factory=lambda: None,
+            docs_dir=tmp_path,
+        )
+        resources = await mcp.list_resources()
+        return {str(resource.uri) for resource in resources}
+
+    resource_uris = asyncio.run(main())
+
+    assert resource_uris == {
+        "songsim://source-registry",
+        "songsim://transport-guide",
+        "songsim://certificate-guide",
+        "songsim://leave-of-absence-guide",
+        "songsim://scholarship-guide",
+        "songsim://wifi-guide",
+        "songsim://academic-support-guide",
+        "songsim://academic-status-guide",
+        "songsim://academic-calendar",
+    }
