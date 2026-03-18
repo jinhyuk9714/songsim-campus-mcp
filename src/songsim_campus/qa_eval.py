@@ -195,6 +195,7 @@ def _summarize_payload(payload: Any, *, summary_kind: str) -> Any:
         return {
             "slug": item.get("slug"),
             "name": item.get("name"),
+            "canonical_name": item.get("canonical_name"),
             "category": item.get("category"),
             "matched_facility": (
                 {
@@ -204,6 +205,19 @@ def _summarize_payload(payload: Any, *, summary_kind: str) -> Any:
                 if isinstance(facility, dict)
                 else None
             ),
+        }
+    if summary_kind == "places_top1_alias_display":
+        rows = payload if isinstance(payload, list) else []
+        if not rows:
+            return None
+        item = rows[0]
+        return {
+            "slug": item.get("slug"),
+            "name": item.get("name"),
+            "canonical_name": item.get("canonical_name"),
+            "category": item.get("category"),
+            "aliases": [alias for alias in (item.get("aliases") or [])],
+            "matched_facility": item.get("matched_facility"),
         }
     if summary_kind == "courses_top5":
         rows = payload if isinstance(payload, list) else []
@@ -465,9 +479,11 @@ def _search_places_from_source(
     cache_key = "places_snapshot"
     if cache_key not in source_cache:
         source = CampusMapSource(services.CAMPUS_MAP_SOURCE_URL)
-        source_cache[cache_key] = source.parse_place_list(
-            source.fetch_place_list(),
-            fetched_at=fetched_at,
+        source_cache[cache_key] = services.apply_place_alias_overrides(
+            source.parse_place_list(
+                source.fetch_place_list(),
+                fetched_at=fetched_at,
+            )
         )
     places = list(source_cache[cache_key])
     category = row.api_request.params.get("category")
@@ -475,7 +491,7 @@ def _search_places_from_source(
         places = [item for item in places if item.get("category") == category]
 
     query = str(row.api_request.params.get("query") or "")
-    collapsed_query, compact_query = services._normalized_query_variants(query)
+    collapsed_query, compact_query = services._normalize_place_search_query(query)
     if collapsed_query is None:
         return places[: _limit_from_row(row, 10)]
 
@@ -493,8 +509,20 @@ def _search_places_from_source(
         )
         if rank is None:
             continue
+        canonical_name = str(item.get("name") or "")
+        payload = {
+            **item,
+            "name": services._display_name_for_place_result(
+                str(item.get("slug") or ""),
+                canonical_name,
+                collapsed_query=collapsed_query,
+                compact_query=compact_query,
+                aliases=[str(alias) for alias in item.get("aliases", [])],
+            ),
+            "canonical_name": canonical_name,
+        }
         preference_rank = 0 if str(item.get("slug") or "").strip() in preferred_slug_set else 1
-        ranked.append((rank, preference_rank, index, item))
+        ranked.append((rank, preference_rank, index, payload))
     ranked.sort(key=lambda item: (item[0], item[1], item[2]))
     if preferred_slugs:
         ranked = [

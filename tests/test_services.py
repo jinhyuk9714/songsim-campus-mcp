@@ -387,6 +387,67 @@ def test_search_places_matches_alias(app_env):
     with connection() as conn:
         places = search_places(conn, query='중도')
     assert any(item.name == '중앙도서관' for item in places)
+    assert any(item.canonical_name == '중앙도서관' for item in places)
+
+
+def test_search_places_uses_alias_friendly_name_for_strong_alias_queries(app_env):
+    init_db()
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                _place_row(
+                    slug="sophie-barat-hall",
+                    name="학생미래인재관",
+                    category="building",
+                    aliases=["학생회관", "학생센터"],
+                ),
+                _place_row(
+                    slug="kim-sou-hwan-hall",
+                    name="김수환관",
+                    category="building",
+                    aliases=["김수환", "K관"],
+                ),
+                _place_row(
+                    slug="central-library",
+                    name="중앙도서관",
+                    category="library",
+                    aliases=["중도"],
+                ),
+                _place_row(
+                    slug="nichols-hall",
+                    name="니콜스관",
+                    category="building",
+                    aliases=["니콜스"],
+                ),
+            ],
+        )
+
+        student_hall = search_places(conn, query="학생회관 어디야?", limit=1)[0]
+        k_hall = search_places(conn, query="K관 어디야?", limit=1)[0]
+        library = search_places(conn, query="중도", limit=1)[0]
+        nichols = search_places(conn, query="니콜스 어디 있어?", limit=1)[0]
+        canonical = search_places(conn, query="김수환관 어디야?", limit=1)[0]
+
+    assert student_hall.slug == "sophie-barat-hall"
+    assert student_hall.name == "학생회관"
+    assert student_hall.canonical_name == "학생미래인재관"
+
+    assert k_hall.slug == "kim-sou-hwan-hall"
+    assert k_hall.name == "K관"
+    assert k_hall.canonical_name == "김수환관"
+
+    assert library.slug == "central-library"
+    assert library.name == "중앙도서관"
+    assert library.canonical_name == "중앙도서관"
+
+    assert nichols.slug == "nichols-hall"
+    assert nichols.name == "니콜스관"
+    assert nichols.canonical_name == "니콜스관"
+
+    assert canonical.slug == "kim-sou-hwan-hall"
+    assert canonical.name == "김수환관"
+    assert canonical.canonical_name == "김수환관"
 
 
 def test_search_places_prioritizes_exact_short_match_over_partial_noise(app_env):
@@ -607,13 +668,19 @@ def test_load_place_alias_overrides_contract():
     overrides = _load_place_alias_overrides()
 
     assert overrides["central-library"]["aliases"] == ["중도"]
+    assert overrides["central-library"]["display_name"] == "중앙도서관"
     assert "학생식당" in overrides["sophie-barat-hall"]["aliases"]
     assert "트러스트짐" in overrides["sophie-barat-hall"]["aliases"]
     assert "카페 보나" in overrides["sophie-barat-hall"]["aliases"]
     assert "부온 프란조" in overrides["sophie-barat-hall"]["aliases"]
+    assert overrides["sophie-barat-hall"]["display_name"] == "학생회관"
     assert "학생센터" in overrides["student-center"]["aliases"]
+    assert overrides["student-center"]["display_name"] == "학생회관"
     assert overrides["nicholls-hall"]["aliases"] == ["니콜스"]
+    assert overrides["nicholls-hall"]["display_name"] == "니콜스관"
+    assert overrides["nichols-hall"]["display_name"] == "니콜스관"
     assert overrides["kim-sou-hwan-hall"]["category"] == "building"
+    assert overrides["kim-sou-hwan-hall"]["display_name"] == "K관"
 
 
 def test_load_restaurant_search_aliases_contract():
@@ -943,20 +1010,28 @@ def test_search_places_promotes_canonical_parent_place_for_k_hall_facilities(app
         k_hall_places = search_places(conn, query="K관 어디야?", limit=1)
 
     assert copy_room_places[0].slug == "kim-sou-hwan-hall"
+    assert copy_room_places[0].name == "K관"
+    assert copy_room_places[0].canonical_name == "김수환관"
     assert copy_room_places[0].matched_facility is not None
     assert copy_room_places[0].matched_facility.name == "교내복사실"
     assert copy_room_places[0].matched_facility.location_hint == "K관 1층"
 
     assert bank_places[0].slug == "kim-sou-hwan-hall"
+    assert bank_places[0].name == "K관"
+    assert bank_places[0].canonical_name == "김수환관"
     assert bank_places[0].matched_facility is not None
     assert bank_places[0].matched_facility.name == "우리은행"
     assert bank_places[0].matched_facility.phone == "032-342-2641"
 
     assert gym_places[0].slug == "kim-sou-hwan-hall"
+    assert gym_places[0].name == "K관"
+    assert gym_places[0].canonical_name == "김수환관"
     assert gym_places[0].matched_facility is not None
     assert gym_places[0].matched_facility.name == "트러스트짐"
 
     assert k_hall_places[0].slug == "kim-sou-hwan-hall"
+    assert k_hall_places[0].name == "K관"
+    assert k_hall_places[0].canonical_name == "김수환관"
     assert k_hall_places[0].matched_facility is None
 
 

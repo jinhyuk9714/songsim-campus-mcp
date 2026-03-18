@@ -1,21 +1,27 @@
 {
   "central-library": {
-    "aliases": ["중도"]
+    "aliases": ["중도"],
+    "display_name": "중앙도서관"
   },
   "sophie-barat-hall": {
-    "aliases": ["학생식당", "학생회관", "학생센터", "트러스트짐", "카페 보나", "부온 프란조"]
+    "aliases": ["학생식당", "학생회관", "학생센터", "트러스트짐", "카페 보나", "부온 프란조"],
+    "display_name": "학생회관"
   },
   "student-center": {
-    "aliases": ["학생식당", "학생회관", "학생센터", "트러스트짐", "카페 보나", "부온 프란조"]
+    "aliases": ["학생식당", "학생회관", "학생센터", "트러스트짐", "카페 보나", "부온 프란조"],
+    "display_name": "학생회관"
   },
   "nicholls-hall": {
-    "aliases": ["니콜스"]
+    "aliases": ["니콜스"],
+    "display_name": "니콜스관"
   },
   "nichols-hall": {
-    "aliases": ["니콜스"]
+    "aliases": ["니콜스"],
+    "display_name": "니콜스관"
   },
   "kim-sou-hwan-hall": {
     "aliases": ["김수환", "K관"],
+    "display_name": "K관",
     "category": "building"
   }
 }

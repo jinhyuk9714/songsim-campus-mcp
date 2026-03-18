@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class MatchedFacility(BaseModel):
@@ -17,6 +17,7 @@ class Place(BaseModel):
     id: int
     slug: str
     name: str
+    canonical_name: str | None = None
     category: str
     aliases: list[str] = Field(default_factory=list)
     description: str = ""
@@ -26,6 +27,12 @@ class Place(BaseModel):
     matched_facility: MatchedFacility | None = None
     source_tag: str = "demo"
     last_synced_at: str
+
+    @model_validator(mode="after")
+    def _ensure_canonical_name(self) -> Place:
+        if self.canonical_name is None:
+            self.canonical_name = self.name
+        return self
 
 
 class Course(BaseModel):

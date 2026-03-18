@@ -990,10 +990,10 @@ def _parse_place_alias_overrides(payload: Any) -> dict[str, dict[str, Any]]:
             raise ValueError("place alias override slug must be a non-empty string")
         if not isinstance(raw_value, dict):
             raise ValueError("place alias override entries must be objects")
-        unknown_keys = set(raw_value) - {"aliases", "category"}
+        unknown_keys = set(raw_value) - {"aliases", "category", "display_name"}
         if unknown_keys:
             raise ValueError(
-                "place alias override entries only support aliases and category keys"
+                "place alias override entries only support aliases, category, and display_name keys"
             )
         aliases = raw_value.get("aliases", [])
         if not isinstance(aliases, list) or any(not isinstance(item, str) for item in aliases):
@@ -1001,11 +1001,18 @@ def _parse_place_alias_overrides(payload: Any) -> dict[str, dict[str, Any]]:
         category = raw_value.get("category")
         if category is not None and (not isinstance(category, str) or not category.strip()):
             raise ValueError("place alias override category must be a non-empty string")
+        display_name = raw_value.get("display_name")
+        if display_name is not None and (
+            not isinstance(display_name, str) or not display_name.strip()
+        ):
+            raise ValueError("place alias override display_name must be a non-empty string")
         override_payload: dict[str, Any] = {
             "aliases": _unique_stripped(list(aliases)),
         }
         if category is not None:
             override_payload["category"] = category.strip()
+        if display_name is not None:
+            override_payload["display_name"] = display_name.strip()
         overrides[raw_slug.strip()] = override_payload
     return overrides
 
@@ -1137,6 +1144,50 @@ def _preferred_place_slugs_for_query(query: str, *, context: str) -> list[str]:
         ):
             return list(context_map.get(context, []))
     return []
+
+
+def _preferred_place_display_name(slug: str) -> str | None:
+    cleaned_slug = slug.strip()
+    if not cleaned_slug:
+        return None
+    override = _load_place_alias_overrides().get(cleaned_slug)
+    display_name = override.get("display_name") if override is not None else None
+    cleaned_display_name = _normalize_optional_text(display_name)
+    return cleaned_display_name
+
+
+def _display_name_for_place_result(
+    slug: str,
+    default_name: str,
+    *,
+    collapsed_query: str,
+    compact_query: str | None,
+    aliases: list[str],
+    has_matched_facility: bool = False,
+) -> str:
+    preferred_display_name = _preferred_place_display_name(slug)
+    if preferred_display_name is None:
+        return default_name
+    if slug.lower() == collapsed_query.lower():
+        return default_name
+    if _matches_exact_text_candidate(
+        default_name,
+        collapsed_query=collapsed_query,
+        compact_query=compact_query,
+    ):
+        return default_name
+    if has_matched_facility:
+        return preferred_display_name
+    if any(
+        _matches_exact_text_candidate(
+            alias,
+            collapsed_query=collapsed_query,
+            compact_query=compact_query,
+        )
+        for alias in aliases
+    ):
+        return preferred_display_name
+    return default_name
 
 
 def apply_place_alias_overrides(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -3189,6 +3240,12 @@ def search_places(
     searchable_facilities = _build_searchable_campus_facilities(conn, place_rows=places)
     preferred_slugs = _preferred_place_slugs_for_query(collapsed_query, context="place_search")
     preferred_slug_set = set(preferred_slugs)
+    place_alias_lists: dict[str, list[str]] = {}
+    for place in places:
+        slug = str(place.get("slug") or "").strip()
+        if not slug:
+            continue
+        place_alias_lists[slug] = [alias for alias in place.get("aliases", [])]
     facility_best_by_slug: dict[str, tuple[int, int, dict[str, Any]]] = {}
     for facility_index_value, row in enumerate(searchable_facilities):
         place_slug = str(row.get("place_slug") or "").strip()
@@ -3214,18 +3271,37 @@ def search_places(
             facility_tokens=facility_index[index]["facility_tokens"],
             generic_keywords=facility_index[index]["generic_keywords"],
         )
-        facility_match = facility_best_by_slug.get(str(item.get("slug") or "").strip())
+        slug = str(item.get("slug") or "").strip()
+        facility_match = facility_best_by_slug.get(slug)
         if place_rank is None and facility_match is None:
             continue
-        payload = item
         facility_sort = (
             _facility_phase_for_rank(facility_match[0]) if facility_match is not None else None
         )
         place_sort = _place_phase_for_rank(place_rank) if place_rank is not None else None
+        aliases = place_alias_lists.get(slug, [])
+        canonical_name = str(item.get("name") or "")
+        display_name = _display_name_for_place_result(
+            slug,
+            canonical_name,
+            collapsed_query=collapsed_query,
+            compact_query=compact_query,
+            aliases=aliases,
+        )
         if facility_sort is not None and (place_sort is None or facility_sort < place_sort):
             phase, subrank = facility_sort
+            display_name = _display_name_for_place_result(
+                slug,
+                canonical_name,
+                collapsed_query=collapsed_query,
+                compact_query=compact_query,
+                aliases=aliases,
+                has_matched_facility=True,
+            )
             payload = {
                 **item,
+                "name": display_name,
+                "canonical_name": canonical_name,
                 "matched_facility": _matched_facility_from_row(facility_match[2]).model_dump(
                     exclude_none=True
                 ),
@@ -3233,7 +3309,12 @@ def search_places(
         else:
             assert place_sort is not None
             phase, subrank = place_sort
-        preference_rank = 0 if str(item.get("slug") or "").strip() in preferred_slug_set else 1
+            payload = {
+                **item,
+                "name": display_name,
+                "canonical_name": canonical_name,
+            }
+        preference_rank = 0 if slug in preferred_slug_set else 1
         ranked.append((phase, subrank, preference_rank, index, payload))
     ranked.sort(key=lambda item: (item[0], item[1], item[2], item[3]))
     if preferred_slugs:
@@ -5003,7 +5084,7 @@ def _serialize_empty_classroom_building(place: Place) -> EmptyClassroomBuilding:
     return EmptyClassroomBuilding(
         slug=place.slug,
         name=place.name,
-        canonical_name=place.name,
+        canonical_name=place.canonical_name or place.name,
         category=place.category,
         aliases=place.aliases,
     )

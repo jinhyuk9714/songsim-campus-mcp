@@ -150,7 +150,7 @@ def _serialize_public_place(place: Place) -> dict[str, object]:
     return McpPlaceResult(
         slug=place.slug,
         name=place.name,
-        canonical_name=place.name,
+        canonical_name=place.canonical_name or place.name,
         category=place.category,
         aliases=place.aliases,
         short_location=(

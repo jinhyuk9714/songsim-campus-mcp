@@ -420,7 +420,7 @@ def create_app() -> FastAPI:
             coordinates = McpCoordinates(latitude=place.latitude, longitude=place.longitude)
         return GptPlaceResult(
             name=place.name,
-            canonical_name=place.name,
+            canonical_name=place.canonical_name or place.name,
             aliases=place.aliases,
             category=place.category,
             short_location=place.description or None,

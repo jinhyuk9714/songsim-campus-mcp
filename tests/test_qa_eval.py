@@ -378,6 +378,29 @@ def test_payload_from_sources_normalizes_notice_public_category_and_sorting() ->
     ]
 
 
+def test_summarize_payload_places_alias_display_includes_aliases() -> None:
+    payload = [
+        {
+            "slug": "student-center",
+            "name": "학생회관",
+            "canonical_name": "학생미래인재관",
+            "category": "facility",
+            "aliases": ["학생회관", "student center"],
+            "matched_facility": None,
+        }
+    ]
+    summary = qa_eval._summarize_payload(payload, summary_kind="places_top1_alias_display")
+
+    assert summary == {
+        "slug": "student-center",
+        "name": "학생회관",
+        "canonical_name": "학생미래인재관",
+        "category": "facility",
+        "aliases": ["학생회관", "student center"],
+        "matched_facility": None,
+    }
+
+
 def test_run_row_evaluation_supports_exact_set_contains_invariant_and_watch() -> None:
     exact_row = EvalCorpusRow.model_validate(
         {
@@ -526,6 +549,8 @@ def test_run_row_evaluation_supports_place_top1_facility_host_summary() -> None:
         id="PLF001",
         normalized_expected={
             "slug": "kim-sou-hwan-hall",
+            "name": "K관",
+            "canonical_name": "김수환관",
             "matched_facility": {
                 "name": "트러스트짐",
                 "location_hint": "K관 1층",
@@ -541,7 +566,8 @@ def test_run_row_evaluation_supports_place_top1_facility_host_summary() -> None:
         actual_payload=[
             {
                 "slug": "kim-sou-hwan-hall",
-                "name": "김수환관",
+                "name": "K관",
+                "canonical_name": "김수환관",
                 "category": "building",
                 "matched_facility": {
                     "name": "트러스트짐",
@@ -557,7 +583,8 @@ def test_run_row_evaluation_supports_place_top1_facility_host_summary() -> None:
     assert result.verdict == "pass"
     assert result.actual_summary == {
         "slug": "kim-sou-hwan-hall",
-        "name": "김수환관",
+        "name": "K관",
+        "canonical_name": "김수환관",
         "category": "building",
         "matched_facility": {
             "name": "트러스트짐",

@@ -1804,6 +1804,132 @@ def test_mcp_public_search_places_prefers_short_query_place_preference_for_k_hal
     payloads = asyncio.run(main())
 
     assert [item["slug"] for item in payloads] == ["kim-sou-hwan-hall"]
+    assert payloads[0]["name"] == "K관"
+    assert payloads[0]["canonical_name"] == "김수환관"
+
+    clear_settings_cache()
+
+
+@pytest.mark.parametrize(
+    "query,expected_slug,expected_name,expected_canonical_name",
+    [
+        ("학생회관 어디야?", "sophie-barat-hall", "학생회관", "학생미래인재관"),
+        ("K관 어디야?", "kim-sou-hwan-hall", "K관", "김수환관"),
+        ("김수환관 어디야?", "kim-sou-hwan-hall", "김수환관", "김수환관"),
+    ],
+)
+def test_mcp_public_search_places_exposes_alias_friendly_display_for_strong_alias_queries(
+    app_env,
+    monkeypatch,
+    query,
+    expected_slug,
+    expected_name,
+    expected_canonical_name,
+):
+    pytest.importorskip("mcp.server.fastmcp")
+    init_db()
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                {
+                    "slug": "sophie-barat-hall",
+                    "name": "학생미래인재관",
+                    "category": "building",
+                    "aliases": ["학생회관", "학생센터"],
+                    "description": "학생식당과 생활 편의시설이 있는 건물",
+                    "latitude": 37.486466,
+                    "longitude": 126.801297,
+                    "opening_hours": {},
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-18T10:00:00+09:00",
+                },
+                {
+                    "slug": "kim-sou-hwan-hall",
+                    "name": "김수환관",
+                    "category": "building",
+                    "aliases": ["김수환", "K관"],
+                    "description": "강의실과 생활 편의시설이 있는 건물",
+                    "latitude": 37.48630,
+                    "longitude": 126.80120,
+                    "opening_hours": {},
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-18T10:00:00+09:00",
+                },
+            ],
+        )
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        result = await mcp.call_tool("tool_search_places", {"query": query, "limit": 1})
+        return _tool_payloads(result)[0]
+
+    payload = asyncio.run(main())
+
+    assert payload["slug"] == expected_slug
+    assert payload["name"] == expected_name
+    assert payload["canonical_name"] == expected_canonical_name
+
+    clear_settings_cache()
+
+
+def test_mcp_public_search_places_uses_alias_friendly_parent_place_for_facility_hits(
+    app_env,
+    monkeypatch,
+):
+    pytest.importorskip("mcp.server.fastmcp")
+    init_db()
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                {
+                    "slug": "sophie-barat-hall",
+                    "name": "학생미래인재관",
+                    "category": "building",
+                    "aliases": ["학생회관", "학생센터"],
+                    "description": "학생식당과 생활 편의시설이 있는 건물",
+                    "latitude": 37.486466,
+                    "longitude": 126.801297,
+                    "opening_hours": {},
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-18T10:00:00+09:00",
+                }
+            ],
+        )
+        replace_campus_facilities(
+            conn,
+            [
+                {
+                    "facility_name": "CU",
+                    "category": "편의점",
+                    "phone": "032-343-3424",
+                    "location_text": "학생회관 1층",
+                    "hours_text": "평일 08:00~21:30 토,일 08:00~16:00 (야간 무인으로 24시간 운영)",
+                    "place_slug": "sophie-barat-hall",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-18T10:00:00+09:00",
+                }
+            ],
+        )
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        result = await mcp.call_tool("tool_search_places", {"query": "CU 어디야?", "limit": 1})
+        return _tool_payloads(result)[0]
+
+    payload = asyncio.run(main())
+
+    assert payload["slug"] == "sophie-barat-hall"
+    assert payload["name"] == "학생회관"
+    assert payload["canonical_name"] == "학생미래인재관"
+    assert payload["matched_facility"]["name"] == "CU"
+    assert payload["matched_facility"]["location_hint"] == "학생회관 1층"
 
     clear_settings_cache()
 
@@ -1907,17 +2033,25 @@ def test_mcp_public_search_places_promotes_canonical_parent_place_for_k_hall_fac
     copy_room_payload, bank_payload, gym_payload, hall_payload = asyncio.run(main())
 
     assert copy_room_payload["slug"] == "kim-sou-hwan-hall"
+    assert copy_room_payload["name"] == "K관"
+    assert copy_room_payload["canonical_name"] == "김수환관"
     assert copy_room_payload["matched_facility"]["name"] == "교내복사실"
     assert copy_room_payload["matched_facility"]["location_hint"] == "K관 1층"
 
     assert bank_payload["slug"] == "kim-sou-hwan-hall"
+    assert bank_payload["name"] == "K관"
+    assert bank_payload["canonical_name"] == "김수환관"
     assert bank_payload["matched_facility"]["name"] == "우리은행"
     assert bank_payload["matched_facility"]["phone"] == "032-342-2641"
 
     assert gym_payload["slug"] == "kim-sou-hwan-hall"
+    assert gym_payload["name"] == "K관"
+    assert gym_payload["canonical_name"] == "김수환관"
     assert gym_payload["matched_facility"]["name"] == "트러스트짐"
 
     assert hall_payload["slug"] == "kim-sou-hwan-hall"
+    assert hall_payload["name"] == "K관"
+    assert hall_payload["canonical_name"] == "김수환관"
     assert "matched_facility" not in hall_payload
 
     clear_settings_cache()

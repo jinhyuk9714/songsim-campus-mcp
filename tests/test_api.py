@@ -400,6 +400,105 @@ def test_places_endpoint_matches_facility_tenant_alias_from_override_taxonomy(cl
     assert payload[0]["name"] == "학생회관"
 
 
+def test_places_endpoint_uses_alias_friendly_name_for_strong_alias_queries(client):
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                {
+                    "slug": "sophie-barat-hall",
+                    "name": "학생미래인재관",
+                    "category": "building",
+                    "aliases": ["학생회관", "학생센터"],
+                    "description": "학생식당과 생활 편의시설이 있는 건물",
+                    "latitude": 37.486466,
+                    "longitude": 126.801297,
+                    "opening_hours": {},
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-18T10:00:00+09:00",
+                },
+                {
+                    "slug": "kim-sou-hwan-hall",
+                    "name": "김수환관",
+                    "category": "building",
+                    "aliases": ["김수환", "K관"],
+                    "description": "강의실과 생활 편의시설이 있는 건물",
+                    "latitude": 37.48630,
+                    "longitude": 126.80120,
+                    "opening_hours": {},
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-18T10:00:00+09:00",
+                },
+            ],
+        )
+
+    student_response = client.get("/places", params={"query": "학생회관 어디야?", "limit": 1})
+    k_hall_response = client.get("/places", params={"query": "K관 어디야?", "limit": 1})
+    canonical_response = client.get("/places", params={"query": "김수환관 어디야?", "limit": 1})
+
+    assert student_response.status_code == 200
+    assert student_response.json()[0]["slug"] == "sophie-barat-hall"
+    assert student_response.json()[0]["name"] == "학생회관"
+    assert student_response.json()[0]["canonical_name"] == "학생미래인재관"
+
+    assert k_hall_response.status_code == 200
+    assert k_hall_response.json()[0]["slug"] == "kim-sou-hwan-hall"
+    assert k_hall_response.json()[0]["name"] == "K관"
+    assert k_hall_response.json()[0]["canonical_name"] == "김수환관"
+
+    assert canonical_response.status_code == 200
+    assert canonical_response.json()[0]["slug"] == "kim-sou-hwan-hall"
+    assert canonical_response.json()[0]["name"] == "김수환관"
+    assert canonical_response.json()[0]["canonical_name"] == "김수환관"
+
+
+def test_places_endpoint_uses_alias_friendly_parent_name_for_facility_hits(client):
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                {
+                    "slug": "sophie-barat-hall",
+                    "name": "학생미래인재관",
+                    "category": "building",
+                    "aliases": ["학생회관", "학생센터"],
+                    "description": "학생식당과 생활 편의시설이 있는 건물",
+                    "latitude": 37.486466,
+                    "longitude": 126.801297,
+                    "opening_hours": {},
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-18T10:00:00+09:00",
+                }
+            ],
+        )
+        replace_campus_facilities(
+            conn,
+            [
+                {
+                    "facility_name": "CU",
+                    "category": "편의점",
+                    "phone": "032-343-3424",
+                    "location_text": "학생회관 1층",
+                    "hours_text": "평일 08:00~21:30 토,일 08:00~16:00 (야간 무인으로 24시간 운영)",
+                    "place_slug": "sophie-barat-hall",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-18T10:00:00+09:00",
+                }
+            ],
+        )
+
+    response = client.get("/places", params={"query": "CU 어디야?", "limit": 1})
+
+    assert response.status_code == 200
+    payload = response.json()[0]
+    assert payload["slug"] == "sophie-barat-hall"
+    assert payload["name"] == "학생회관"
+    assert payload["canonical_name"] == "학생미래인재관"
+    assert payload["matched_facility"]["name"] == "CU"
+    assert payload["matched_facility"]["location_hint"] == "학생회관 1층"
+
+
 def test_places_endpoint_matches_generic_facility_nouns(client):
     with connection() as conn:
         replace_places(
@@ -551,6 +650,8 @@ def test_places_endpoint_exposes_matched_facility_metadata(client):
         payload = response.json()
         assert payload
         assert payload[0]["slug"] == "student-center"
+        assert payload[0]["name"] == "학생회관"
+        assert payload[0]["canonical_name"] == "학생회관"
         assert "matched_facility" in payload[0]
         assert payload[0]["matched_facility"]["name"] == facility_name
         assert payload[0]["matched_facility"]["phone"] == phone
@@ -1881,12 +1982,16 @@ def test_places_endpoint_promotes_canonical_parent_place_for_k_hall_facilities(c
         assert response.status_code == 200
         payload = response.json()
         assert payload[0]["slug"] == "kim-sou-hwan-hall"
+        assert payload[0]["name"] == "K관"
+        assert payload[0]["canonical_name"] == "김수환관"
         assert payload[0]["matched_facility"]["name"] == facility_name
         assert payload[0]["matched_facility"]["location_hint"] == "K관 1층"
 
     k_hall_response = client.get("/places", params={"query": "K관 어디야?", "limit": 1})
     assert k_hall_response.status_code == 200
     assert k_hall_response.json()[0]["slug"] == "kim-sou-hwan-hall"
+    assert k_hall_response.json()[0]["name"] == "K관"
+    assert k_hall_response.json()[0]["canonical_name"] == "김수환관"
     assert k_hall_response.json()[0].get("matched_facility") is None
 
 
