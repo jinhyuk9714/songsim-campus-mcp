@@ -19,29 +19,27 @@ from .mcp_oauth import (
     ensure_authenticated_tool_access,
     is_public_mcp_oauth_enabled,
 )
+from .mcp_public_serializers import (
+    serialize_public_academic_status_guide,
+    serialize_public_academic_support_guide,
+    serialize_public_certificate_guide,
+    serialize_public_course,
+    serialize_public_dining_menu,
+    serialize_public_error,
+    serialize_public_leave_of_absence_guide,
+    serialize_public_nearby_restaurant,
+    serialize_public_notice,
+    serialize_public_place,
+    serialize_public_restaurant_search,
+    serialize_public_scholarship_guide,
+    serialize_public_transport_guide,
+    serialize_public_wifi_guide,
+)
 from .schemas import (
-    AcademicStatusGuide,
-    AcademicSupportGuide,
-    CampusDiningMenu,
-    CertificateGuide,
-    Course,
-    LeaveOfAbsenceGuide,
-    McpCoordinates,
-    McpNearbyRestaurantResult,
-    McpNoticeResult,
-    McpPlaceResult,
-    McpRestaurantSearchResult,
-    McpToolError,
-    NearbyRestaurant,
-    Notice,
-    Place,
     ProfileCourseRef,
     ProfileInterests,
     ProfileNoticePreferences,
     ProfileUpdateRequest,
-    ScholarshipGuide,
-    TransportGuide,
-    WifiGuide,
 )
 from .seed import seed_demo
 from .services import (
@@ -82,26 +80,6 @@ from .settings import get_settings
 
 DOCS_DIR = Path(__file__).resolve().parents[2] / "docs"
 
-NOTICE_CATEGORY_DISPLAY = {
-    "academic": "학사",
-    "scholarship": "장학",
-    "employment": "취업",
-    "career": "취업",
-    "event": "행사",
-    "facility": "시설",
-    "library": "도서관",
-    "general": "일반",
-    "place": "일반",
-}
-
-RESTAURANT_CATEGORY_DISPLAY = {
-    "korean": "한식",
-    "western": "양식",
-    "japanese": "일식",
-    "chinese": "중식",
-    "cafe": "카페",
-}
-
 PLACE_CATEGORY_GUIDE = {
     "library": "도서관, 열람실, 자료 이용 중심 장소",
     "building": "강의동, 행정동 등 일반 건물",
@@ -109,187 +87,6 @@ PLACE_CATEGORY_GUIDE = {
     "gate": "정문, 북문 같은 캠퍼스 출입구",
     "stop": "버스 정류장 같은 기준 위치",
 }
-
-
-def _truncate_preview(text: str, limit: int = 140) -> str:
-    normalized = " ".join(text.split())
-    if len(normalized) <= limit:
-        return normalized
-    return normalized[: max(0, limit - 3)].rstrip() + "..."
-
-
-def _format_opening_hours_preview(opening_hours: dict[str, str]) -> str | None:
-    if not opening_hours:
-        return None
-    preview_items = []
-    for key, value in opening_hours.items():
-        preview_items.append(f"{key}: {value}")
-        if len(preview_items) == 2:
-            break
-    return " / ".join(preview_items)
-
-
-def _serialize_public_error(exc: Exception) -> dict[str, str]:
-    error_type = "not_found" if isinstance(exc, NotFoundError) else "invalid_request"
-    message = str(exc)
-    return McpToolError(error=message, type=error_type, message=message).model_dump()
-
-
-def _serialize_public_place(place: Place) -> dict[str, object]:
-    highlights: list[str] = []
-    if place.aliases:
-        highlights.append(f"별칭: {', '.join(place.aliases[:3])}")
-    if place.description:
-        highlights.append(_truncate_preview(place.description, limit=80))
-    opening_preview = _format_opening_hours_preview(place.opening_hours)
-    if opening_preview:
-        highlights.append(f"운영: {opening_preview}")
-    coordinates = None
-    if place.latitude is not None and place.longitude is not None:
-        coordinates = McpCoordinates(latitude=place.latitude, longitude=place.longitude)
-    return McpPlaceResult(
-        slug=place.slug,
-        name=place.name,
-        canonical_name=place.canonical_name or place.name,
-        category=place.category,
-        aliases=place.aliases,
-        short_location=(
-            _truncate_preview(place.description, limit=80)
-            if place.description
-            else None
-        ),
-        coordinates=coordinates,
-        highlights=highlights,
-        matched_facility=place.matched_facility,
-    ).model_dump(exclude_none=True)
-
-
-def _serialize_public_notice(notice: Notice) -> dict[str, object]:
-    return McpNoticeResult(
-        title=notice.title,
-        category_display=NOTICE_CATEGORY_DISPLAY.get(notice.category, "일반"),
-        published_at=notice.published_at,
-        summary=_truncate_preview(notice.summary, limit=160),
-        source_url=notice.source_url,
-    ).model_dump(exclude_none=True)
-
-
-def _restaurant_price_hint(restaurant: NearbyRestaurant) -> str | None:
-    if restaurant.min_price is not None and restaurant.max_price is not None:
-        if restaurant.min_price == restaurant.max_price:
-            return f"{restaurant.min_price:,}원"
-        return f"{restaurant.min_price:,}~{restaurant.max_price:,}원"
-    if restaurant.min_price is not None:
-        return f"{restaurant.min_price:,}원부터"
-    if restaurant.max_price is not None:
-        return f"{restaurant.max_price:,}원 이하"
-    return None
-
-
-def _restaurant_category_label(restaurant: NearbyRestaurant) -> str:
-    if restaurant.tags:
-        return restaurant.tags[-1]
-    return RESTAURANT_CATEGORY_DISPLAY.get(restaurant.category, "식당")
-
-
-def _serialize_public_nearby_restaurant(restaurant: NearbyRestaurant) -> dict[str, object]:
-    payload = McpNearbyRestaurantResult(
-        name=restaurant.name,
-        category_display=_restaurant_category_label(restaurant),
-        distance_meters=restaurant.distance_meters,
-        estimated_walk_minutes=restaurant.estimated_walk_minutes,
-        price_hint=_restaurant_price_hint(restaurant),
-        open_now=restaurant.open_now,
-        location_hint=(
-            _truncate_preview(restaurant.description, limit=80)
-            if restaurant.description
-            else None
-        ),
-    ).model_dump(exclude_none=True)
-    payload["price_hint"] = _restaurant_price_hint(restaurant)
-    payload["open_now"] = restaurant.open_now
-    return payload
-
-
-def _serialize_public_restaurant_search(restaurant) -> dict[str, object]:
-    payload = McpRestaurantSearchResult(
-        name=restaurant.name,
-        category_display=RESTAURANT_CATEGORY_DISPLAY.get(restaurant.category, "식당"),
-        distance_meters=restaurant.distance_meters,
-        estimated_walk_minutes=restaurant.estimated_walk_minutes,
-        price_hint=_restaurant_price_hint(restaurant),
-        location_hint=(
-            _truncate_preview(restaurant.description, limit=80)
-            if restaurant.description
-            else None
-        ),
-    ).model_dump(exclude_none=True)
-    payload["distance_meters"] = restaurant.distance_meters
-    payload["estimated_walk_minutes"] = restaurant.estimated_walk_minutes
-    payload["price_hint"] = _restaurant_price_hint(restaurant)
-    return payload
-
-
-def _serialize_public_dining_menu(menu: CampusDiningMenu) -> dict[str, object]:
-    payload = menu.model_dump()
-    if menu.menu_text is not None:
-        payload["menu_text"] = menu.menu_text
-    return payload
-
-
-def _serialize_public_course(course: Course) -> dict[str, object]:
-    payload = course.model_dump()
-    summary_parts = [course.title]
-    if course.professor:
-        summary_parts.append(course.professor)
-    if course.raw_schedule:
-        summary_parts.append(course.raw_schedule)
-    elif course.day_of_week and course.period_start is not None and course.period_end is not None:
-        summary_parts.append(f"{course.day_of_week}{course.period_start}~{course.period_end}")
-    payload["course_summary"] = " / ".join(summary_parts)
-    return payload
-
-
-def _serialize_public_transport_guide(guide: TransportGuide) -> dict[str, object]:
-    payload = guide.model_dump()
-    payload["guide_summary"] = guide.summary or (guide.steps[0] if guide.steps else "")
-    return payload
-
-
-def _serialize_public_certificate_guide(guide: CertificateGuide) -> dict[str, object]:
-    payload = guide.model_dump()
-    payload["guide_summary"] = guide.summary or (guide.steps[0] if guide.steps else "")
-    return payload
-
-
-def _serialize_public_leave_of_absence_guide(guide: LeaveOfAbsenceGuide) -> dict[str, object]:
-    payload = guide.model_dump()
-    payload["guide_summary"] = guide.summary or (guide.steps[0] if guide.steps else "")
-    return payload
-
-
-def _serialize_public_scholarship_guide(guide: ScholarshipGuide) -> dict[str, object]:
-    payload = guide.model_dump()
-    payload["guide_summary"] = guide.summary or (guide.steps[0] if guide.steps else "")
-    return payload
-
-
-def _serialize_public_wifi_guide(guide: WifiGuide) -> dict[str, object]:
-    payload = guide.model_dump()
-    payload["guide_summary"] = ", ".join(guide.ssids) if guide.ssids else ""
-    return payload
-
-
-def _serialize_public_academic_support_guide(guide: AcademicSupportGuide) -> dict[str, object]:
-    payload = guide.model_dump()
-    payload["guide_summary"] = guide.summary or (guide.steps[0] if guide.steps else "")
-    return payload
-
-
-def _serialize_public_academic_status_guide(guide: AcademicStatusGuide) -> dict[str, object]:
-    payload = guide.model_dump()
-    payload["guide_summary"] = guide.summary or (guide.steps[0] if guide.steps else "")
-    return payload
 
 
 def _public_usage_guide() -> str:
@@ -920,7 +717,7 @@ def build_mcp():
                 return [item.model_dump() for item in events]
             except InvalidRequestError as exc:
                 if public_readonly:
-                    return _serialize_public_error(exc)
+                    return serialize_public_error(exc)
                 return {"error": str(exc)}
 
     @mcp.tool(
@@ -939,7 +736,7 @@ def build_mcp():
         with connection() as conn:
             guides = list_certificate_guides(conn, limit=limit)
             if public_readonly:
-                return [_serialize_public_certificate_guide(item) for item in guides]
+                return [serialize_public_certificate_guide(item) for item in guides]
             return [item.model_dump() for item in guides]
 
     @mcp.tool(
@@ -960,7 +757,7 @@ def build_mcp():
         with connection() as conn:
             guides = list_leave_of_absence_guides(conn, limit=limit)
             if public_readonly:
-                return [_serialize_public_leave_of_absence_guide(item) for item in guides]
+                return [serialize_public_leave_of_absence_guide(item) for item in guides]
             return [item.model_dump() for item in guides]
 
     @mcp.tool(
@@ -981,7 +778,7 @@ def build_mcp():
         with connection() as conn:
             guides = list_scholarship_guides(conn, limit=limit)
             if public_readonly:
-                return [_serialize_public_scholarship_guide(item) for item in guides]
+                return [serialize_public_scholarship_guide(item) for item in guides]
             return [item.model_dump() for item in guides]
 
     @mcp.tool(
@@ -1001,7 +798,7 @@ def build_mcp():
         with connection() as conn:
             guides = list_wifi_guides(conn, limit=limit)
             if public_readonly:
-                return [_serialize_public_wifi_guide(item) for item in guides]
+                return [serialize_public_wifi_guide(item) for item in guides]
             return [item.model_dump() for item in guides]
 
     @mcp.tool(
@@ -1022,7 +819,7 @@ def build_mcp():
         with connection() as conn:
             guides = list_academic_support_guides(conn, limit=limit)
             if public_readonly:
-                return [_serialize_public_academic_support_guide(item) for item in guides]
+                return [serialize_public_academic_support_guide(item) for item in guides]
             return [item.model_dump() for item in guides]
 
     @mcp.tool(
@@ -1051,7 +848,7 @@ def build_mcp():
         with connection() as conn:
             guides = list_academic_status_guides(conn, status=status, limit=limit)
             if public_readonly:
-                return [_serialize_public_academic_status_guide(item) for item in guides]
+                return [serialize_public_academic_status_guide(item) for item in guides]
             return [item.model_dump() for item in guides]
 
     @mcp.tool(
@@ -1086,7 +883,7 @@ def build_mcp():
         with connection() as conn:
             places = search_places(conn, query=query, category=category, limit=limit)
             if public_readonly:
-                return [_serialize_public_place(item) for item in places]
+                return [serialize_public_place(item) for item in places]
             return [item.model_dump() for item in places]
 
     @mcp.tool(
@@ -1110,11 +907,11 @@ def build_mcp():
             try:
                 place = get_place(conn, identifier)
                 if public_readonly:
-                    return _serialize_public_place(place)
+                    return serialize_public_place(place)
                 return place.model_dump()
             except NotFoundError as exc:
                 if public_readonly:
-                    return _serialize_public_error(exc)
+                    return serialize_public_error(exc)
                 return {"error": str(exc)}
 
     @mcp.tool(
@@ -1154,7 +951,7 @@ def build_mcp():
                 limit=limit,
             )
             if public_readonly:
-                return [_serialize_public_course(item) for item in courses]
+                return [serialize_public_course(item) for item in courses]
             return [item.model_dump() for item in courses]
 
     @mcp.tool(
@@ -1223,7 +1020,7 @@ def build_mcp():
         with connection() as conn:
             menus = search_campus_dining_menus(conn, query=query, limit=limit)
             if public_readonly:
-                return [_serialize_public_dining_menu(item) for item in menus]
+                return [serialize_public_dining_menu(item) for item in menus]
             return [item.model_dump() for item in menus]
 
     @mcp.tool(
@@ -1285,14 +1082,14 @@ def build_mcp():
                 return payload.model_dump()
             except NotFoundError as exc:
                 if public_readonly:
-                    return _serialize_public_error(exc)
+                    return serialize_public_error(exc)
                 return {"error": str(exc)}
             except ValueError:
                 exc = InvalidRequestError(
                     "Invalid 'at' timestamp. Use ISO 8601, for example 2026-03-16T10:15:00+09:00."
                 )
                 if public_readonly:
-                    return _serialize_public_error(exc)
+                    return serialize_public_error(exc)
                 return {"error": str(exc)}
 
     @mcp.tool(
@@ -1361,18 +1158,18 @@ def build_mcp():
                     limit=limit,
                 )
                 if public_readonly:
-                    return [_serialize_public_nearby_restaurant(item) for item in restaurants]
+                    return [serialize_public_nearby_restaurant(item) for item in restaurants]
                 return [item.model_dump() for item in restaurants]
             except NotFoundError as exc:
                 if public_readonly:
-                    return _serialize_public_error(exc)
+                    return serialize_public_error(exc)
                 return {"error": str(exc)}
             except ValueError:
                 exc = InvalidRequestError(
                     "Invalid 'at' timestamp. Use ISO 8601, for example 2026-03-15T11:00:00+09:00."
                 )
                 if public_readonly:
-                    return _serialize_public_error(exc)
+                    return serialize_public_error(exc)
                 return {"error": str(exc)}
 
     @mcp.tool(
@@ -1419,15 +1216,15 @@ def build_mcp():
                     limit=limit,
                 )
                 if public_readonly:
-                    return [_serialize_public_restaurant_search(item) for item in restaurants]
+                    return [serialize_public_restaurant_search(item) for item in restaurants]
                 return [item.model_dump() for item in restaurants]
             except NotFoundError as exc:
                 if public_readonly:
-                    return _serialize_public_error(exc)
+                    return serialize_public_error(exc)
                 return {"error": str(exc)}
             except InvalidRequestError as exc:
                 if public_readonly:
-                    return _serialize_public_error(exc)
+                    return serialize_public_error(exc)
                 return {"error": str(exc)}
 
     @mcp.tool(
@@ -1459,7 +1256,7 @@ def build_mcp():
         with connection() as conn:
             notices = list_latest_notices(conn, category=category, limit=limit)
             if public_readonly:
-                return [_serialize_public_notice(item) for item in notices]
+                return [serialize_public_notice(item) for item in notices]
             return [item.model_dump() for item in notices]
 
     @mcp.tool(
@@ -1486,7 +1283,7 @@ def build_mcp():
         with connection() as conn:
             guides = list_transport_guides(conn, mode=mode, query=query, limit=limit)
             if public_readonly:
-                return [_serialize_public_transport_guide(item) for item in guides]
+                return [serialize_public_transport_guide(item) for item in guides]
             return [item.model_dump() for item in guides]
 
     if not public_readonly:
