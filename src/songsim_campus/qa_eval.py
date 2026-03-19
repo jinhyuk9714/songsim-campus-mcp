@@ -845,9 +845,11 @@ def build_truth_rows(
             cached_payload = payload_cache.get(cache_key)
             if cached_payload is None:
                 payload: Any | None = None
-                truth_source = "database_snapshot"
+                prefer_official_source = row.api_request.path == "/notices"
+                use_official_source = prefer_official_source or conn is None
+                truth_source = "official_source" if use_official_source else "database_snapshot"
                 stability = "stable"
-                if conn is not None:
+                if not prefer_official_source and conn is not None:
                     try:
                         payload = _payload_from_db(conn, row)
                     except ValueError:

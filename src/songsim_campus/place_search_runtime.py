@@ -103,6 +103,26 @@ def _matches_partial_text_candidate(
     return bool(compact_query) and compact_query.lower() in compact_text
 
 
+def _matches_composite_text_candidate(
+    text: str | None,
+    *,
+    collapsed_query: str,
+    compact_query: str | None,
+) -> bool:
+    cleaned = _normalize_optional_text(text)
+    if cleaned is None:
+        return False
+    collapsed_text = _collapse_whitespace(cleaned).lower()
+    query_text = collapsed_query.lower()
+    if collapsed_text in query_text or query_text in collapsed_text:
+        return True
+    if compact_query is None:
+        return False
+    compact_text = _compact_text(cleaned).lower()
+    query_compact = compact_query.lower()
+    return compact_text in query_compact or query_compact in compact_text
+
+
 def _unique_stripped(values: list[str]) -> list[str]:
     seen: set[str] = set()
     result: list[str] = []
@@ -627,6 +647,50 @@ def _matched_facility_from_row(row: dict[str, Any]) -> MatchedFacility:
     )
 
 
+def _rank_campus_facility_composite_candidate(
+    row: dict[str, Any],
+    *,
+    collapsed_query: str,
+    compact_query: str | None,
+) -> int | None:
+    location_text = str(row.get("location_text") or "")
+    hours_text = str(row.get("hours_text") or "")
+    category = str(row.get("category") or "")
+    facility_name = str(row.get("facility_name") or "")
+    generic_keywords = _generic_facility_keywords_for_targets([facility_name, category])
+
+    location_match = _matches_composite_text_candidate(
+        location_text,
+        collapsed_query=collapsed_query,
+        compact_query=compact_query,
+    )
+    if not location_match:
+        return None
+
+    if _matches_composite_text_candidate(
+        category,
+        collapsed_query=collapsed_query,
+        compact_query=compact_query,
+    ):
+        return 2
+    if any(
+        _matches_composite_text_candidate(
+            keyword,
+            collapsed_query=collapsed_query,
+            compact_query=compact_query,
+        )
+        for keyword in generic_keywords
+    ):
+        return 2
+    if _matches_composite_text_candidate(
+        hours_text,
+        collapsed_query=collapsed_query,
+        compact_query=compact_query,
+    ):
+        return 2
+    return None
+
+
 def _rank_campus_facility_candidate(
     row: dict[str, Any],
     *,
@@ -665,6 +729,13 @@ def _rank_campus_facility_candidate(
         compact_query=compact_query,
     ):
         return 3
+    composite_rank = _rank_campus_facility_composite_candidate(
+        row,
+        collapsed_query=collapsed_query,
+        compact_query=compact_query,
+    )
+    if composite_rank is not None:
+        return composite_rank
     if _matches_partial_text_candidate(
         name,
         collapsed_query=collapsed_query,

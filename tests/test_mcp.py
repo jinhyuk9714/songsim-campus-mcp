@@ -1770,6 +1770,73 @@ def test_mcp_public_search_places_returns_matched_facility_metadata(app_env, mon
     clear_settings_cache()
 
 
+def test_mcp_public_search_places_matches_student_center_composite_facility_queries(
+    app_env,
+    monkeypatch,
+):
+    pytest.importorskip('mcp.server.fastmcp')
+    init_db()
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                {
+                    "slug": "student-center",
+                    "name": "학생회관",
+                    "category": "facility",
+                    "aliases": ["학회관", "트러스트짐"],
+                    "description": "학생 편의시설과 복사/은행/카페가 있는 공간",
+                    "opening_hours": {
+                        "복사실": "평일 08:50~19:00",
+                        "우리은행": "평일 09:00~16:00",
+                        "카페드림": "평일 08:00~22:00",
+                        "트러스트짐": "평일 07:00~22:30",
+                    },
+                    "latitude": 37.48652,
+                    "longitude": 126.80216,
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                }
+            ],
+        )
+        replace_campus_facilities(
+            conn,
+            [
+                {
+                    "facility_name": "CU",
+                    "category": "편의점",
+                    "phone": "032-343-3424",
+                    "location_text": "학생회관 1층",
+                    "hours_text": "평일 08:00~21:30 토,일 08:00~16:00 (야간 무인으로 24시간 운영)",
+                    "place_slug": "student-center",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                }
+            ],
+        )
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        results = []
+        for query in ("학생회관 1층 편의점 어디야?", "학생회관 1층 24시간 편의점 어디야?"):
+            payload = await mcp.call_tool("tool_search_places", {"query": query, "limit": 1})
+            results.append(_tool_payloads(payload)[0])
+        return results
+
+    payloads = asyncio.run(main())
+
+    assert all(item["slug"] == "student-center" for item in payloads)
+    assert all(item["name"] == "학생회관" for item in payloads)
+    assert all(item["canonical_name"] == "학생회관" for item in payloads)
+    assert all(item["matched_facility"]["name"] == "CU" for item in payloads)
+    assert all(item["matched_facility"]["location_hint"] == "학생회관 1층" for item in payloads)
+
+    clear_settings_cache()
+
+
 def test_mcp_public_search_places_prefers_short_query_place_preference_for_k_hall(
     app_env,
     monkeypatch,

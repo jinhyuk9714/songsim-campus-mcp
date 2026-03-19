@@ -778,6 +778,17 @@ def test_places_endpoint_exposes_matched_facility_metadata(client):
                     "source_tag": "cuk_facilities",
                     "last_synced_at": "2026-03-13T09:00:00+09:00",
                 },
+                {
+                    "facility_name": "CU",
+                    "category": "편의점",
+                    "phone": "032-343-3424",
+                    "location_text": "학생회관 1층",
+                    "hours_text": "평일 08:00~21:30 토,일 08:00~16:00 (야간 무인으로 24시간 운영)",
+                    "place_slug": "student-center",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
             ],
         )
 
@@ -786,6 +797,8 @@ def test_places_endpoint_exposes_matched_facility_metadata(client):
         "우리은행 전화번호 알려줘": ("우리은행", "032-342-2641"),
         "카페드림 어디야?": ("카페드림", "010-9517-9417"),
         "트러스트짐 어디야?": ("트러스트짐", "032-342-5406"),
+        "학생회관 1층 편의점 어디야?": ("CU", "032-343-3424"),
+        "학생회관 1층 24시간 편의점 어디야?": ("CU", "032-343-3424"),
     }
     for query, (facility_name, phone) in facility_expectations.items():
         response = client.get("/places", params={"query": query, "limit": 1})

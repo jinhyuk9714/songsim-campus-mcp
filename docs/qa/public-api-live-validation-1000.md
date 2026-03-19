@@ -107,6 +107,8 @@ API-first public student surface baseline with live-synced truth.
 
 ## 다음 액션
 
-- Keep the course source-gap watchlist separate from hard fail counts.
-- Re-run `songsim-eval-public sync-truth` before large public releases.
-- Promote only stable canaries into the 50-question release gate.
+- `notices` freshness를 먼저 복구한 뒤 `songsim-eval-public sync-truth`를 다시 돌려 이 리포트를 재생성한다.
+- `PLC-0155`는 place/facility runtime fix를 적용한 뒤 다시 평가해서 skip을 제거한다.
+- `hard fail 22`와 `skip 1`은 현재 스냅샷의 상태이므로, 배포 후 재실행 전까지는 임의로 조정하지 않는다.
+- course source-gap watchlist는 hard fail counts와 계속 분리한다.
+- 최종 공개 배포 전에는 stable canary만 50문장 release gate로 승격한다.

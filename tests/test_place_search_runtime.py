@@ -99,6 +99,10 @@ def test_place_search_runtime_preserves_facility_parent_display_and_origin_resol
         )
 
         places = place_search_runtime.search_places(conn, query="CU 어디야?", limit=1)
+        composite_places = [
+            place_search_runtime.search_places(conn, query=query, limit=1)
+            for query in ("학생회관 1층 편의점", "학생회관 1층 24시간 편의점")
+        ]
         origin_place = place_search_runtime.resolve_origin_place(conn, "학생식당")
         building = place_search_runtime.resolve_building_place(conn, "니콜스")
         classroom_payload = list_estimated_empty_classrooms(
@@ -113,6 +117,16 @@ def test_place_search_runtime_preserves_facility_parent_display_and_origin_resol
     assert places[0].matched_facility is not None
     assert places[0].matched_facility.name == "CU"
     assert places[0].matched_facility.location_hint == "학생회관 1층"
+    assert all(result[0].slug == "sophie-barat-hall" for result in composite_places)
+    assert all(result[0].name == "학생회관" for result in composite_places)
+    assert all(result[0].canonical_name == "학생미래인재관" for result in composite_places)
+    assert all(result[0].matched_facility is not None for result in composite_places)
+    assert all(result[0].matched_facility.name == "CU" for result in composite_places)
+    expected_location_hint = "학생회관 1층"
+    assert all(
+        result[0].matched_facility.location_hint == expected_location_hint
+        for result in composite_places
+    )
     assert origin_place["slug"] == "sophie-barat-hall"
     assert building.slug == "nicholls-hall"
     assert classroom_payload.building.slug == "nicholls-hall"

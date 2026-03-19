@@ -143,6 +143,70 @@ def test_build_truth_rows_uses_database_snapshot_for_academic_support_guides(app
     ]
 
 
+def test_build_truth_rows_prefers_official_source_for_notices_even_with_database(
+    app_env: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    row = EvalCorpusRow.model_validate(
+        {
+            "id": "NT001",
+            "domain": "notices",
+            "style": "normal",
+            "user_utterance": "학사 공지 알려줘",
+            "api_request": {
+                "path": "/notices",
+                "params": {"category": "academic", "limit": 3},
+            },
+            "expected_mcp_flow": "tool_list_latest_notices",
+            "truth_mode": "set_contains",
+            "pass_rule": {"summary_kind": "notices_top5"},
+            "watch_policy": "none",
+            "notes": "",
+        }
+    )
+
+    monkeypatch.setattr(
+        qa_eval,
+        "_payload_from_db",
+        lambda *_args, **_kwargs: pytest.fail("notices truth should not use database snapshot"),
+    )
+    monkeypatch.setattr(
+        qa_eval,
+        "_payload_from_sources",
+        lambda *_args, **_kwargs: [
+            {
+                "title": "학사 공지 1",
+                "category": "academic",
+                "published_at": "2026-03-19",
+            },
+            {
+                "title": "학사 공지 2",
+                "category": "academic",
+                "published_at": "2026-03-18",
+            },
+        ],
+    )
+
+    truth_rows = build_truth_rows(
+        [row],
+        database_url=app_env,
+        captured_at="2026-03-19T10:10:00+09:00",
+    )
+
+    assert truth_rows == [
+        EvalTruthRow(
+            id="NT001",
+            normalized_expected=[
+                {"title": "학사 공지 1", "category": "academic", "published_at": "2026-03-19"},
+                {"title": "학사 공지 2", "category": "academic", "published_at": "2026-03-18"},
+            ],
+            truth_source="official_source",
+            captured_at="2026-03-19T10:10:00+09:00",
+            stability="stable",
+        )
+    ]
+
+
 def test_build_truth_rows_marks_watch_only_without_expected() -> None:
     row = EvalCorpusRow.model_validate(
         {
@@ -194,6 +258,89 @@ def test_build_truth_rows_skips_facility_host_place_canary_without_database() ->
             truth_source="unavailable",
             captured_at="2026-03-18T10:10:00+09:00",
             stability="degraded_skip",
+        )
+    ]
+
+
+def test_build_truth_rows_uses_database_snapshot_for_composite_facility_host_place(
+    app_env: str,
+) -> None:
+    row = EvalCorpusRow.model_validate(
+        {
+            "id": "PLC0155",
+            "domain": "place",
+            "style": "composite",
+            "user_utterance": "학생회관 1층 24시간 편의점 어디야?",
+            "api_request": {
+                "path": "/places",
+                "params": {"query": "학생회관 1층 편의점", "limit": 5},
+            },
+            "expected_mcp_flow": "tool_search_places -> tool_get_place",
+            "truth_mode": "set_contains",
+            "pass_rule": {"summary_kind": "places_top1_facility_host"},
+            "watch_policy": "none",
+            "notes": "",
+        }
+    )
+
+    init_db()
+    with connection() as conn:
+        repo.replace_places(
+            conn,
+            [
+                {
+                    "slug": "sophie-barat-hall",
+                    "name": "학생미래인재관",
+                    "category": "building",
+                    "aliases": ["학생회관", "학생센터", "학생식당"],
+                    "description": "",
+                    "latitude": 37.486466,
+                    "longitude": 126.801297,
+                    "opening_hours": {},
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-19T12:00:00+09:00",
+                }
+            ],
+        )
+        repo.replace_campus_facilities(
+            conn,
+            [
+                {
+                    "facility_name": "CU",
+                    "category": "편의점",
+                    "phone": "032-343-3424",
+                    "location_text": "학생회관 1층",
+                    "hours_text": "평일 08:00~21:30 토,일 08:00~16:00 (야간 무인으로 24시간 운영)",
+                    "place_slug": "sophie-barat-hall",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-19T12:00:00+09:00",
+                }
+            ],
+        )
+
+    truth_rows = build_truth_rows(
+        [row],
+        database_url=app_env,
+        captured_at="2026-03-19T12:10:00+09:00",
+    )
+
+    assert truth_rows == [
+        EvalTruthRow(
+            id="PLC0155",
+            normalized_expected={
+                "slug": "sophie-barat-hall",
+                "name": "학생회관",
+                "canonical_name": "학생미래인재관",
+                "category": "building",
+                "matched_facility": {
+                    "name": "CU",
+                    "location_hint": "학생회관 1층",
+                },
+            },
+            truth_source="database_snapshot",
+            captured_at="2026-03-19T12:10:00+09:00",
+            stability="stable",
         )
     ]
 
