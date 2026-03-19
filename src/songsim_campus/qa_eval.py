@@ -29,6 +29,8 @@ from .ingest.official_sources import (
     ClassRegistrationChangeGuideSource,
     ClassRetakeGuideSource,
     CourseCatalogSource,
+    GradeEvaluationGuideSource,
+    GraduationRequirementGuideSource,
     LeaveOfAbsenceGuideSource,
     NoticeSource,
     RegistrationBillLookupGuideSource,
@@ -61,6 +63,7 @@ EvalDomain = Literal[
     "registration_guides",
     "class_guides",
     "seasonal_semester_guides",
+    "academic_milestone_guides",
     "out_of_scope",
 ]
 EvalStyle = Literal["normal", "alias", "composite", "typo", "ambiguous", "out_of_scope"]
@@ -311,6 +314,16 @@ def _summarize_payload(payload: Any, *, summary_kind: str) -> Any:
             }
             for item in rows[:5]
         ]
+    if summary_kind == "academic_milestone_guides_top5":
+        rows = payload if isinstance(payload, list) else []
+        return [
+            {
+                "topic": item.get("topic"),
+                "title": item.get("title"),
+                "summary": item.get("summary"),
+            }
+            for item in rows[:5]
+        ]
     if summary_kind == "scholarship_guides_top5":
         rows = payload if isinstance(payload, list) else []
         return [{"title": item.get("title"), "summary": item.get("summary")} for item in rows[:5]]
@@ -526,6 +539,13 @@ def _payload_from_db(conn: psycopg.Connection, row: EvalCorpusRow) -> Any:
         return [item.model_dump() for item in items]
     if path == "/seasonal-semester-guides":
         items = services.list_seasonal_semester_guides(
+            conn,
+            topic=row.api_request.params.get("topic"),
+            limit=_limit_from_row(row, 20),
+        )
+        return [item.model_dump() for item in items]
+    if path == "/academic-milestone-guides":
+        items = services.list_academic_milestone_guides(
             conn,
             topic=row.api_request.params.get("topic"),
             limit=_limit_from_row(row, 20),
@@ -970,6 +990,24 @@ def _payload_from_sources(
         if topic := row.api_request.params.get("topic"):
             rows = [item for item in rows if item.get("topic") == topic]
         return rows[:limit]
+    if path == "/academic-milestone-guides":
+        cache_key = "academic_milestone_guides"
+        if cache_key not in source_cache:
+            rows: list[dict[str, Any]] = []
+            for source in (
+                GradeEvaluationGuideSource(
+                    services.ACADEMIC_MILESTONE_GUIDE_SOURCE_URLS["grade_evaluation"]
+                ),
+                GraduationRequirementGuideSource(
+                    services.ACADEMIC_MILESTONE_GUIDE_SOURCE_URLS["graduation_requirement"]
+                ),
+            ):
+                rows.extend(source.parse(source.fetch(), fetched_at=captured_at))
+            source_cache[cache_key] = rows
+        rows = list(source_cache[cache_key])
+        if topic := row.api_request.params.get("topic"):
+            rows = [item for item in rows if item.get("topic") == topic]
+        return rows[:limit]
     if path == "/academic-calendar":
         start_date, end_date = _current_academic_year_bounds()
         cache_key = f"academic_calendar:{start_date}:{end_date}"
@@ -1371,6 +1409,7 @@ def render_validation_report(
         "registration_guides",
         "class_guides",
         "seasonal_semester_guides",
+        "academic_milestone_guides",
         "scholarship_guides",
         "wifi_guides",
         "leave_of_absence_guides",

@@ -234,6 +234,21 @@ with httpx.Client(timeout=20.0) as client:
     )
     print("tool_list_seasonal_semester_guides", seasonal_call.status_code)
 
+    milestone_call = client.post(
+        base,
+        headers=call_headers,
+        json={
+            "jsonrpc": "2.0",
+            "id": 23,
+            "method": "tools/call",
+            "params": {
+                "name": "tool_list_academic_milestone_guides",
+                "arguments": {"topic": "grade_evaluation", "limit": 2},
+            },
+        },
+    )
+    print("tool_list_academic_milestone_guides", milestone_call.status_code)
+
     notices_call = client.post(
         base,
         headers=call_headers,
@@ -299,6 +314,18 @@ with httpx.Client(timeout=20.0) as client:
         },
     )
     print("seasonal semester resource", seasonal_resource_read.status_code)
+
+    milestone_resource_read = client.post(
+        base,
+        headers=call_headers,
+        json={
+            "jsonrpc": "2.0",
+            "id": 8,
+            "method": "resources/read",
+            "params": {"uri": "songsim://academic-milestone-guide"},
+        },
+    )
+    print("academic milestone resource", milestone_resource_read.status_code)
 PY
 ```
 
@@ -308,20 +335,24 @@ PY
 - `tool_list_registration_guides 200`
 - `tool_list_class_guides 200`
 - `tool_list_seasonal_semester_guides 200`
+- `tool_list_academic_milestone_guides 200`
 - `tool_list_latest_notices 200`
 - `tool_find_nearby_restaurants 200`
 - `registration resource 200`
 - `class resource 200`
 - `seasonal semester resource 200`
+- `academic milestone resource 200`
 - `initialize` 응답의 `instructions`에 `registration` 문구가 포함됨
 - `tool_list_registration_guides` payload가 빈 결과가 아님
 - `tool_list_class_guides` payload가 빈 결과가 아니고 `course_evaluation` 항목을 포함함
 - `tool_list_seasonal_semester_guides` payload가 빈 결과가 아니고 `seasonal_semester` 항목을 포함함
+- `tool_list_academic_milestone_guides` payload가 빈 결과가 아니고 `grade_evaluation` 항목을 포함함
 - `tool_list_latest_notices` payload가 빈 결과가 아니고 academic 항목을 포함함
 - `tool_find_nearby_restaurants` payload가 빈 결과가 아니고 nearby 식당 요약 payload를 반환함
 - `resources/read` 결과의 첫 항목에 `source_tag=cuk_registration_guides`가 포함됨
 - `class` resource 결과의 첫 항목에 `source_tag=cuk_class_guides`가 포함됨
 - `seasonal semester` resource 결과의 첫 항목에 `source_tag=cuk_seasonal_semester_guides`가 포함됨
+- `academic milestone` resource 결과의 첫 항목에 `source_tag=cuk_academic_milestone_guides`가 포함됨
 
 ## Pass 기준
 
@@ -329,11 +360,12 @@ PY
 - `/registration-guides`가 `payment_and_return` topic과 `cuk_registration_guides` source tag를 반환
 - `/class-guides`가 `course_evaluation` topic과 `cuk_class_guides` source tag를 반환
 - `/seasonal-semester-guides`가 `seasonal_semester` topic과 `cuk_seasonal_semester_guides` source tag를 반환
+- `/academic-milestone-guides`가 `grade_evaluation` topic과 `cuk_academic_milestone_guides` source tag를 반환
 - `/notices?category=academic&limit=3`가 `academic` notice와 `cuk_campus_notices` source tag를 반환
 - `/restaurants/nearby?origin=중도`가 `central-library` origin으로 nearby 결과를 반환
 - `/restaurants/nearby?origin=학생식당&open_now=true&category=cafe&limit=3`가 `200`으로 안정 응답하고, 빈 배열이어도 `open_now` strict contract와 일치
 - `/courses?query=CSE301...`가 빈 배열이어도 좋으니 `200`으로 안정 응답
-- MCP initialize가 성공하고 `tool_list_registration_guides`, `tool_list_class_guides`, `tool_list_seasonal_semester_guides`, `tool_list_latest_notices`, `tool_find_nearby_restaurants`, `songsim://registration-guide`, `songsim://class-guide`, `songsim://seasonal-semester-guide`가 모두 노출
+- MCP initialize가 성공하고 `tool_list_registration_guides`, `tool_list_class_guides`, `tool_list_seasonal_semester_guides`, `tool_list_academic_milestone_guides`, `tool_list_latest_notices`, `tool_find_nearby_restaurants`, `songsim://registration-guide`, `songsim://class-guide`, `songsim://seasonal-semester-guide`, `songsim://academic-milestone-guide`가 모두 노출
 - MCP registration/nearby tool call이 에러 없이 응답
 
-이 여덟 가지가 통과하면 class-guides + registration-guides + seasonal-semester-guides + nearby restaurant 공개 smoke는 충분합니다.
+이 기준이 통과하면 class-guides + registration-guides + seasonal-semester-guides + academic-milestone-guides + nearby restaurant 공개 smoke는 충분합니다.

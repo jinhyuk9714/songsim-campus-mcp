@@ -5,6 +5,7 @@ from typing import Annotated, Any
 from pydantic import Field
 
 from .mcp_public_serializers import (
+    serialize_public_academic_milestone_guide,
     serialize_public_academic_status_guide,
     serialize_public_academic_support_guide,
     serialize_public_certificate_guide,
@@ -42,6 +43,7 @@ from .services import (
     get_profile_meal_recommendations,
     get_profile_timetable,
     list_academic_calendar,
+    list_academic_milestone_guides,
     list_academic_status_guides,
     list_academic_support_guides,
     list_certificate_guides,
@@ -324,6 +326,36 @@ def register_shared_tools(
             guides = list_seasonal_semester_guides(conn, topic=topic, limit=limit)
             if public_readonly:
                 return [serialize_public_seasonal_semester_guide(item) for item in guides]
+            return [item.model_dump() for item in guides]
+
+    @mcp.tool(
+        description=(
+            (
+                "학교 성적·졸업 안내를 읽을 때 사용합니다. 성적평가 방법, 성적확인, "
+                "결석이 수업시간의 4분의 1을 넘으면 어떻게 되는지, 졸업요건, "
+                "졸업논문 제출 절차 같은 정적 안내를 current snapshot으로 돌려줍니다."
+            )
+            if public_readonly
+            else "학교 성적·졸업 안내 current snapshot을 가져옵니다."
+        ),
+        meta=tool_meta,
+    )
+    def tool_list_academic_milestone_guides(
+        topic: Annotated[
+            str | None,
+            Field(
+                description=(
+                    "성적·졸업 안내 유형 필터. grade_evaluation, "
+                    "graduation_requirement 중 하나를 사용합니다."
+                )
+            ),
+        ] = None,
+        limit: Annotated[int, Field(description="최대 결과 수. 기본값은 20입니다.")] = 20,
+    ):
+        with connection_factory() as conn:
+            guides = list_academic_milestone_guides(conn, topic=topic, limit=limit)
+            if public_readonly:
+                return [serialize_public_academic_milestone_guide(item) for item in guides]
             return [item.model_dump() for item in guides]
 
     @mcp.tool(

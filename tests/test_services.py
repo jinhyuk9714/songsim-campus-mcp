@@ -4728,6 +4728,10 @@ def test_sync_official_snapshot_runs_opening_hours_before_courses_and_transport(
         lambda conn: call_order.append('seasonal_semester_guides') or [],
     )
     monkeypatch.setattr(
+        'songsim_campus.services.refresh_academic_milestone_guides_from_source',
+        lambda conn: call_order.append('academic_milestone_guides') or [],
+    )
+    monkeypatch.setattr(
         'songsim_campus.services.refresh_scholarship_guides_from_source',
         lambda conn: call_order.append('scholarship_guides') or [],
     )
@@ -4763,6 +4767,7 @@ def test_sync_official_snapshot_runs_opening_hours_before_courses_and_transport(
         'registration_guides',
         'class_guides',
         'seasonal_semester_guides',
+        'academic_milestone_guides',
         'scholarship_guides',
         'academic_support_guides',
         'wifi_guides',
@@ -4777,6 +4782,7 @@ def test_sync_official_snapshot_runs_opening_hours_before_courses_and_transport(
     assert summary['registration_guides'] == 0
     assert summary['class_guides'] == 0
     assert summary['seasonal_semester_guides'] == 0
+    assert summary['academic_milestone_guides'] == 0
     assert summary['scholarship_guides'] == 0
     assert summary['academic_support_guides'] == 0
     assert summary['wifi_guides'] == 0

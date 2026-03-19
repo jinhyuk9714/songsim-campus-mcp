@@ -23,6 +23,7 @@ from .api_pages import (
 from .db import connection, get_connection, init_db
 from .schemas import (
     AcademicCalendarEvent,
+    AcademicMilestoneGuide,
     AcademicStatusGuide,
     AcademicSupportGuide,
     CampusDiningMenu,
@@ -82,6 +83,7 @@ from .services import (
     get_readiness_snapshot,
     get_sync_dashboard_state,
     list_academic_calendar,
+    list_academic_milestone_guides,
     list_academic_status_guides,
     list_academic_support_guides,
     list_certificate_guides,
@@ -466,6 +468,17 @@ def create_app() -> FastAPI:
         with connection() as conn:
             try:
                 return list_seasonal_semester_guides(conn, topic=topic, limit=limit)
+            except InvalidRequestError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/academic-milestone-guides", response_model=list[AcademicMilestoneGuide])
+    def academic_milestone_guides(
+        topic: str | None = Query(default=None, description="성적·졸업 안내 유형 필터"),
+        limit: int = Query(default=20, ge=1, le=50),
+    ) -> list[AcademicMilestoneGuide]:
+        with connection() as conn:
+            try:
+                return list_academic_milestone_guides(conn, topic=topic, limit=limit)
             except InvalidRequestError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
 

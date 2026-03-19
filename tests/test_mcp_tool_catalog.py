@@ -34,6 +34,7 @@ def test_register_shared_tools_public_mode_exposes_expected_tool_names_and_metad
         "tool_list_registration_guides",
         "tool_list_class_guides",
         "tool_list_seasonal_semester_guides",
+        "tool_list_academic_milestone_guides",
         "tool_list_certificate_guides",
         "tool_list_leave_of_absence_guides",
         "tool_list_scholarship_guides",
@@ -60,6 +61,8 @@ def test_register_shared_tools_public_mode_exposes_expected_tool_names_and_metad
     assert "외국어강의" in payloads["tool_list_class_guides"]["description"]
     assert "계절학기" in payloads["tool_list_seasonal_semester_guides"]["description"]
     assert "신청절차" in payloads["tool_list_seasonal_semester_guides"]["description"]
+    assert "성적평가" in payloads["tool_list_academic_milestone_guides"]["description"]
+    assert "졸업요건" in payloads["tool_list_academic_milestone_guides"]["description"]
     assert "securitySchemes" in payloads["tool_search_places"]["_meta"]
     assert "K관" in (
         payloads["tool_search_places"]["inputSchema"]["properties"]["query"]["description"]
@@ -73,6 +76,11 @@ def test_register_shared_tools_public_mode_exposes_expected_tool_names_and_metad
     )
     assert "seasonal_semester" in (
         payloads["tool_list_seasonal_semester_guides"]["inputSchema"]["properties"]["topic"][
+            "description"
+        ]
+    )
+    assert "grade_evaluation" in (
+        payloads["tool_list_academic_milestone_guides"]["inputSchema"]["properties"]["topic"][
             "description"
         ]
     )

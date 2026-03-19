@@ -17,6 +17,7 @@
 | cuk_registration_guides | 공식 | https://www.catholic.ac.kr/ko/support/tuition_fee_payment_schedule.do | 중간 | implemented | 등록 안내 정적 페이지 family(등록금 고지서 조회/출력, 등록금 납부·반환, 대상별 등록금 납부)를 `registration_guides` current snapshot으로 정규화 |
 | cuk_class_guides | 공식 | https://www.catholic.ac.kr/ko/support/register_for_class.do | 중간 | implemented | 수업 안내 정적 페이지 family(수강신청·변경, 재수강, 수강과목취소, 수업평가, 공결, 학번별 외국어강의 의무이수 요건)를 `class_guides` current snapshot으로 정규화 |
 | cuk_seasonal_semester_guides | 공식 | https://www.catholic.ac.kr/ko/support/class_summer_winter.do | 중간 | implemented | 계절학기 정적 안내 페이지를 `seasonal_semester_guides` current snapshot으로 정규화 |
+| cuk_academic_milestone_guides | 공식 | https://www.catholic.ac.kr/ko/support/grade_evaluation_system.do | 중간 | implemented | 성적평가, 성적확인, 수험자격, 학사경고, 졸업요건, 졸업논문/졸업종합시험 절차를 `academic_milestone_guides` current snapshot으로 정규화 |
 | cuk_scholarship_guides | 공식 | https://www.catholic.ac.kr/ko/support/scholarship_songsim.do | 중간 | implemented | 장학제도 안내 HTML과 공식 문서 링크를 `scholarship_guides` current snapshot으로 정규화 |
 | cuk_academic_support_guides | 공식 | https://www.catholic.ac.kr/ko/support/academic_contact_information.do | 중간 | implemented | 학사지원팀 업무안내 표를 `academic_support_guides` current snapshot으로 정규화 |
 | cuk_wifi_guides | 공식 | https://www.catholic.ac.kr/ko/campuslife/wifi.do | 중간 | implemented | 무선랜서비스 HTML 표를 `wifi_guides` current snapshot으로 정규화 |

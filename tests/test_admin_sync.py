@@ -36,6 +36,7 @@ def test_run_admin_sync_records_success_history_for_snapshot(app_env, monkeypatc
             "registration_guides": 4,
             "class_guides": 4,
             "seasonal_semester_guides": 4,
+            "academic_milestone_guides": 4,
             "scholarship_guides": 4,
             "academic_support_guides": 3,
             "transport_guides": 1,
@@ -58,6 +59,7 @@ def test_run_admin_sync_records_success_history_for_snapshot(app_env, monkeypatc
         "registration_guides": 4,
         "class_guides": 4,
         "seasonal_semester_guides": 4,
+        "academic_milestone_guides": 4,
         "scholarship_guides": 4,
         "academic_support_guides": 3,
         "transport_guides": 1,
@@ -122,6 +124,10 @@ def test_run_admin_sync_dispatches_target_specific_parameters(app_env, monkeypat
         seen["seasonal_semester_guides"] = {"fetched_at": fetched_at}
         return []
 
+    def fake_academic_milestone_guides(conn, *, fetched_at: str | None = None, sources=None):
+        seen["academic_milestone_guides"] = {"fetched_at": fetched_at}
+        return []
+
     def fake_academic_support_guides(conn, *, fetched_at: str | None = None, source=None):
         seen["academic_support_guides"] = {"fetched_at": fetched_at}
         return []
@@ -176,6 +182,10 @@ def test_run_admin_sync_dispatches_target_specific_parameters(app_env, monkeypat
         fake_seasonal_semester_guides,
     )
     monkeypatch.setattr(
+        "songsim_campus.services.refresh_academic_milestone_guides_from_source",
+        fake_academic_milestone_guides,
+    )
+    monkeypatch.setattr(
         "songsim_campus.services.refresh_academic_support_guides_from_source",
         fake_academic_support_guides,
     )
@@ -191,6 +201,7 @@ def test_run_admin_sync_dispatches_target_specific_parameters(app_env, monkeypat
     registration_run = run_admin_sync(target="registration_guides")
     class_run = run_admin_sync(target="class_guides")
     seasonal_run = run_admin_sync(target="seasonal_semester_guides")
+    milestone_run = run_admin_sync(target="academic_milestone_guides")
     scholarship_run = run_admin_sync(target="scholarship_guides")
     library_run = run_admin_sync(target="library_seat_status")
     support_run = run_admin_sync(target="academic_support_guides")
@@ -204,6 +215,7 @@ def test_run_admin_sync_dispatches_target_specific_parameters(app_env, monkeypat
     assert registration_run.summary == {"registration_guides": 0}
     assert class_run.summary == {"class_guides": 0}
     assert seasonal_run.summary == {"seasonal_semester_guides": 0}
+    assert milestone_run.summary == {"academic_milestone_guides": 0}
     assert scholarship_run.summary == {"scholarship_guides": 0}
     assert support_run.summary == {"academic_support_guides": 0}
     assert library_run.summary == {"library_seat_status": 1}
@@ -216,6 +228,7 @@ def test_run_admin_sync_dispatches_target_specific_parameters(app_env, monkeypat
     assert seen["registration_guides"] == {"fetched_at": None}
     assert seen["class_guides"] == {"fetched_at": None}
     assert seen["seasonal_semester_guides"] == {"fetched_at": None}
+    assert seen["academic_milestone_guides"] == {"fetched_at": None}
     assert seen["scholarship_guides"] == {"fetched_at": None}
     assert seen["academic_support_guides"] == {"fetched_at": None}
     assert seen["library_seat_status"] == {"fetched_at": None}

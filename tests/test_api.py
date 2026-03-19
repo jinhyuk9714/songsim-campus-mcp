@@ -253,6 +253,7 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     assert "/registration-guides" in landing.text
     assert "/class-guides" in landing.text
     assert "/seasonal-semester-guides" in landing.text
+    assert "/academic-milestone-guides" in landing.text
     assert "configured without OAuth" in landing.text
     assert "GPT Actions OpenAPI" not in landing.text
     assert "/gpt/*" not in landing.text
@@ -266,6 +267,7 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     assert "/registration-guides" in openapi.text
     assert "/class-guides" in openapi.text
     assert "/seasonal-semester-guides" in openapi.text
+    assert "/academic-milestone-guides" in openapi.text
     assert "/profiles" not in openapi.text
     assert "/admin/sync" not in openapi.text
 
@@ -323,6 +325,7 @@ def test_api_page_helpers_render_expected_strings():
     assert "/academic-support-guides" in landing_html
     assert "/class-guides" in landing_html
     assert "/seasonal-semester-guides" in landing_html
+    assert "/academic-milestone-guides" in landing_html
     assert "configured without OAuth" in landing_html
     assert "GPT Actions OpenAPI" not in landing_html
     assert "Admin Sync" not in landing_html

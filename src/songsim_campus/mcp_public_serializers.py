@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 
 from .schemas import (
+    AcademicMilestoneGuide,
     AcademicStatusGuide,
     AcademicSupportGuide,
     CampusDiningMenu,
@@ -239,6 +240,14 @@ def serialize_public_class_guide(guide: ClassGuide) -> dict[str, object]:
 
 def serialize_public_seasonal_semester_guide(
     guide: SeasonalSemesterGuide,
+) -> dict[str, object]:
+    payload = guide.model_dump()
+    payload["guide_summary"] = guide.summary or (guide.steps[0] if guide.steps else "")
+    return payload
+
+
+def serialize_public_academic_milestone_guide(
+    guide: AcademicMilestoneGuide,
 ) -> dict[str, object]:
     payload = guide.model_dump()
     payload["guide_summary"] = guide.summary or (guide.steps[0] if guide.steps else "")

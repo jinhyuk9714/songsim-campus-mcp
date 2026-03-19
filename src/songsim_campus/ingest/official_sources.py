@@ -1430,6 +1430,54 @@ class SeasonalSemesterGuideSource:
         )
 
 
+class AcademicMilestoneGuideSourceBase:
+    """Shared parser for the academic-milestone guide family."""
+
+    source_tag = "cuk_academic_milestone_guides"
+    topic = ""
+
+    def __init__(self, url: str):
+        self.url = url
+
+    def fetch(self) -> str:
+        response = httpx.get(self.url, timeout=20)
+        response.raise_for_status()
+        return response.text
+
+    def parse(self, html: str, *, fetched_at: str) -> list[dict]:
+        return _parse_academic_milestone_guide_sections(
+            html,
+            base_url=self.url,
+            source_tag=self.source_tag,
+            topic=self.topic,
+            fetched_at=fetched_at,
+        )
+
+
+class GradeEvaluationGuideSource(AcademicMilestoneGuideSourceBase):
+    """Parser for the 성적평가 page."""
+
+    topic = "grade_evaluation"
+
+    def __init__(
+        self,
+        url: str = "https://www.catholic.ac.kr/ko/support/grade_evaluation_system.do",
+    ):
+        super().__init__(url)
+
+
+class GraduationRequirementGuideSource(AcademicMilestoneGuideSourceBase):
+    """Parser for the 졸업요건 page."""
+
+    topic = "graduation_requirement"
+
+    def __init__(
+        self,
+        url: str = "https://www.catholic.ac.kr/ko/support/graduation_requirement.do",
+    ):
+        super().__init__(url)
+
+
 def _parse_class_guide_sections(
     html: str,
     *,
@@ -1464,6 +1512,201 @@ def _parse_class_guide_sections(
             }
 
     return list(rows_by_title.values())
+
+
+def _parse_academic_milestone_guide_sections(
+    html: str,
+    *,
+    base_url: str,
+    source_tag: str,
+    topic: str,
+    fetched_at: str,
+) -> list[dict]:
+    soup = BeautifulSoup(html, "html.parser")
+    root = soup.select_one(".content-box") or soup
+    rows: list[dict] = []
+    current_title = ""
+    current_fragments: list[str] = []
+
+    def flush() -> None:
+        nonlocal current_fragments
+        if not current_title:
+            current_fragments = []
+            return
+        wrapper = BeautifulSoup(f"<div>{''.join(current_fragments)}</div>", "html.parser").div
+        if wrapper is None:
+            current_fragments = []
+            return
+        steps = _extract_academic_milestone_steps(wrapper)
+        rows.append(
+            {
+                "topic": topic,
+                "title": current_title,
+                "summary": _academic_milestone_summary(wrapper, title=current_title, steps=steps),
+                "steps": steps,
+                "links": _extract_link_items(wrapper, base_url=base_url),
+                "source_url": base_url,
+                "source_tag": source_tag,
+                "last_synced_at": fetched_at,
+            }
+        )
+        current_fragments = []
+
+    def walk(container) -> None:
+        nonlocal current_title, current_fragments
+        for child in list(getattr(container, "children", [])):
+            if getattr(child, "name", None) is None:
+                continue
+            if _is_academic_milestone_title_node(child):
+                flush()
+                current_title = _clean_text(child.get_text(" ", strip=True))
+                current_fragments = []
+                continue
+            if _has_academic_milestone_direct_titles(child):
+                walk(child)
+                continue
+            if current_title:
+                current_fragments.append(str(child))
+
+    walk(root)
+    flush()
+    return rows
+
+
+def _is_academic_milestone_title_node(node) -> bool:
+    if getattr(node, "name", None) not in {"p", "div"}:
+        return False
+    classes = set(node.get("class", []))
+    return bool({"h4-tit01", "h3-tit01"} & classes)
+
+
+def _has_academic_milestone_direct_titles(node) -> bool:
+    return any(
+        _is_academic_milestone_title_node(child)
+        for child in node.find_all(["p", "div"], recursive=False)
+    )
+
+
+def _academic_milestone_summary(node, *, title: str, steps: list[str]) -> str:
+    direct_steps = _academic_milestone_direct_text_steps(node)
+    if direct_steps:
+        return direct_steps[0]
+    return steps[0] if steps else title
+
+
+def _extract_academic_milestone_steps(node) -> list[str]:
+    steps: list[str] = []
+
+    def visit(section) -> None:
+        classes = set(section.get("class", []))
+        if _is_academic_milestone_title_node(section):
+            return
+        if "alert-box" in classes:
+            alert_title_node = section.select_one(".alert-tit")
+            alert_title = _clean_text(
+                alert_title_node.get_text(" ", strip=True) if alert_title_node else ""
+            )
+            alert_items = LeaveOfAbsenceGuideSource._extract_nested_list_steps(
+                section.select_one("ul")
+            )
+            if alert_title and alert_items:
+                steps.extend(f"{alert_title}: {item}" for item in alert_items)
+            else:
+                steps.extend(alert_items)
+            steps.extend(_extract_alert_steps(section))
+            return
+        if getattr(section, "name", None) == "table":
+            steps.extend(_extract_table_steps(section))
+            return
+        if getattr(section, "name", None) in {"ul", "ol"}:
+            steps.extend(LeaveOfAbsenceGuideSource._extract_nested_list_steps(section))
+            steps.extend(_extract_alert_steps(section))
+            return
+        if "alert-txt" in classes:
+            text = _normalize_note_text(section.get_text(" ", strip=True))
+            if text:
+                steps.append(text)
+            return
+        if "link-box" not in classes and "table-wrap" not in classes:
+            text = _extract_academic_milestone_direct_text(section)
+            if text:
+                steps.append(text)
+        for child in section.find_all(recursive=False):
+            visit(child)
+
+    for child in node.find_all(recursive=False):
+        visit(child)
+    return _unique(steps)
+
+
+def _academic_milestone_direct_text_steps(node) -> list[str]:
+    steps: list[str] = []
+    for child in node.find_all(recursive=False):
+        if _is_academic_milestone_title_node(child):
+            continue
+        if getattr(child, "name", None) in {"ul", "ol", "table", "br"}:
+            continue
+        classes = set(child.get("class", []))
+        if {
+            "h5-tit01",
+            "alert-tit",
+            "box-tit",
+            "alert-box",
+            "alert-txt",
+            "link-box",
+            "table-wrap",
+        } & classes:
+            continue
+        text = _extract_academic_milestone_direct_text(child)
+        if text:
+            steps.append(text)
+    return _unique(steps)
+
+
+def _extract_academic_milestone_direct_text(node) -> str:
+    classes = set(node.get("class", []))
+    if getattr(node, "name", None) in {"ul", "ol", "table", "br"}:
+        return ""
+    if {
+        "h4-tit01",
+        "h5-tit01",
+        "h3-tit01",
+        "alert-tit",
+        "box-tit",
+        "alert-box",
+        "alert-txt",
+        "link-box",
+        "table-wrap",
+    } & classes:
+        return ""
+    parts: list[str] = []
+    for child in node.contents:
+        if isinstance(child, str):
+            text = _clean_text(child)
+            if text:
+                parts.append(text)
+            continue
+        classes = set(child.get("class", []))
+        if getattr(child, "name", None) in {"ul", "ol", "table", "br"}:
+            continue
+        if {
+            "h4-tit01",
+            "h5-tit01",
+            "h3-tit01",
+            "alert-tit",
+            "box-tit",
+            "alert-box",
+            "alert-txt",
+            "link-box",
+            "table-wrap",
+        } & classes:
+            continue
+        if child.find("table", recursive=False) is not None:
+            continue
+        text = _clean_text(child.get_text(" ", strip=True))
+        if text:
+            parts.append(text)
+    return _normalize_note_text(" ".join(parts))
 
 
 def _iter_class_guide_section_nodes(root):

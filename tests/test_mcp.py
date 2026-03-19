@@ -831,6 +831,7 @@ def test_mcp_public_readonly_mode_registers_only_read_only_tools(app_env, monkey
         "tool_list_registration_guides",
         "tool_list_class_guides",
         "tool_list_seasonal_semester_guides",
+        "tool_list_academic_milestone_guides",
         "tool_list_certificate_guides",
         "tool_list_leave_of_absence_guides",
         "tool_list_scholarship_guides",
@@ -853,6 +854,7 @@ def test_mcp_public_readonly_mode_registers_only_read_only_tools(app_env, monkey
     assert "songsim://registration-guide" in resource_uris
     assert "songsim://class-guide" in resource_uris
     assert "songsim://seasonal-semester-guide" in resource_uris
+    assert "songsim://academic-milestone-guide" in resource_uris
     assert "songsim://certificate-guide" in resource_uris
     assert "songsim://leave-of-absence-guide" in resource_uris
     assert "songsim://scholarship-guide" in resource_uris
@@ -897,6 +899,7 @@ def test_mcp_public_readonly_mode_registers_prompts_and_extended_resources(app_e
         "songsim://registration-guide",
         "songsim://class-guide",
         "songsim://seasonal-semester-guide",
+        "songsim://academic-milestone-guide",
         "songsim://certificate-guide",
         "songsim://leave-of-absence-guide",
         "songsim://scholarship-guide",
@@ -960,6 +963,8 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
     assert "공결" in tools["tool_list_class_guides"]["description"]
     assert "계절학기" in tools["tool_list_seasonal_semester_guides"]["description"]
     assert "학점 제한" in tools["tool_list_seasonal_semester_guides"]["description"]
+    assert "성적평가" in tools["tool_list_academic_milestone_guides"]["description"]
+    assert "졸업요건" in tools["tool_list_academic_milestone_guides"]["description"]
     assert "장학제도" in tools["tool_list_scholarship_guides"]["description"]
     assert "공식 문서" in tools["tool_list_scholarship_guides"]["description"]
     assert "무선랜" in tools["tool_list_wifi_guides"]["description"]
@@ -1038,6 +1043,11 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
             "description"
         ]
     )
+    assert "grade_evaluation" in (
+        tools["tool_list_academic_milestone_guides"]["inputSchema"]["properties"]["topic"][
+            "description"
+        ]
+    )
     assert "최대 결과 수" in (
         tools["tool_list_academic_support_guides"]["inputSchema"]["properties"]["limit"]["description"]
     )
@@ -1052,6 +1062,11 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
     )
     assert "최대 결과 수" in (
         tools["tool_list_seasonal_semester_guides"]["inputSchema"]["properties"]["limit"][
+            "description"
+        ]
+    )
+    assert "최대 결과 수" in (
+        tools["tool_list_academic_milestone_guides"]["inputSchema"]["properties"]["limit"][
             "description"
         ]
     )
@@ -1215,6 +1230,7 @@ def test_mcp_public_usage_and_class_period_resources_are_readable(app_env, monke
     assert "tool_list_registration_guides" in usage_content
     assert "tool_list_class_guides" in usage_content
     assert "tool_list_seasonal_semester_guides" in usage_content
+    assert "tool_list_academic_milestone_guides" in usage_content
     assert "tool_list_scholarship_guides" in usage_content
     assert "tool_list_leave_of_absence_guides" in usage_content
     assert "tool_list_wifi_guides" in usage_content

@@ -83,6 +83,7 @@ def render_admin_sync_page(
         {"title": "academic_status_guides", "fields": []},
         {"title": "class_guides", "fields": []},
         {"title": "seasonal_semester_guides", "fields": []},
+        {"title": "academic_milestone_guides", "fields": []},
         {"title": "leave_of_absence_guides", "fields": []},
         {"title": "scholarship_guides", "fields": []},
         {"title": "wifi_guides", "fields": []},
@@ -464,6 +465,10 @@ def render_landing_page(
             <li>
               <code>/seasonal-semester-guides</code> seasonal semester eligibility,
               credit limit, schedule, and procedure guides
+            </li>
+            <li>
+              <code>/academic-milestone-guides</code> grade evaluation, grade check,
+              attendance threshold, and graduation requirement guides
             </li>
             <li><code>/certificate-guides</code> certificate issuance guides</li>
             <li><code>/leave-of-absence-guides</code> leave-of-absence application guides</li>

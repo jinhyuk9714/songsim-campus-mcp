@@ -10,6 +10,7 @@ from .services import (
     get_class_periods,
     get_notice_categories,
     list_academic_calendar,
+    list_academic_milestone_guides,
     list_academic_status_guides,
     list_academic_support_guides,
     list_certificate_guides,
@@ -40,7 +41,7 @@ def public_usage_guide_text() -> str:
             (
                 "Available: places, courses, academic calendar, academic support guides, "
                 "academic status guides, registration guides, class guides, certificate guides, "
-                "seasonal semester guides, leave-of-absence guides, "
+                "seasonal semester guides, academic milestone guides, leave-of-absence guides, "
                 "scholarship guides, wifi guides, notices, dining menus, library seats, "
                 "empty classrooms, nearby restaurants, restaurant search, transport guides."
             ),
@@ -121,21 +122,26 @@ def public_usage_guide_text() -> str:
                 "계절학기 신청 시기, 신청대상, 학점 제한, or 신청절차 questions."
             ),
             (
-                "17. Use tool_list_scholarship_guides for 장학제도 baseline guidance such as "
+                "17. Use tool_list_academic_milestone_guides for 성적·졸업 안내 such as "
+                "성적평가 방법, 성적확인, 결석이 4분의 1 넘으면 어떻게 되는지, "
+                "졸업요건, or 졸업논문 제출 절차 questions."
+            ),
+            (
+                "18. Use tool_list_scholarship_guides for 장학제도 baseline guidance such as "
                 "장학생 자격, 장학금 신청, 장학금 지급, or 장학제도 공식 문서 questions."
             ),
             (
-                "18. Use tool_list_wifi_guides for campus wifi guidance such as 니콜스관 "
+                "19. Use tool_list_wifi_guides for campus wifi guidance such as 니콜스관 "
                 "SSID, 중앙도서관 와이파이, or 무선랜 접속 방법 questions."
             ),
-            "19. Use tool_list_latest_notices for latest notices; category is optional.",
+            "20. Use tool_list_latest_notices for latest notices; category is optional.",
             (
-                "20. Use tool_list_transport_guides for static subway or bus access "
+                "21. Use tool_list_transport_guides for static subway or bus access "
                 "guidance. You can pass query with natural-language cues like 지하철, "
                 "1호선, 역곡역, or 버스. 셔틀은 현재 지원하지 않아 빈 결과가 정상입니다."
             ),
             (
-                "21. Optional reference resources exist for notice categories and class periods "
+                "22. Optional reference resources exist for notice categories and class periods "
                 "when you need them."
             ),
             "",
@@ -161,6 +167,11 @@ def public_usage_guide_text() -> str:
             "- 계절학기 신청대상 알려줘",
             "- 계절학기 학점 제한 알려줘",
             "- 계절학기 신청절차 알려줘",
+            "- 성적평가 방법 알려줘",
+            "- 성적확인 어떻게 해?",
+            "- 결석이 4분의 1 넘으면 어떻게 돼?",
+            "- 졸업요건 알려줘",
+            "- 졸업논문 제출 절차 알려줘",
             "- 휴복학 문의 어디로 해야 해?",
             "- 학점교류 담당 전화번호 알려줘",
             "- 복학 신청 방법 알려줘",
@@ -284,6 +295,16 @@ def register_shared_resources(mcp: Any, connection_factory: Any, docs_dir: Path)
         with connection_factory() as conn:
             return json.dumps(
                 [item.model_dump() for item in list_seasonal_semester_guides(conn, limit=50)],
+                ensure_ascii=False,
+                indent=2,
+            )
+
+    @mcp.resource("songsim://academic-milestone-guide")
+    def academic_milestone_guide_resource() -> str:
+        """Return the latest academic milestone guides as JSON."""
+        with connection_factory() as conn:
+            return json.dumps(
+                [item.model_dump() for item in list_academic_milestone_guides(conn, limit=50)],
                 ensure_ascii=False,
                 indent=2,
             )

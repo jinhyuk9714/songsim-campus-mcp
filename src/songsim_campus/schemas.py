@@ -194,6 +194,18 @@ class SeasonalSemesterGuide(BaseModel):
     last_synced_at: str
 
 
+class AcademicMilestoneGuide(BaseModel):
+    id: int
+    topic: str
+    title: str
+    summary: str = ""
+    steps: list[str] = Field(default_factory=list)
+    links: list[dict[str, str]] = Field(default_factory=list)
+    source_url: str | None = None
+    source_tag: str = "demo"
+    last_synced_at: str
+
+
 class WifiGuide(BaseModel):
     id: int
     building_name: str
