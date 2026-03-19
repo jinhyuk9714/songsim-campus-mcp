@@ -34,6 +34,8 @@
      - `SONGSIM_MCP_OAUTH_ISSUER=https://<your-auth0-domain>/`
      - `SONGSIM_MCP_OAUTH_AUDIENCE=https://<your-mcp-render-url>/mcp`
      - `SONGSIM_MCP_OAUTH_SCOPES=songsim.read`
+   - `songsim-public-api`는 기본 공개 배포에서 이 OAuth env가 필요하지 않습니다.
+   - `songsim-public-api`에 같은 값을 미러링하는 것은 선택 사항이고, API landing page에서 public MCP가 OAuth로 보호된 상태라는 문구를 보여 주는 cosmetic 용도에 가깝습니다.
 4. 배포가 생성되면 실제 Render URL을 보고 아래 값을 다시 채웁니다.
    - `songsim-public-api`의 `SONGSIM_PUBLIC_HTTP_URL`
    - `songsim-public-mcp`의 `SONGSIM_PUBLIC_MCP_URL`
@@ -49,6 +51,7 @@
 - `songsim-public-mcp`는 `SONGSIM_AUTOMATION_ENABLED=false`
 - `songsim-public-mcp`는 기본적으로 익명 read-only
 - 공개 MCP를 보호해야 하면 `SONGSIM_PUBLIC_MCP_AUTH_MODE=oauth`로 전환
+- `render.yaml` 기본값도 `songsim-public-mcp` 익명 read-only를 기준으로 둡니다.
 
 ## 4. 배포 후 확인
 
@@ -75,6 +78,7 @@ fresh TTL은 짧게 유지하고, 최근 정상 snapshot은 최대 10분까지 s
 - 공개 배포는 read-only입니다. profile/admin 경로는 숨겨집니다.
 - `songsim-public-api` automation은 `snapshot`, `library_seat_prewarm`, `cache_cleanup`을 실행합니다.
 - ChatGPT Actions는 HTTP API를 쓰므로 MCP OAuth와 무관합니다. MCP OAuth는 원할 때만 켜면 됩니다.
+- `songsim-public-mcp`를 OAuth로 보호해도 `songsim-public-api`는 기본적으로 별도 OAuth env 없이 운영해도 됩니다. API 쪽에 같은 OAuth env를 넣는 경우는 landing status text를 MCP 보호 상태와 맞춰 보여 주고 싶을 때 정도입니다.
 - `SONGSIM_OFFICIAL_COURSE_YEAR`, `SONGSIM_OFFICIAL_COURSE_SEMESTER`는 intentionally 비워 두고, 운영 시점의 대상 학기를 명시해서 넣는 편이 안전합니다.
 
 ## 6. Public Synthetic Smoke

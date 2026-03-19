@@ -15,14 +15,6 @@ services:
         sync: false
       - key: SONGSIM_PUBLIC_MCP_URL
         sync: false
-      - key: SONGSIM_MCP_OAUTH_ENABLED
-        value: "true"
-      - key: SONGSIM_MCP_OAUTH_ISSUER
-        sync: false
-      - key: SONGSIM_MCP_OAUTH_AUDIENCE
-        sync: false
-      - key: SONGSIM_MCP_OAUTH_SCOPES
-        value: songsim.read
       - key: SONGSIM_APP_MODE
         value: public_readonly
       - key: SONGSIM_SEED_DEMO_ON_START
