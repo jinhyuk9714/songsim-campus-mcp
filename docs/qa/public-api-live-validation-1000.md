@@ -1,4 +1,4 @@
-# Public API Live Validation 1000
+# Public API Live Validation Baseline
 
 API-first public student surface baseline with live-synced truth.
 
@@ -11,10 +11,10 @@ API-first public student surface baseline with live-synced truth.
 
 ## 실행 메타
 
-- checked_at: `2026-03-17T16:50:47+00:00`
-- corpus_size: `1005`
-- executed: `1005`
-- hard fail 0
+- checked_at: `2026-03-19T00:59:18+00:00`
+- corpus_size: `1009`
+- executed: `1009`
+- hard fail 22
 
 ## 판정 레벨
 
@@ -29,12 +29,12 @@ API-first public student surface baseline with live-synced truth.
 
 | Verdict | Count |
 | --- | --- |
-| pass | 1000 |
+| pass | 981 |
 | soft_pass | 0 |
 | soft_fail | 0 |
-| fail | 0 |
+| fail | 22 |
 | watch | 5 |
-| skip | 0 |
+| skip | 1 |
 
 ## 도메인 요약
 
@@ -46,9 +46,10 @@ API-first public student surface baseline with live-synced truth.
 | classrooms | 60 | 60 |
 | courses | 160 | 160 |
 | leave_of_absence_guides | 40 | 40 |
-| notices | 110 | 110 |
+| notices | 110 | 88 |
 | out_of_scope | 30 | 30 |
-| place | 160 | 160 |
+| place | 160 | 159 |
+| registration_guides | 4 | 4 |
 | restaurants | 160 | 160 |
 | scholarship_guides | 40 | 40 |
 | transport | 50 | 50 |
@@ -60,6 +61,7 @@ API-first public student surface baseline with live-synced truth.
 | --- | --- | --- |
 | academic_calendar | 70 | 70 |
 | certificate_guides | 40 | 40 |
+| registration_guides | 4 | 4 |
 | scholarship_guides | 40 | 40 |
 | wifi_guides | 40 | 40 |
 | leave_of_absence_guides | 40 | 40 |
@@ -77,7 +79,31 @@ API-first public student surface baseline with live-synced truth.
 
 ## 주요 이슈
 
-_No hard issues._
+| ID | Domain | User utterance | Verdict | Comparison |
+| --- | --- | --- | --- | --- |
+| PLC-0155 | place | 학생회관 1층 24시간 편의점 어디야? | skip | missing_truth |
+| NTC-0002 | notices | academic 공지 알려줘 | fail | set_mismatch |
+| NTC-0008 | notices | academic 최신 공지 보여줘 | fail | set_mismatch |
+| NTC-0012 | notices | academic 공지 알려줘 | fail | set_mismatch |
+| NTC-0018 | notices | academic 최신 공지 보여줘 | fail | set_mismatch |
+| NTC-0022 | notices | academic 공지 알려줘 | fail | set_mismatch |
+| NTC-0028 | notices | academic 최신 공지 보여줘 | fail | set_mismatch |
+| NTC-0032 | notices | academic 공지 알려줘 | fail | set_mismatch |
+| NTC-0038 | notices | academic 최신 공지 보여줘 | fail | set_mismatch |
+| NTC-0042 | notices | academic 공지 알려줘 | fail | set_mismatch |
+| NTC-0048 | notices | academic 최신 공지 보여줘 | fail | set_mismatch |
+| NTC-0052 | notices | academic 공지 알려줘 | fail | set_mismatch |
+| NTC-0058 | notices | academic 최신 공지 보여줘 | fail | set_mismatch |
+| NTC-0062 | notices | academic 공지 알려줘 | fail | set_mismatch |
+| NTC-0068 | notices | academic 최신 공지 보여줘 | fail | set_mismatch |
+| NTC-0072 | notices | academic 공지 알려줘 | fail | set_mismatch |
+| NTC-0078 | notices | academic 최신 공지 보여줘 | fail | set_mismatch |
+| NTC-0082 | notices | academic 공지 알려줘 | fail | set_mismatch |
+| NTC-0088 | notices | academic 최신 공지 보여줘 | fail | set_mismatch |
+| NTC-0092 | notices | academic 공지 알려줘 | fail | set_mismatch |
+| NTC-0098 | notices | academic 최신 공지 보여줘 | fail | set_mismatch |
+| NTC-0102 | notices | academic 공지 알려줘 | fail | set_mismatch |
+| NTC-0108 | notices | academic 최신 공지 보여줘 | fail | set_mismatch |
 
 ## 다음 액션
 

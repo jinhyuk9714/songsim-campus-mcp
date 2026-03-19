@@ -84,6 +84,7 @@
 - [Render 배포 가이드](docs/deploy-render.md)
 - [공개 MCP 릴리즈팩 50](docs/qa/public-mcp-release-pack-50.md)
 - [공개 API 1000문장 라이브 검증](docs/qa/public-api-live-validation-1000.md)
+- [공개 synthetic smoke runbook](docs/qa/public-synthetic-smoke.md)
 
 README는 capability map과 빠른 입구만 설명합니다. 클라이언트별 연결 절차와 더 긴 prompt 예시는 연결 가이드 문서에서 다룹니다.
 

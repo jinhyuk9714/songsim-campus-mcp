@@ -15,7 +15,7 @@ import psycopg
 from psycopg.rows import dict_row
 from pydantic import BaseModel, Field, ValidationError
 
-from . import services
+from . import place_search_runtime, services
 from .ingest.official_sources import (
     AcademicCalendarSource,
     AcademicSupportGuideSource,
@@ -512,16 +512,19 @@ def _search_places_from_source(
         places = [item for item in places if item.get("category") == category]
 
     query = str(row.api_request.params.get("query") or "")
-    collapsed_query, compact_query = services._normalize_place_search_query(query)
+    collapsed_query, compact_query = place_search_runtime._normalize_place_search_query(query)
     if collapsed_query is None:
         return places[: _limit_from_row(row, 10)]
 
-    facility_index = services._build_place_search_facility_index(places)
-    preferred_slugs = services._preferred_place_slugs_for_query(query, context="place_search")
+    facility_index = place_search_runtime._build_place_search_facility_index(places)
+    preferred_slugs = place_search_runtime._preferred_place_slugs_for_query(
+        query,
+        context="place_search",
+    )
     preferred_slug_set = set(preferred_slugs)
     ranked: list[tuple[int, int, int, dict[str, Any]]] = []
     for index, item in enumerate(places):
-        rank = services._rank_place_search_candidate(
+        rank = place_search_runtime._rank_place_search_candidate(
             item,
             collapsed_query=collapsed_query,
             compact_query=compact_query,
@@ -533,7 +536,7 @@ def _search_places_from_source(
         canonical_name = str(item.get("name") or "")
         payload = {
             **item,
-            "name": services._display_name_for_place_result(
+            "name": place_search_runtime._display_name_for_place_result(
                 str(item.get("slug") or ""),
                 canonical_name,
                 collapsed_query=collapsed_query,
@@ -845,7 +848,16 @@ def build_truth_rows(
                 truth_source = "database_snapshot"
                 stability = "stable"
                 if conn is not None:
-                    payload = _payload_from_db(conn, row)
+                    try:
+                        payload = _payload_from_db(conn, row)
+                    except ValueError:
+                        payload = _payload_from_sources(
+                            row,
+                            captured_at=resolved_captured_at,
+                            source_cache=source_cache,
+                        )
+                        truth_source = "official_source"
+                        stability = "stable" if payload is not None else "degraded_skip"
                 else:
                     payload = _payload_from_sources(
                         row,

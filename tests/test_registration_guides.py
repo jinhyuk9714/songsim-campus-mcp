@@ -145,7 +145,25 @@ def test_registration_guides_http_and_mcp_surfaces(client, app_env, monkeypatch)
 
     response = client.get("/registration-guides", params={"topic": "payment_and_return"})
     assert response.status_code == 200
-    assert response.json()[0]["topic"] == "payment_and_return"
+    http_payload = response.json()
+    assert http_payload == [
+        {
+            "id": 2,
+            "topic": "payment_and_return",
+            "title": "등록금 반환기준",
+            "summary": "등록금 반환기준 요약",
+            "steps": ["등록금 반환기준 단계"],
+            "links": [
+                {
+                    "label": "등록금 반환기준",
+                    "url": "https://www.catholic.ac.kr/ko/support/registration.do",
+                }
+            ],
+            "source_url": "https://www.catholic.ac.kr/ko/support/registration.do",
+            "source_tag": "cuk_registration_guides",
+            "last_synced_at": http_payload[0]["last_synced_at"],
+        }
+    ]
 
     monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
     clear_settings_cache()
@@ -160,20 +178,66 @@ def test_registration_guides_http_and_mcp_surfaces(client, app_env, monkeypatch)
         )
         resource_result = await mcp.read_resource("songsim://registration-guide")
         return (
-            [tool.name for tool in tools],
+            {tool.name: tool.model_dump(by_alias=True) for tool in tools},
             [str(resource.uri) for resource in resources],
             json.loads(tool_result[0].text),
-            list(resource_result)[0].content,
+            json.loads(list(resource_result)[0].content),
         )
 
-    tool_names, resource_uris, payload, resource_content = asyncio.run(main())
+    tool_payloads, resource_uris, payload, resource_payload = asyncio.run(main())
 
     clear_settings_cache()
 
-    assert "tool_list_registration_guides" in tool_names
+    assert "tool_list_registration_guides" in tool_payloads
     assert "songsim://registration-guide" in resource_uris
-    assert payload["topic"] == "payment_and_return"
-    assert json.loads(resource_content)[0]["source_tag"] == "cuk_registration_guides"
+    assert "등록금 반환 기준" in tool_payloads["tool_list_registration_guides"]["description"]
+    assert "payment_and_return" in (
+        tool_payloads["tool_list_registration_guides"]["inputSchema"]["properties"]["topic"][
+            "description"
+        ]
+    )
+    assert [item["topic"] for item in resource_payload] == [
+        "bill_lookup",
+        "payment_and_return",
+        "payment_by_student",
+    ]
+    payment_and_return_resource = next(
+        item for item in resource_payload if item["topic"] == "payment_and_return"
+    )
+    assert payment_and_return_resource == http_payload[0]
+    assert payload == {
+        "id": 2,
+        "topic": "payment_and_return",
+        "title": "등록금 반환기준",
+        "summary": "등록금 반환기준 요약",
+        "guide_summary": "등록금 반환기준 요약",
+        "steps": ["등록금 반환기준 단계"],
+        "links": [
+            {
+                "label": "등록금 반환기준",
+                "url": "https://www.catholic.ac.kr/ko/support/registration.do",
+            }
+        ],
+        "source_url": "https://www.catholic.ac.kr/ko/support/registration.do",
+        "source_tag": "cuk_registration_guides",
+        "last_synced_at": payload["last_synced_at"],
+    }
+    assert resource_payload[0] == {
+        "id": 1,
+        "topic": "bill_lookup",
+        "title": "2025년도 1학기",
+        "summary": "2025년도 1학기 요약",
+        "steps": ["2025년도 1학기 단계"],
+        "links": [
+            {
+                "label": "2025년도 1학기",
+                "url": "https://www.catholic.ac.kr/ko/support/registration.do",
+            }
+        ],
+        "source_url": "https://www.catholic.ac.kr/ko/support/registration.do",
+        "source_tag": "cuk_registration_guides",
+        "last_synced_at": resource_payload[0]["last_synced_at"],
+    }
 
 
 def test_sync_official_snapshot_includes_registration_guides(app_env, monkeypatch):

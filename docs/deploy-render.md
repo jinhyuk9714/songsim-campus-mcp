@@ -76,3 +76,14 @@ fresh TTL은 짧게 유지하고, 최근 정상 snapshot은 최대 10분까지 s
 - `songsim-public-api` automation은 `snapshot`, `library_seat_prewarm`, `cache_cleanup`을 실행합니다.
 - ChatGPT Actions는 HTTP API를 쓰므로 MCP OAuth와 무관합니다. MCP OAuth는 원할 때만 켜면 됩니다.
 - `SONGSIM_OFFICIAL_COURSE_YEAR`, `SONGSIM_OFFICIAL_COURSE_SEMESTER`는 intentionally 비워 두고, 운영 시점의 대상 학기를 명시해서 넣는 편이 안전합니다.
+
+## 6. Public Synthetic Smoke
+
+registration guides 공개 이후에는 배포 직후 최소 smoke를 한 번 돌리는 편이 안전합니다.
+
+- `/healthz`가 `200`과 `{"ok":true}`를 반환하는지 확인
+- `/registration-guides?topic=payment_and_return&limit=3`가 `payment_and_return` topic과 `cuk_registration_guides` source tag를 반환하는지 확인
+- `/courses?query=CSE301&year=2026&semester=1&limit=5`가 watchlist canary로서 `200`으로 안정 응답하는지 확인
+- MCP에서 `tool_list_registration_guides`와 `songsim://registration-guide`가 모두 보이는지 확인
+
+실행 절차와 예시 명령은 [public-synthetic-smoke.md](qa/public-synthetic-smoke.md)에 정리했습니다.

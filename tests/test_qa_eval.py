@@ -198,6 +198,127 @@ def test_build_truth_rows_skips_facility_host_place_canary_without_database() ->
     ]
 
 
+def test_build_truth_rows_uses_official_source_for_place_query_without_database(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    row = EvalCorpusRow.model_validate(
+        {
+            "id": "PL001",
+            "domain": "place",
+            "style": "normal",
+            "user_utterance": "중앙도서관 위치 알려줘",
+            "api_request": {"path": "/places", "params": {"query": "중앙도서관", "limit": 3}},
+            "expected_mcp_flow": "tool_search_places -> tool_get_place",
+            "truth_mode": "exact_value",
+            "pass_rule": {"summary_kind": "places_top3"},
+            "watch_policy": "none",
+            "notes": "",
+        }
+    )
+
+    monkeypatch.setattr(
+        qa_eval.CampusMapSource,
+        "fetch_place_list",
+        lambda self: "<places></places>",
+    )
+    monkeypatch.setattr(
+        qa_eval.CampusMapSource,
+        "parse_place_list",
+        lambda self, _html, *, fetched_at: [
+            {
+                "slug": "central-library",
+                "name": "베리타스관",
+                "category": "library",
+                "aliases": ["중앙도서관", "중도"],
+                "opening_hours": {},
+                "source_tag": "cuk_campus_map",
+                "last_synced_at": fetched_at,
+            }
+        ],
+    )
+
+    truth_rows = build_truth_rows([row], database_url=None, captured_at="2026-03-19T10:00:00+09:00")
+
+    assert truth_rows == [
+        EvalTruthRow(
+            id="PL001",
+            normalized_expected=[
+                {
+                    "slug": "central-library",
+                    "name": "중앙도서관",
+                    "category": "library",
+                }
+            ],
+            truth_source="official_source",
+            captured_at="2026-03-19T10:00:00+09:00",
+            stability="stable",
+        )
+    ]
+
+
+def test_build_truth_rows_falls_back_to_official_source_for_unsupported_db_path(
+    app_env: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    row = EvalCorpusRow.model_validate(
+        {
+            "id": "RST001",
+            "domain": "restaurants",
+            "style": "normal",
+            "user_utterance": "중앙도서관 근처 한식집 찾아줘",
+            "api_request": {
+                "path": "/restaurants/nearby",
+                "params": {"origin": "central-library", "limit": 3},
+            },
+            "expected_mcp_flow": "tool_find_nearby_restaurants",
+            "truth_mode": "invariant_only",
+            "pass_rule": {
+                "summary_kind": "restaurants_nearby",
+                "allow_empty": True,
+                "required_fields": ["name", "origin"],
+            },
+            "watch_policy": "none",
+            "notes": "",
+        }
+    )
+
+    monkeypatch.setattr(
+        qa_eval,
+        "_payload_from_sources",
+        lambda *_args, **_kwargs: [
+            {
+                "name": "학생식당 옆 한식집",
+                "origin": "central-library",
+                "category": "korean",
+                "open_now": True,
+            }
+        ],
+    )
+
+    truth_rows = build_truth_rows(
+        [row],
+        database_url=app_env,
+        captured_at="2026-03-19T10:30:00+09:00",
+    )
+
+    assert truth_rows == [
+        EvalTruthRow(
+            id="RST001",
+            normalized_expected=[
+                {
+                    "name": "학생식당 옆 한식집",
+                    "origin": "central-library",
+                    "category": "korean",
+                    "open_now": True,
+                }
+            ],
+            truth_source="official_source",
+            captured_at="2026-03-19T10:30:00+09:00",
+            stability="stable",
+        )
+    ]
+
+
 def test_payload_from_sources_prioritizes_songsim_academic_calendar_events() -> None:
     row = EvalCorpusRow.model_validate(
         {
@@ -660,6 +781,49 @@ def test_render_validation_report_separates_watchlist() -> None:
     assert "CW001" in report
 
 
+def test_render_validation_report_includes_registration_guides_coverage() -> None:
+    rows = [
+        EvalCorpusRow.model_validate(
+            {
+                "id": "RG001",
+                "domain": "registration_guides",
+                "style": "normal",
+                "user_utterance": "등록금 반환기준 알려줘",
+                "api_request": {
+                    "path": "/registration-guides",
+                    "params": {"topic": "payment_and_return", "limit": 5},
+                },
+                "expected_mcp_flow": "tool_list_registration_guides",
+                "truth_mode": "set_contains",
+                "pass_rule": {"summary_kind": "registration_guides_top5"},
+                "watch_policy": "none",
+                "notes": "",
+            }
+        )
+    ]
+    results = [
+        {
+            "id": "RG001",
+            "status": "completed",
+            "verdict": "pass",
+            "actual_summary": [{"title": "등록금 반환기준"}],
+            "comparison": "set_contains",
+            "truth_source": "official_source",
+            "checked_at": "2026-03-19T10:20:00+09:00",
+        }
+    ]
+
+    report = render_validation_report(
+        rows=rows,
+        results=results,
+        checked_at="2026-03-19T10:20:00+09:00",
+        base_url="https://songsim-public-api.onrender.com",
+    )
+
+    assert "Guide-Domain Coverage" in report
+    assert report.count("| registration_guides | 1 | 1 |") == 2
+
+
 def test_run_evaluation_records_http_errors_without_crashing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -722,4 +886,20 @@ def test_default_eval_assets_match_distribution_plan() -> None:
         "academic_support_guides": 40,
         "registration_guides": 4,
         "out_of_scope": 30,
+    }
+
+    registration_rows = [row for row in rows if row.domain == "registration_guides"]
+
+    assert len(registration_rows) == 4
+    assert {row.api_request.path for row in registration_rows} == {"/registration-guides"}
+    assert {row.expected_mcp_flow for row in registration_rows} == {
+        "tool_list_registration_guides"
+    }
+    assert {row.pass_rule["summary_kind"] for row in registration_rows} == {
+        "registration_guides_top5"
+    }
+    assert {row.api_request.params["topic"] for row in registration_rows} == {
+        "bill_lookup",
+        "payment_and_return",
+        "payment_by_student",
     }
