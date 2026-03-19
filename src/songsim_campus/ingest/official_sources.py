@@ -1322,6 +1322,223 @@ class RegistrationPaymentByStudentGuideSource(RegistrationGuideSourceBase):
         super().__init__(url)
 
 
+class ClassGuideSourceBase:
+    """Shared parser for the class-guide family."""
+
+    source_tag = "cuk_class_guides"
+    topic = ""
+
+    def __init__(self, url: str):
+        self.url = url
+
+    def fetch(self) -> str:
+        response = httpx.get(self.url, timeout=20)
+        response.raise_for_status()
+        return response.text
+
+    def parse(self, html: str, *, fetched_at: str) -> list[dict]:
+        return _parse_class_guide_sections(
+            html,
+            base_url=self.url,
+            source_tag=self.source_tag,
+            topic=self.topic,
+            fetched_at=fetched_at,
+        )
+
+
+class ClassRegistrationChangeGuideSource(ClassGuideSourceBase):
+    """Parser for the 수강신청·변경 page."""
+
+    topic = "registration_change"
+
+    def __init__(self, url: str = "https://www.catholic.ac.kr/ko/support/register_for_class.do"):
+        super().__init__(url)
+
+
+class ClassRetakeGuideSource(ClassGuideSourceBase):
+    """Parser for the 재수강 page."""
+
+    topic = "retake"
+
+    def __init__(self, url: str = "https://www.catholic.ac.kr/ko/support/re-register_for_class.do"):
+        super().__init__(url)
+
+
+class ClassCourseCancellationGuideSource(ClassGuideSourceBase):
+    """Parser for the 수강과목취소 page."""
+
+    topic = "course_cancellation"
+
+    def __init__(self, url: str = "https://www.catholic.ac.kr/ko/support/cancellation_of_class.do"):
+        super().__init__(url)
+
+
+class ClassCourseEvaluationGuideSource(ClassGuideSourceBase):
+    """Parser for the 수업평가 page."""
+
+    topic = "course_evaluation"
+
+    def __init__(self, url: str = "https://www.catholic.ac.kr/ko/support/course_evaluation.do"):
+        super().__init__(url)
+
+
+class ClassExcusedAbsenceGuideSource(ClassGuideSourceBase):
+    """Parser for the 공결 page."""
+
+    topic = "excused_absence"
+
+    def __init__(self, url: str = "https://www.catholic.ac.kr/ko/support/absence_notification.do"):
+        super().__init__(url)
+
+
+class ClassForeignLanguageRequirementGuideSource(ClassGuideSourceBase):
+    """Parser for the 학번별 외국어강의 의무이수 요건 page."""
+
+    topic = "foreign_language_requirement"
+
+    def __init__(
+        self,
+        url: str = "https://www.catholic.ac.kr/ko/support/completion_requirements_for_foreign_language_2024.do",
+    ):
+        super().__init__(url)
+
+
+def _parse_class_guide_sections(
+    html: str,
+    *,
+    base_url: str,
+    source_tag: str,
+    topic: str,
+    fetched_at: str,
+) -> list[dict]:
+    soup = BeautifulSoup(html, "html.parser")
+    roots = soup.select(".content-box") or [soup]
+    rows_by_title: dict[str, dict] = {}
+
+    for root in roots:
+        for node in _iter_class_guide_section_nodes(root):
+            title = _class_guide_section_title(node)
+            if not title:
+                continue
+            steps = _class_guide_section_steps(node)
+            summary = _class_guide_section_summary(node, title=title, steps=steps)
+            rows_by_title[title] = {
+                "topic": topic,
+                "title": title,
+                "summary": summary,
+                "steps": steps,
+                "links": _extract_link_items(
+                    node.select_one(".link-box") or node,
+                    base_url=base_url,
+                ),
+                "source_url": base_url,
+                "source_tag": source_tag,
+                "last_synced_at": fetched_at,
+            }
+
+    return list(rows_by_title.values())
+
+
+def _iter_class_guide_section_nodes(root):
+    candidates = root.select(".con-box02, .alert-box, .con-box")
+    seen: set[int] = set()
+    nodes: list = []
+    for node in candidates:
+        node_id = id(node)
+        if node_id in seen:
+            continue
+        seen.add(node_id)
+        if _should_skip_class_guide_node(node):
+            continue
+        nodes.append(node)
+    return nodes
+
+
+def _should_skip_class_guide_node(node) -> bool:
+    classes = set(node.get("class", []))
+    if "con-box" in classes and node.find("div", class_="con-box02") is not None:
+        return not _class_guide_section_title(node) and node.select_one(".qna-wrap") is None
+    return False
+
+
+def _class_guide_section_title(node) -> str:
+    for selector in (".h4-tit01", ".h5-tit01", ".h3-tit01", ".alert-tit", ".box-tit"):
+        title_node = node.select_one(selector)
+        if title_node is not None:
+            title = _normalize_class_guide_title(title_node.get_text(" ", strip=True))
+            if title:
+                return title
+    return ""
+
+
+def _class_guide_section_summary(node, *, title: str, steps: list[str]) -> str:
+    if title == "FAQ":
+        question = node.select_one(".qna-wrap li a div")
+        if question is not None:
+            summary = _clean_text(question.get_text(" ", strip=True))
+            if summary:
+                return summary
+    summary_node = node.select_one(".con-p")
+    if summary_node is not None:
+        summary = _clean_text(summary_node.get_text(" ", strip=True))
+        if summary:
+            return summary
+    return steps[0] if steps else title
+
+
+def _class_guide_section_steps(node) -> list[str]:
+    if node.select_one(".qna-wrap") is not None:
+        return _unique(_extract_qna_steps(node) + _extract_alert_steps(node))
+    steps: list[str] = []
+    steps.extend(_class_guide_direct_text_steps(node))
+    list_node = node.find("ul")
+    if list_node is not None:
+        steps.extend(LeaveOfAbsenceGuideSource._extract_nested_list_steps(list_node))
+    for table in node.find_all("table"):
+        steps.extend(_extract_table_steps(table))
+    steps.extend(_extract_alert_steps(node))
+    return _unique(steps)
+
+
+def _class_guide_direct_text_steps(node) -> list[str]:
+    steps: list[str] = []
+    for child in node.find_all(["p", "div"], recursive=False):
+        classes = set(child.get("class", []))
+        if {"h4-tit01", "h5-tit01", "h3-tit01", "alert-tit", "box-tit", "con-tit"} & classes:
+            continue
+        if {"alert-txt", "link-box", "table-wrap", "qna-wrap", "bg-box"} & classes:
+            continue
+        if child.find("table", recursive=False) is not None:
+            continue
+        text = _normalize_note_text(child.get_text(" ", strip=True))
+        if text:
+            steps.append(text)
+    return _unique(steps)
+
+
+def _extract_qna_steps(node) -> list[str]:
+    steps: list[str] = []
+    for item in node.select(".qna-wrap > ul > li"):
+        question_node = item.select_one("a div")
+        answer_node = item.select_one(".ans-box")
+        question = _clean_text(question_node.get_text(" ", strip=True) if question_node else "")
+        answer = _clean_text(answer_node.get_text(" ", strip=True) if answer_node else "")
+        if question and answer:
+            steps.append(f"Q: {question} / A: {answer}")
+        elif question:
+            steps.append(f"Q: {question}")
+        elif answer:
+            steps.append(f"A: {answer}")
+    return _unique(steps)
+
+
+def _normalize_class_guide_title(title: str) -> str:
+    normalized = _clean_text(title)
+    normalized = re.sub(r"^\d+\.\s*", "", normalized)
+    normalized = normalized.replace("(표)", "").strip()
+    return normalized
+
+
 class ScholarshipGuideSource:
     """Official static scholarship-guide parser for Songsim campus."""
 

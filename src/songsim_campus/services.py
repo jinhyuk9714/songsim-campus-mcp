@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 import httpx
+from bs4 import BeautifulSoup
 from pypdf import PdfReader
 
 from . import (
@@ -36,6 +37,12 @@ from .ingest.official_sources import (
     CampusFacilitiesSource,
     CampusMapSource,
     CertificateGuideSource,
+    ClassCourseCancellationGuideSource,
+    ClassCourseEvaluationGuideSource,
+    ClassExcusedAbsenceGuideSource,
+    ClassForeignLanguageRequirementGuideSource,
+    ClassRegistrationChangeGuideSource,
+    ClassRetakeGuideSource,
     CourseCatalogSource,
     DropoutGuideSource,
     LeaveOfAbsenceGuideSource,
@@ -52,6 +59,12 @@ from .ingest.official_sources import (
     WifiGuideSource,
     classify_notice_category,
 )
+from .ingest.official_sources import (
+    _extract_link_items as _source_extract_link_items,
+)
+from .ingest.official_sources import (
+    _extract_table_steps as _source_extract_table_steps,
+)
 from .schemas import (
     AcademicCalendarEvent,
     AcademicStatusGuide,
@@ -60,6 +73,7 @@ from .schemas import (
     AutomationObservability,
     CampusDiningMenu,
     CertificateGuide,
+    ClassGuide,
     Course,
     EmptyClassroomBuilding,
     EstimatedEmptyClassroom,
@@ -131,6 +145,7 @@ SYNC_DATASET_TABLES = (
     "leave_of_absence_guides",
     "academic_status_guides",
     "registration_guides",
+    "class_guides",
     "scholarship_guides",
     "wifi_guides",
     "academic_support_guides",
@@ -145,6 +160,7 @@ PUBLIC_READY_CORE_DATASETS = frozenset(
         "leave_of_absence_guides",
         "academic_status_guides",
         "registration_guides",
+        "class_guides",
         "scholarship_guides",
         "academic_support_guides",
         "wifi_guides",
@@ -178,6 +194,7 @@ ADMIN_SYNC_TARGETS = {
     "leave_of_absence_guides",
     "academic_status_guides",
     "registration_guides",
+    "class_guides",
     "scholarship_guides",
     "academic_support_guides",
     "wifi_guides",
@@ -259,6 +276,25 @@ DINING_MENU_QUERY_FILLER_TERMS = (
 )
 ACADEMIC_STATUS_GUIDE_VALUES = {"return_from_leave", "dropout", "re_admission"}
 REGISTRATION_GUIDE_TOPICS = {"bill_lookup", "payment_and_return", "payment_by_student"}
+CLASS_GUIDE_TOPICS = {
+    "registration_change",
+    "retake",
+    "course_cancellation",
+    "course_evaluation",
+    "excused_absence",
+    "foreign_language_requirement",
+}
+CLASS_GUIDE_SOURCE_URLS = {
+    "registration_change": "https://www.catholic.ac.kr/ko/support/register_for_class.do",
+    "retake": "https://www.catholic.ac.kr/ko/support/re-register_for_class.do",
+    "course_cancellation": "https://www.catholic.ac.kr/ko/support/cancellation_of_class.do",
+    "course_evaluation": "https://www.catholic.ac.kr/ko/support/course_evaluation.do",
+    "excused_absence": "https://www.catholic.ac.kr/ko/support/absence_notification.do",
+    "foreign_language_requirement": (
+        "https://www.catholic.ac.kr/ko/support/"
+        "completion_requirements_for_foreign_language_2024.do"
+    ),
+}
 
 
 class NotFoundError(ValueError):
@@ -286,6 +322,153 @@ def _now() -> datetime:
 
 def _now_iso() -> str:
     return _now().isoformat(timespec="seconds")
+
+
+def _class_guide_clean_text(value: str | None) -> str:
+    if not value:
+        return ""
+    return BeautifulSoup(value, "html.parser").get_text(" ", strip=True).strip()
+
+
+def _unique_texts(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for item in items:
+        normalized = item.strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        result.append(normalized)
+    return result
+
+
+def _class_guide_block_title(block, *, page_title: str | None = None) -> str:
+    title_node = (
+        block.select_one(".h4-tit01")
+        or block.select_one(".h5-tit01")
+        or block.select_one(".box-tit")
+        or block.select_one(".con-tit")
+    )
+    if title_node is not None:
+        title = _class_guide_clean_text(title_node.get_text(" ", strip=True))
+        if title:
+            return title
+    if page_title and "alert-box" in set(block.get("class", [])):
+        text = _class_guide_clean_text(block.get_text(" ", strip=True))
+        if text.startswith("유의 사항"):
+            return "유의 사항"
+        if text.startswith("비고사항"):
+            return "비고사항"
+    return ""
+
+
+def _class_guide_block_steps(block) -> list[str]:
+    steps: list[str] = []
+    for child in block.find_all(recursive=False):
+        classes = set(child.get("class", []))
+        if classes & {"h4-tit01", "h5-tit01", "h3-tit01", "box-tit", "con-tit"}:
+            continue
+        if "link-box" in classes:
+            continue
+        if child.name == "ul":
+            for li in child.find_all("li", recursive=False):
+                text = _class_guide_clean_text(li.get_text(" ", strip=True))
+                if text:
+                    steps.append(text)
+            continue
+        if child.name == "div" and "qna-wrap" in classes:
+            text = _class_guide_clean_text(child.get_text(" ", strip=True))
+            if text:
+                steps.append(text)
+            continue
+        if child.name == "div":
+            table = child.find("table", recursive=False)
+            if table is not None:
+                steps.extend(_source_extract_table_steps(table))
+        text = _class_guide_clean_text(child.get_text(" ", strip=True))
+        if text:
+            steps.append(text)
+    for alert in block.select(".alert-txt"):
+        text = _class_guide_clean_text(alert.get_text(" ", strip=True))
+        if text:
+            steps.append(text)
+    return _unique_texts(steps)
+
+
+def _parse_class_guide_sections(
+    html: str,
+    *,
+    base_url: str,
+    topic: str,
+    source_tag: str,
+    fetched_at: str,
+    page_title: str | None = None,
+) -> list[dict[str, Any]]:
+    soup = BeautifulSoup(html, "html.parser")
+    root = (
+        soup.select_one(".right-index-wrap .content-box")
+        or soup.select_one(".content-box")
+        or soup
+    )
+    rows: list[dict[str, Any]] = []
+    section_classes = {"con-box", "con-box02", "alert-box", "bg-box"}
+
+    def emit(block, title: str) -> None:
+        steps = (
+            _class_guide_block_steps(block)
+            if block.name != "p"
+            else [_class_guide_clean_text(block.get_text(" ", strip=True))]
+        )
+        steps = [step for step in steps if step]
+        rows.append(
+            {
+                "topic": topic,
+                "title": title,
+                "summary": steps[0] if steps else "",
+                "steps": steps,
+                "links": _source_extract_link_items(
+                    block.select_one(".link-box") or block,
+                    base_url=base_url,
+                ),
+                "source_url": base_url,
+                "source_tag": source_tag,
+                "last_synced_at": fetched_at,
+            }
+        )
+
+    def walk(container) -> None:
+        for child in container.find_all(recursive=False):
+            if not getattr(child, "name", None):
+                continue
+            classes = set(child.get("class", []))
+            if child.name == "p" and "con-tit" in classes:
+                title = page_title or _class_guide_clean_text(child.get_text(" ", strip=True))
+                if title:
+                    emit(child, title)
+                continue
+            if child.name == "div" and "con-box" in classes:
+                intro = child.find("p", class_="con-tit", recursive=False)
+                if intro is not None:
+                    title = page_title or _class_guide_clean_text(intro.get_text(" ", strip=True))
+                    if title:
+                        emit(intro, title)
+                nested_blocks = [
+                    grand
+                    for grand in child.find_all(recursive=False)
+                    if set(grand.get("class", [])) & section_classes
+                ]
+                if nested_blocks and not _class_guide_block_title(child, page_title=page_title):
+                    walk(child)
+                    continue
+            if not (classes & section_classes):
+                continue
+            title = _class_guide_block_title(child, page_title=page_title)
+            if not title:
+                continue
+            emit(child, title)
+
+    walk(root)
+    return rows
 
 
 def _current_academic_year(today: date | None = None) -> int:
@@ -2528,6 +2711,29 @@ def list_registration_guides(
     ]
 
 
+def list_class_guides(
+    conn: DBConnection,
+    *,
+    topic: str | None = None,
+    limit: int = 20,
+) -> list[ClassGuide]:
+    normalized_limit = max(1, min(limit, 50))
+    normalized_topic = topic.strip() if topic else None
+    if normalized_topic and normalized_topic not in CLASS_GUIDE_TOPICS:
+        raise InvalidRequestError(
+            "topic must be one of registration_change, retake, course_cancellation, "
+            "course_evaluation, excused_absence, foreign_language_requirement."
+        )
+    return [
+        ClassGuide.model_validate(item)
+        for item in repo.list_class_guides(
+            conn,
+            topic=normalized_topic,
+            limit=normalized_limit,
+        )
+    ]
+
+
 def list_academic_calendar(
     conn: DBConnection,
     *,
@@ -2687,6 +2893,8 @@ def _run_admin_sync_target(
         return {"academic_status_guides": len(refresh_academic_status_guides_from_source(conn))}
     if target == "registration_guides":
         return {"registration_guides": len(refresh_registration_guides_from_source(conn))}
+    if target == "class_guides":
+        return {"class_guides": len(refresh_class_guides_from_source(conn))}
     if target == "scholarship_guides":
         return {"scholarship_guides": len(refresh_scholarship_guides_from_source(conn))}
     if target == "wifi_guides":
@@ -4116,6 +4324,33 @@ def refresh_registration_guides_from_source(
     ]
 
 
+def refresh_class_guides_from_source(
+    conn: DBConnection,
+    *,
+    sources: list[Any] | None = None,
+    fetched_at: str | None = None,
+) -> list[ClassGuide]:
+    synced_at = fetched_at or _now_iso()
+    resolved_sources = sources or [
+        ClassRegistrationChangeGuideSource(CLASS_GUIDE_SOURCE_URLS["registration_change"]),
+        ClassRetakeGuideSource(CLASS_GUIDE_SOURCE_URLS["retake"]),
+        ClassCourseCancellationGuideSource(CLASS_GUIDE_SOURCE_URLS["course_cancellation"]),
+        ClassCourseEvaluationGuideSource(CLASS_GUIDE_SOURCE_URLS["course_evaluation"]),
+        ClassExcusedAbsenceGuideSource(CLASS_GUIDE_SOURCE_URLS["excused_absence"]),
+        ClassForeignLanguageRequirementGuideSource(
+            CLASS_GUIDE_SOURCE_URLS["foreign_language_requirement"]
+        ),
+    ]
+    rows: list[dict[str, Any]] = []
+    for source in resolved_sources:
+        rows.extend(source.parse(source.fetch(), fetched_at=synced_at))
+    repo.replace_class_guides(conn, rows)
+    return [
+        ClassGuide.model_validate(item)
+        for item in repo.list_class_guides(conn, limit=max(len(rows), 1))
+    ]
+
+
 def sync_official_snapshot(
     conn: DBConnection,
     *,
@@ -4149,6 +4384,7 @@ def sync_official_snapshot(
     leave_of_absence_guides = refresh_leave_of_absence_guides_from_source(conn)
     academic_status_guides = refresh_academic_status_guides_from_source(conn)
     registration_guides = refresh_registration_guides_from_source(conn)
+    class_guides = refresh_class_guides_from_source(conn)
     scholarship_guides = refresh_scholarship_guides_from_source(conn)
     academic_support_guides = refresh_academic_support_guides_from_source(conn)
     wifi_guides = refresh_wifi_guides_from_source(conn)
@@ -4164,6 +4400,7 @@ def sync_official_snapshot(
         "leave_of_absence_guides": len(leave_of_absence_guides),
         "academic_status_guides": len(academic_status_guides),
         "registration_guides": len(registration_guides),
+        "class_guides": len(class_guides),
         "scholarship_guides": len(scholarship_guides),
         "academic_support_guides": len(academic_support_guides),
         "wifi_guides": len(wifi_guides),
