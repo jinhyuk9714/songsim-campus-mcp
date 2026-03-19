@@ -785,6 +785,57 @@ def test_search_places_matches_generic_facility_nouns_to_related_buildings(app_e
     assert [place.slug for place in gymnasium_places] == ["great-field"]
 
 
+def test_search_places_generic_facility_nouns_prefer_building_then_facility_then_dormitory(
+    app_env,
+):
+    init_db()
+    shared_hours = {
+        "이마트24": "상시 07:00~24:00",
+        "교내복사실": "평일 08:50~19:00",
+        "우리은행": "평일 09:00~16:00",
+        "트러스트짐": "평일 07:00~22:30",
+    }
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                _place_row(
+                    slug="dormitory-stephen",
+                    name="스테파노기숙사",
+                    category="dormitory",
+                    description="기숙사 생활시설 건물",
+                    opening_hours=shared_hours,
+                ),
+                _place_row(
+                    slug="kim-sou-hwan-hall",
+                    name="김수환관",
+                    category="building",
+                    aliases=["K관"],
+                    description="강의동과 생활편의시설이 함께 있는 건물",
+                    opening_hours=shared_hours,
+                ),
+                _place_row(
+                    slug="student-center",
+                    name="학생회관",
+                    category="facility",
+                    aliases=["학생센터"],
+                    description="학생 편의시설이 많은 건물",
+                    opening_hours=shared_hours,
+                ),
+            ],
+        )
+        gym_places = search_places(conn, query="헬스장", limit=5)
+        store_places = search_places(conn, query="편의점", limit=5)
+        copy_places = search_places(conn, query="복사실", limit=5)
+        atm_places = search_places(conn, query="ATM", limit=5)
+
+    expected_order = ["kim-sou-hwan-hall", "student-center", "dormitory-stephen"]
+    assert [place.slug for place in gym_places[:3]] == expected_order
+    assert [place.slug for place in store_places[:3]] == expected_order
+    assert [place.slug for place in copy_places[:3]] == expected_order
+    assert [place.slug for place in atm_places[:3]] == expected_order
+
+
 def test_refresh_campus_facilities_replaces_rows_and_maps_place_slugs(app_env):
     init_db()
     with connection() as conn:

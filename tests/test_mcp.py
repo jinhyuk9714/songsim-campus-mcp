@@ -1757,15 +1757,21 @@ def test_mcp_public_search_places_returns_matched_facility_metadata(app_env, mon
         mcp = build_mcp()
         gym = await mcp.call_tool('tool_search_places', {'query': '헬스장', 'limit': 5})
         store = await mcp.call_tool('tool_search_places', {'query': '편의점', 'limit': 5})
-        return _tool_payloads(gym), _tool_payloads(store)
+        copy_room = await mcp.call_tool('tool_search_places', {'query': '복사실', 'limit': 5})
+        atm = await mcp.call_tool('tool_search_places', {'query': 'ATM', 'limit': 5})
+        return (
+            _tool_payloads(gym),
+            _tool_payloads(store),
+            _tool_payloads(copy_room),
+            _tool_payloads(atm),
+        )
 
-    gym_payloads, store_payloads = asyncio.run(main())
+    gym_payloads, store_payloads, copy_payloads, atm_payloads = asyncio.run(main())
 
     assert [item["slug"] for item in gym_payloads] == ["student-center"]
-    assert {item["slug"] for item in store_payloads[:2]} == {
-        "student-center",
-        "dormitory-stephen",
-    }
+    assert [item["slug"] for item in store_payloads[:2]] == ["student-center", "dormitory-stephen"]
+    assert [item["slug"] for item in copy_payloads] == ["student-center"]
+    assert [item["slug"] for item in atm_payloads] == ["student-center"]
 
     clear_settings_cache()
 

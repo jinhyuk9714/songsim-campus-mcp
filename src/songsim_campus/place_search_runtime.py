@@ -772,6 +772,92 @@ def _rank_campus_facility_candidate(
     return None
 
 
+def _is_plain_generic_facility_query(
+    *,
+    collapsed_query: str,
+    compact_query: str | None,
+) -> bool:
+    return any(
+        _matches_exact_text_candidate(
+            keyword,
+            collapsed_query=collapsed_query,
+            compact_query=compact_query,
+        )
+        for keyword in _load_place_facility_keywords()
+    )
+
+
+def _is_generic_place_facility_match(
+    *,
+    collapsed_query: str,
+    compact_query: str | None,
+    facility_tokens: list[str],
+    generic_keywords: list[str],
+) -> bool:
+    return any(
+        _matches_exact_text_candidate(
+            token,
+            collapsed_query=collapsed_query,
+            compact_query=compact_query,
+        )
+        for token in facility_tokens
+    ) or any(
+        _matches_exact_text_candidate(
+            keyword,
+            collapsed_query=collapsed_query,
+            compact_query=compact_query,
+        )
+        for keyword in generic_keywords
+    )
+
+
+def _is_generic_or_category_facility_match(
+    row: dict[str, Any],
+    *,
+    collapsed_query: str,
+    compact_query: str | None,
+) -> bool:
+    name = str(row.get("facility_name") or "")
+    category = str(row.get("category") or "")
+    phone = str(row.get("phone") or "")
+    if _matches_exact_text_candidate(
+        name,
+        collapsed_query=collapsed_query,
+        compact_query=compact_query,
+    ):
+        return False
+    if _matches_exact_text_candidate(
+        phone,
+        collapsed_query=collapsed_query,
+        compact_query=compact_query,
+    ):
+        return False
+    if (
+        _rank_campus_facility_composite_candidate(
+            row,
+            collapsed_query=collapsed_query,
+            compact_query=compact_query,
+        )
+        is not None
+    ):
+        return False
+    if _matches_exact_text_candidate(
+        category,
+        collapsed_query=collapsed_query,
+        compact_query=compact_query,
+    ):
+        return True
+    generic_keywords = _generic_facility_keywords_for_targets([name, category])
+    return any(
+        _matches_exact_text_candidate(
+            keyword,
+            collapsed_query=collapsed_query,
+            compact_query=compact_query,
+        )
+        for keyword in generic_keywords
+    )
+
+
 def _facility_phase_for_rank(rank: int) -> tuple[int, int]:
     if rank == 0:
         return 0, rank
@@ -910,6 +996,10 @@ def search_places(
     searchable_facilities = _build_searchable_campus_facilities(conn, place_rows=places)
     preferred_slugs = _preferred_place_slugs_for_query(collapsed_query, context="place_search")
     preferred_slug_set = set(preferred_slugs)
+    query_is_plain_generic_facility = _is_plain_generic_facility_query(
+        collapsed_query=collapsed_query,
+        compact_query=compact_query,
+    )
     place_alias_lists: dict[str, list[str]] = {}
     for place in places:
         slug = str(place.get("slug") or "").strip()
@@ -985,13 +1075,28 @@ def search_places(
                 "canonical_name": canonical_name,
             }
         preference_rank = 0 if slug in preferred_slug_set else 1
-        ranked.append((phase, subrank, preference_rank, index, payload))
-    ranked.sort(key=lambda item: (item[0], item[1], item[2], item[3]))
+        generic_host_bias = 0
+        if query_is_plain_generic_facility:
+            if facility_match is not None and _is_generic_or_category_facility_match(
+                facility_match[2],
+                collapsed_query=collapsed_query,
+                compact_query=compact_query,
+            ):
+                generic_host_bias = _facility_host_place_category_rank(item.get("category"))
+            elif place_sort is not None and _is_generic_place_facility_match(
+                collapsed_query=collapsed_query,
+                compact_query=compact_query,
+                facility_tokens=facility_index[index]["facility_tokens"],
+                generic_keywords=facility_index[index]["generic_keywords"],
+            ):
+                generic_host_bias = _facility_host_place_category_rank(item.get("category"))
+        ranked.append((generic_host_bias, phase, subrank, preference_rank, index, payload))
+    ranked.sort(key=lambda item: (item[0], item[1], item[2], item[3], item[4]))
     if preferred_slugs:
         ranked = [
-            item for item in ranked if str(item[4].get("slug") or "").strip() in preferred_slug_set
+            item for item in ranked if str(item[5].get("slug") or "").strip() in preferred_slug_set
         ]
-    return [Place.model_validate(item) for _, _, _, _, item in ranked[:limit]]
+    return [Place.model_validate(item) for _, _, _, _, _, item in ranked[:limit]]
 
 
 def _format_ambiguous_place_error(

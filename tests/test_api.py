@@ -683,6 +683,7 @@ def test_places_endpoint_matches_generic_facility_nouns(client):
 
     gym_response = client.get("/places", params={"query": "헬스장", "limit": 5})
     store_response = client.get("/places", params={"query": "편의점", "limit": 5})
+    copy_response = client.get("/places", params={"query": "복사실", "limit": 5})
     atm_response = client.get("/places", params={"query": "ATM", "limit": 5})
 
     assert gym_response.status_code == 200
@@ -692,6 +693,8 @@ def test_places_endpoint_matches_generic_facility_nouns(client):
         "student-center",
         "dormitory-stephen",
     ]
+    assert copy_response.status_code == 200
+    assert [item["slug"] for item in copy_response.json()] == ["student-center"]
     assert atm_response.status_code == 200
     assert [item["slug"] for item in atm_response.json()] == ["student-center"]
 

@@ -1,6 +1,6 @@
 # Public MCP Hidden Risk Audit
 
-`public API`를 2026-03-16 KST 기준으로 다시 실측해, 최근 성능/검색/transport/brand 보정과 metadata parity 반영 이후의 **현재 운영 baseline**을 재작성한 감사 시트입니다. 이번 감사는 새 기능 추가 없이 문서만 갱신했고, 이미 해결된 리스크는 내리고 아직 남은 리스크만 `short-query`, `metadata parity`, `course watchlist`, `latency/strict semantics` 기준으로 다시 분류했습니다.
+`public API`를 2026-03-19 KST 기준으로 다시 실측해, 최근 성능/검색/transport/brand 보정과 metadata parity 반영 이후의 **현재 운영 baseline**을 재작성한 감사 시트입니다. 이번 감사는 새 기능 추가 없이 문서만 갱신했고, 이미 해결된 리스크는 내리고 아직 남은 리스크만 `short-query`, `metadata parity`, `course watchlist`, `latency/strict semantics` 기준으로 다시 분류했습니다.
 
 ## 실행 기준
 
@@ -71,13 +71,13 @@
 
 | ID | User utterance | Surface | Observed response summary | Takeaway |
 | --- | --- | --- | --- | --- |
-| GF01 | 헬스장 어디야 | `GET /places?query=헬스장&limit=5` | `dormitory-stephen` 1위, `sophie-barat-hall` 2위 | 더 이상 `[]`는 아니고 관련 건물 후보를 반환한다. 다만 랭킹은 더 다듬을 여지가 있다 |
-| GF02 | 편의점 어디 있어 | `GET /places?query=편의점&limit=5` | `dormitory-stephen` 1건 반환 | generic facility noun gap은 크게 줄었다 |
-| GF03 | 복사실 어디야 | `GET /places?query=복사실&limit=5` | `dormitory-stephen` 1건 반환 | parent building 후보형 응답으로는 정상 범위다 |
-| GF04 | ATM 어디 있어 | `GET /places?query=ATM&limit=5` | `dormitory-stephen` 1건 반환 | uppercase generic noun도 이제 빈 결과가 아니다 |
+| GF01 | 헬스장 어디야 | `GET /places?query=헬스장 어디야&limit=5` | `kim-sou-hwan-hall` 1위, `sophie-barat-hall` 2위 | generic noun이 dormitory가 아니라 official campus-map 기반 host building으로 수렴한다 |
+| GF02 | 편의점 어디 있어 | `GET /places?query=편의점 어디 있어&limit=5` | `kim-sou-hwan-hall` 1위, `sophie-barat-hall` 2위 | generic facility noun의 top-1이 `K관` 계열 host building으로 안정화됐다 |
+| GF03 | 복사실 어디야 | `GET /places?query=복사실 어디야&limit=5` | `kim-sou-hwan-hall` 1건 반환 | parent building 후보형 응답이 dormitory가 아니라 source-backed host building으로 나온다 |
+| GF04 | ATM 어디 있어 | `GET /places?query=ATM 어디 있어&limit=5` | `kim-sou-hwan-hall` 1건 반환 | uppercase generic noun도 `K관` 계열 host building으로 수렴한다 |
 
 ## 보조 메모
 
-- `classrooms timeout`, `transport mode mismatch`, `generic facility noun -> []`, `스타벅스 주차장 노이즈`, `정문/K관` residual noise는 더 이상 현재 운영 baseline의 핵심 리스크가 아니다.
+- `classrooms timeout`, `transport mode mismatch`, `generic facility noun -> []`, `generic facility noun -> dormitory`, `스타벅스 주차장 노이즈`, `정문/K관` residual noise는 더 이상 현재 운영 baseline의 핵심 리스크가 아니다.
 - 현재 남아 있는 눈에 띄는 리스크는 `course source-gap watchlist` 쪽이다.
 - `course`는 release gate가 아니라 watchlist라는 현재 정책을 유지한다. `데이터베이스`, `CSE301`, `김가톨`, `데이타베이스`, `CSE 420`는 계속 source-backed 여부 중심으로만 추적한다.
