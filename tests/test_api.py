@@ -699,6 +699,77 @@ def test_places_endpoint_matches_generic_facility_nouns(client):
     assert [item["slug"] for item in atm_response.json()] == ["student-center"]
 
 
+def test_places_endpoint_generic_facility_nouns_prefer_building_then_facility_then_dormitory(
+    client,
+):
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                {
+                    "slug": "dormitory-stephen",
+                    "name": "스테파노기숙사",
+                    "category": "dormitory",
+                    "aliases": [],
+                    "description": "기숙사 생활시설 건물",
+                    "opening_hours": {
+                        "이마트24": "상시 07:00~24:00",
+                        "교내복사실": "평일 08:50~19:00",
+                        "우리은행": "평일 09:00~16:00",
+                        "트러스트짐": "평일 07:00~22:30",
+                    },
+                    "latitude": 37.48652,
+                    "longitude": 126.80216,
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "slug": "kim-sou-hwan-hall",
+                    "name": "김수환관",
+                    "category": "building",
+                    "aliases": ["K관"],
+                    "description": "강의동과 생활편의시설이 함께 있는 건물",
+                    "opening_hours": {
+                        "이마트24": "상시 07:00~24:00",
+                        "교내복사실": "평일 08:50~19:00",
+                        "우리은행": "평일 09:00~16:00",
+                        "트러스트짐": "평일 07:00~22:30",
+                    },
+                    "latitude": 37.48652,
+                    "longitude": 126.80216,
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "slug": "student-center",
+                    "name": "학생회관",
+                    "category": "facility",
+                    "aliases": ["학생센터"],
+                    "description": "학생 편의시설이 많은 건물",
+                    "opening_hours": {
+                        "이마트24": "상시 07:00~24:00",
+                        "교내복사실": "평일 08:50~19:00",
+                        "우리은행": "평일 09:00~16:00",
+                        "트러스트짐": "평일 07:00~22:30",
+                    },
+                    "latitude": 37.48652,
+                    "longitude": 126.80216,
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+
+    response = client.get("/places", params={"query": "편의점", "limit": 5})
+
+    assert response.status_code == 200
+    assert [item["slug"] for item in response.json()[:3]] == [
+        "kim-sou-hwan-hall",
+        "student-center",
+        "dormitory-stephen",
+    ]
+
+
 def test_places_endpoint_exposes_matched_facility_metadata(client):
     with connection() as conn:
         replace_places(
