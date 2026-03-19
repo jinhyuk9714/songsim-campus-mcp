@@ -82,6 +82,7 @@ def render_admin_sync_page(
         {"title": "academic_support_guides", "fields": []},
         {"title": "academic_status_guides", "fields": []},
         {"title": "class_guides", "fields": []},
+        {"title": "seasonal_semester_guides", "fields": []},
         {"title": "leave_of_absence_guides", "fields": []},
         {"title": "scholarship_guides", "fields": []},
         {"title": "wifi_guides", "fields": []},
@@ -300,6 +301,7 @@ def render_landing_page(
         "2026년 1학기 객체지향 과목 찾아줘",
         "2026학년도 3월 학사일정 보여줘",
         "수업평가 기간 알려줘",
+        "계절학기 신청 시기 알려줘",
         "등록금 납부 방법 알려줘",
         "재학증명서 발급 안내 알려줘",
         "장학제도 안내 알려줘",
@@ -458,6 +460,10 @@ def render_landing_page(
             <li>
               <code>/class-guides</code> class registration, retake, evaluation,
               and excused-absence guides
+            </li>
+            <li>
+              <code>/seasonal-semester-guides</code> seasonal semester eligibility,
+              credit limit, schedule, and procedure guides
             </li>
             <li><code>/certificate-guides</code> certificate issuance guides</li>
             <li><code>/leave-of-absence-guides</code> leave-of-absence application guides</li>

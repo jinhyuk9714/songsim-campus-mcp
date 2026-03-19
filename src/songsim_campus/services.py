@@ -55,6 +55,7 @@ from .ingest.official_sources import (
     RegistrationPaymentByStudentGuideSource,
     ReturnFromLeaveOfAbsenceGuideSource,
     ScholarshipGuideSource,
+    SeasonalSemesterGuideSource,
     TransportGuideSource,
     WifiGuideSource,
     classify_notice_category,
@@ -99,6 +100,7 @@ from .schemas import (
     Restaurant,
     RestaurantSearchResult,
     ScholarshipGuide,
+    SeasonalSemesterGuide,
     SyncRun,
     TransportGuide,
     WifiGuide,
@@ -131,6 +133,7 @@ REGISTRATION_PAYMENT_AND_RETURN_SOURCE_URL = (
 REGISTRATION_PAYMENT_BY_STUDENT_SOURCE_URL = (
     "https://www.catholic.ac.kr/ko/support/tuition_payment_by_student.do"
 )
+SEASONAL_SEMESTER_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/class_summer_winter.do"
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 CAMPUS_WALK_GRAPH_PATH = DATA_DIR / "campus_walk_graph.json"
 PERSONALIZATION_RULES_PATH = DATA_DIR / "personalization_rules.json"
@@ -146,6 +149,7 @@ SYNC_DATASET_TABLES = (
     "academic_status_guides",
     "registration_guides",
     "class_guides",
+    "seasonal_semester_guides",
     "scholarship_guides",
     "wifi_guides",
     "academic_support_guides",
@@ -161,6 +165,7 @@ PUBLIC_READY_CORE_DATASETS = frozenset(
         "academic_status_guides",
         "registration_guides",
         "class_guides",
+        "seasonal_semester_guides",
         "scholarship_guides",
         "academic_support_guides",
         "wifi_guides",
@@ -195,6 +200,7 @@ ADMIN_SYNC_TARGETS = {
     "academic_status_guides",
     "registration_guides",
     "class_guides",
+    "seasonal_semester_guides",
     "scholarship_guides",
     "academic_support_guides",
     "wifi_guides",
@@ -284,6 +290,7 @@ CLASS_GUIDE_TOPICS = {
     "excused_absence",
     "foreign_language_requirement",
 }
+SEASONAL_SEMESTER_GUIDE_TOPICS = {"seasonal_semester"}
 CLASS_GUIDE_SOURCE_URLS = {
     "registration_change": "https://www.catholic.ac.kr/ko/support/register_for_class.do",
     "retake": "https://www.catholic.ac.kr/ko/support/re-register_for_class.do",
@@ -2734,6 +2741,26 @@ def list_class_guides(
     ]
 
 
+def list_seasonal_semester_guides(
+    conn: DBConnection,
+    *,
+    topic: str | None = None,
+    limit: int = 20,
+) -> list[SeasonalSemesterGuide]:
+    normalized_limit = max(1, min(limit, 50))
+    normalized_topic = topic.strip() if topic else None
+    if normalized_topic and normalized_topic not in SEASONAL_SEMESTER_GUIDE_TOPICS:
+        raise InvalidRequestError("topic must be one of seasonal_semester.")
+    return [
+        SeasonalSemesterGuide.model_validate(item)
+        for item in repo.list_seasonal_semester_guides(
+            conn,
+            topic=normalized_topic,
+            limit=normalized_limit,
+        )
+    ]
+
+
 def list_academic_calendar(
     conn: DBConnection,
     *,
@@ -2895,6 +2922,10 @@ def _run_admin_sync_target(
         return {"registration_guides": len(refresh_registration_guides_from_source(conn))}
     if target == "class_guides":
         return {"class_guides": len(refresh_class_guides_from_source(conn))}
+    if target == "seasonal_semester_guides":
+        return {
+            "seasonal_semester_guides": len(refresh_seasonal_semester_guides_from_source(conn))
+        }
     if target == "scholarship_guides":
         return {"scholarship_guides": len(refresh_scholarship_guides_from_source(conn))}
     if target == "wifi_guides":
@@ -4351,6 +4382,24 @@ def refresh_class_guides_from_source(
     ]
 
 
+def refresh_seasonal_semester_guides_from_source(
+    conn: DBConnection,
+    *,
+    sources: list[Any] | None = None,
+    fetched_at: str | None = None,
+) -> list[SeasonalSemesterGuide]:
+    synced_at = fetched_at or _now_iso()
+    resolved_sources = sources or [SeasonalSemesterGuideSource(SEASONAL_SEMESTER_GUIDE_SOURCE_URL)]
+    rows: list[dict[str, Any]] = []
+    for source in resolved_sources:
+        rows.extend(source.parse(source.fetch(), fetched_at=synced_at))
+    repo.replace_seasonal_semester_guides(conn, rows)
+    return [
+        SeasonalSemesterGuide.model_validate(item)
+        for item in repo.list_seasonal_semester_guides(conn, limit=max(len(rows), 1))
+    ]
+
+
 def sync_official_snapshot(
     conn: DBConnection,
     *,
@@ -4385,6 +4434,7 @@ def sync_official_snapshot(
     academic_status_guides = refresh_academic_status_guides_from_source(conn)
     registration_guides = refresh_registration_guides_from_source(conn)
     class_guides = refresh_class_guides_from_source(conn)
+    seasonal_semester_guides = refresh_seasonal_semester_guides_from_source(conn)
     scholarship_guides = refresh_scholarship_guides_from_source(conn)
     academic_support_guides = refresh_academic_support_guides_from_source(conn)
     wifi_guides = refresh_wifi_guides_from_source(conn)
@@ -4401,6 +4451,7 @@ def sync_official_snapshot(
         "academic_status_guides": len(academic_status_guides),
         "registration_guides": len(registration_guides),
         "class_guides": len(class_guides),
+        "seasonal_semester_guides": len(seasonal_semester_guides),
         "scholarship_guides": len(scholarship_guides),
         "academic_support_guides": len(academic_support_guides),
         "wifi_guides": len(wifi_guides),

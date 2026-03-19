@@ -1403,6 +1403,33 @@ class ClassForeignLanguageRequirementGuideSource(ClassGuideSourceBase):
         super().__init__(url)
 
 
+class SeasonalSemesterGuideSource:
+    """Parser for the 계절학기 guide page."""
+
+    source_tag = "cuk_seasonal_semester_guides"
+    topic = "seasonal_semester"
+
+    def __init__(
+        self,
+        url: str = "https://www.catholic.ac.kr/ko/support/class_summer_winter.do",
+    ):
+        self.url = url
+
+    def fetch(self) -> str:
+        response = httpx.get(self.url, timeout=20)
+        response.raise_for_status()
+        return response.text
+
+    def parse(self, html: str, *, fetched_at: str) -> list[dict]:
+        return _parse_seasonal_semester_guide_sections(
+            html,
+            base_url=self.url,
+            source_tag=self.source_tag,
+            topic=self.topic,
+            fetched_at=fetched_at,
+        )
+
+
 def _parse_class_guide_sections(
     html: str,
     *,
@@ -1537,6 +1564,119 @@ def _normalize_class_guide_title(title: str) -> str:
     normalized = re.sub(r"^\d+\.\s*", "", normalized)
     normalized = normalized.replace("(표)", "").strip()
     return normalized
+
+
+def _parse_seasonal_semester_guide_sections(
+    html: str,
+    *,
+    base_url: str,
+    source_tag: str,
+    topic: str,
+    fetched_at: str,
+) -> list[dict]:
+    soup = BeautifulSoup(html, "html.parser")
+    root = soup.select_one(".content-box .con-box") or soup.select_one(".content-box") or soup
+    rows: list[dict] = []
+    current_title = ""
+    current_nodes: list = []
+
+    def flush() -> None:
+        nonlocal current_nodes
+        if not current_title:
+            current_nodes = []
+            return
+        wrapper = soup.new_tag("div")
+        for node in current_nodes:
+            wrapper.append(node)
+        steps = _extract_seasonal_semester_steps(wrapper)
+        rows.append(
+            {
+                "topic": topic,
+                "title": current_title,
+                "summary": steps[0] if steps else current_title,
+                "steps": steps,
+                "links": _extract_link_items(wrapper, base_url=base_url),
+                "source_url": base_url,
+                "source_tag": source_tag,
+                "last_synced_at": fetched_at,
+            }
+        )
+        current_nodes = []
+
+    for child in root.find_all("div", class_="con-box02", recursive=False):
+        title_node = child.select_one(".h4-tit01")
+        if title_node is not None:
+            flush()
+            current_title = _clean_text(title_node.get_text(" ", strip=True))
+            current_nodes = [child]
+            continue
+        if child.select_one(".alert-tit") is not None and current_title:
+            current_nodes.append(child)
+
+    flush()
+    return rows
+
+
+def _extract_seasonal_semester_steps(node) -> list[str]:
+    steps: list[str] = []
+    sections = node.find_all("div", class_="con-box02", recursive=False) or [node]
+    for section in sections:
+        title_node = section.select_one(".h4-tit01")
+        if title_node is not None:
+            steps.extend(_extract_seasonal_semester_direct_steps(section))
+            list_node = section.find("ul", recursive=False)
+            if list_node is not None:
+                steps.extend(LeaveOfAbsenceGuideSource._extract_nested_list_steps(list_node))
+            steps.extend(_extract_alert_steps(section))
+            continue
+        for alert_box in section.select(".alert-box"):
+            alert_title_node = alert_box.select_one(".alert-tit")
+            alert_title = _clean_text(
+                alert_title_node.get_text(" ", strip=True) if alert_title_node else ""
+            )
+            alert_items = LeaveOfAbsenceGuideSource._extract_nested_list_steps(
+                alert_box.select_one("ul")
+            )
+            if alert_title and alert_items:
+                steps.extend(f"{alert_title}: {item}" for item in alert_items)
+            else:
+                steps.extend(alert_items)
+    return _unique(steps)
+
+
+def _extract_seasonal_semester_direct_steps(section) -> list[str]:
+    steps: list[str] = []
+    for child in section.find_all(["p", "div"], recursive=False):
+        classes = set(child.get("class", []))
+        if {"h4-tit01", "h5-tit01", "h3-tit01", "alert-tit"} & classes:
+            continue
+        if {"alert-txt", "link-box", "table-wrap", "alert-box"} & classes:
+            continue
+        if child.find("table", recursive=False) is not None:
+            continue
+        text = _extract_seasonal_semester_direct_text(child)
+        if text:
+            steps.append(text)
+    return _unique(steps)
+
+
+def _extract_seasonal_semester_direct_text(node) -> str:
+    parts: list[str] = []
+    for child in node.contents:
+        if isinstance(child, str):
+            text = _clean_text(child)
+            if text:
+                parts.append(text)
+            continue
+        classes = set(child.get("class", []))
+        if getattr(child, "name", None) in {"ul", "table"}:
+            continue
+        if {"alert-txt", "alert-box", "h4-tit01", "h5-tit01", "h3-tit01", "alert-tit"} & classes:
+            continue
+        text = _clean_text(child.get_text(" ", strip=True))
+        if text:
+            parts.append(text)
+    return _normalize_note_text(" ".join(parts))
 
 
 class ScholarshipGuideSource:

@@ -104,6 +104,7 @@ def test_mcp_oauth_metadata_and_initialize_flow(app_env, monkeypatch):
     assert "academic status" in initialize.json()["result"]["instructions"]
     assert "registration" in initialize.json()["result"]["instructions"]
     assert "class" in initialize.json()["result"]["instructions"]
+    assert "seasonal semester" in initialize.json()["result"]["instructions"]
     assert "wifi guides" in initialize.json()["result"]["instructions"]
     assert session_id
     assert list_tools.status_code == 200
@@ -116,6 +117,7 @@ def test_mcp_oauth_metadata_and_initialize_flow(app_env, monkeypatch):
         "tool_list_academic_status_guides",
         "tool_list_registration_guides",
         "tool_list_class_guides",
+        "tool_list_seasonal_semester_guides",
         "tool_list_certificate_guides",
         "tool_list_leave_of_absence_guides",
         "tool_list_scholarship_guides",

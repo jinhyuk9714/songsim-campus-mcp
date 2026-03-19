@@ -18,6 +18,7 @@ def test_public_usage_guide_text_contains_current_anchor_phrases():
     assert "tool_list_academic_status_guides" in content
     assert "tool_list_registration_guides" in content
     assert "tool_list_class_guides" in content
+    assert "tool_list_seasonal_semester_guides" in content
     assert "tool_list_leave_of_absence_guides" in content
     assert "tool_list_scholarship_guides" in content
     assert "tool_list_wifi_guides" in content
@@ -26,6 +27,7 @@ def test_public_usage_guide_text_contains_current_anchor_phrases():
     assert "등록금 고지서 조회 방법" in content
     assert "수강신청 변경기간" in content
     assert "외국어강의 의무이수 요건" in content
+    assert "계절학기 신청 시기" in content
     assert "학점교류 담당 전화번호" in content
     assert "재입학 지원자격" in content
     assert "/gpt/" not in content
@@ -99,5 +101,6 @@ def test_register_shared_resources_exposes_expected_resource_uris(tmp_path):
         "songsim://academic-status-guide",
         "songsim://registration-guide",
         "songsim://class-guide",
+        "songsim://seasonal-semester-guide",
         "songsim://academic-calendar",
     }
