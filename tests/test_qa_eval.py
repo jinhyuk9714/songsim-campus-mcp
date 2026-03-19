@@ -233,7 +233,9 @@ def test_build_truth_rows_marks_watch_only_without_expected() -> None:
     assert truth_rows[0].truth_source == "watchlist"
 
 
-def test_build_truth_rows_skips_facility_host_place_canary_without_database() -> None:
+def test_build_truth_rows_builds_facility_host_place_canary_from_sources_without_database(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     row = EvalCorpusRow.model_validate(
         {
             "id": "PLF001",
@@ -249,15 +251,65 @@ def test_build_truth_rows_skips_facility_host_place_canary_without_database() ->
         }
     )
 
+    monkeypatch.setattr(
+        qa_eval.CampusMapSource,
+        "fetch_place_list",
+        lambda self: "<places></places>",
+    )
+    monkeypatch.setattr(
+        qa_eval.CampusMapSource,
+        "parse_place_list",
+        lambda self, _html, *, fetched_at: [
+            {
+                "slug": "sophie-barat-hall",
+                "name": "학생미래인재관",
+                "category": "building",
+                "aliases": ["학생회관", "학생센터", "학생식당"],
+                "opening_hours": {},
+                "source_tag": "cuk_campus_map",
+                "last_synced_at": fetched_at,
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        qa_eval.CampusFacilitiesSource,
+        "fetch",
+        lambda self: "<facilities></facilities>",
+    )
+    monkeypatch.setattr(
+        qa_eval.CampusFacilitiesSource,
+        "parse",
+        lambda self, _html, *, fetched_at: [
+            {
+                "facility_name": "복사실",
+                "category": "복사실",
+                "phone": "02-2164-4725",
+                "location": "학생회관 1층",
+                "hours_text": "평일 08:50~19:00",
+                "source_tag": "cuk_facilities",
+                "last_synced_at": fetched_at,
+            }
+        ],
+    )
+
     truth_rows = build_truth_rows([row], database_url=None, captured_at="2026-03-18T10:10:00+09:00")
 
     assert truth_rows == [
         EvalTruthRow(
             id="PLF001",
-            normalized_expected=None,
-            truth_source="unavailable",
+            normalized_expected={
+                "slug": "sophie-barat-hall",
+                "name": "학생회관",
+                "canonical_name": "학생미래인재관",
+                "category": "building",
+                "matched_facility": {
+                    "name": "복사실",
+                    "location_hint": "학생회관 1층",
+                },
+            },
+            truth_source="official_source",
             captured_at="2026-03-18T10:10:00+09:00",
-            stability="degraded_skip",
+            stability="stable",
         )
     ]
 
@@ -340,6 +392,134 @@ def test_build_truth_rows_uses_database_snapshot_for_composite_facility_host_pla
             },
             truth_source="database_snapshot",
             captured_at="2026-03-19T12:10:00+09:00",
+            stability="stable",
+        )
+    ]
+
+
+def test_build_truth_rows_prefers_official_source_for_place_alias_queries_even_with_database(
+    app_env: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    row = EvalCorpusRow.model_validate(
+        {
+            "id": "PLALIAS001",
+            "domain": "place",
+            "style": "alias",
+            "user_utterance": "학생회관 어디야?",
+            "api_request": {"path": "/places", "params": {"query": "학생회관", "limit": 5}},
+            "expected_mcp_flow": "tool_search_places -> tool_get_place",
+            "truth_mode": "exact_value",
+            "pass_rule": {"summary_kind": "places_top1_alias_display"},
+            "watch_policy": "none",
+            "notes": "",
+        }
+    )
+
+    monkeypatch.setattr(
+        qa_eval,
+        "_payload_from_db",
+        lambda *_args, **_kwargs: pytest.fail("place alias truth should not use database snapshot"),
+    )
+    monkeypatch.setattr(
+        qa_eval,
+        "_payload_from_sources",
+        lambda *_args, **_kwargs: [
+            {
+                "slug": "sophie-barat-hall",
+                "name": "학생회관",
+                "canonical_name": "학생미래인재관",
+                "category": "building",
+                "aliases": ["학생회관", "학생센터", "학생식당"],
+                "matched_facility": None,
+            }
+        ],
+    )
+
+    truth_rows = build_truth_rows(
+        [row],
+        database_url=app_env,
+        captured_at="2026-03-19T12:20:00+09:00",
+    )
+
+    assert truth_rows == [
+        EvalTruthRow(
+            id="PLALIAS001",
+            normalized_expected={
+                "slug": "sophie-barat-hall",
+                "name": "학생회관",
+                "canonical_name": "학생미래인재관",
+                "category": "building",
+                "matched_facility": None,
+            },
+            truth_source="official_source",
+            captured_at="2026-03-19T12:20:00+09:00",
+            stability="stable",
+        )
+    ]
+
+
+def test_build_truth_rows_falls_back_to_official_source_for_facility_host_when_db_is_empty(
+    app_env: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    row = EvalCorpusRow.model_validate(
+        {
+            "id": "PLF002",
+            "domain": "place",
+            "style": "normal",
+            "user_utterance": "우리은행 전화번호 알려줘",
+            "api_request": {
+                "path": "/places",
+                "params": {"query": "우리은행 전화번호 알려줘", "limit": 5},
+            },
+            "expected_mcp_flow": "tool_search_places -> tool_get_place",
+            "truth_mode": "set_contains",
+            "pass_rule": {"summary_kind": "places_top1_facility_host"},
+            "watch_policy": "facility_search",
+            "notes": "",
+        }
+    )
+
+    monkeypatch.setattr(qa_eval, "_payload_from_db", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(
+        qa_eval,
+        "_payload_from_sources",
+        lambda *_args, **_kwargs: [
+            {
+                "slug": "sophie-barat-hall",
+                "name": "학생회관",
+                "canonical_name": "학생미래인재관",
+                "category": "building",
+                "matched_facility": {
+                    "name": "우리은행",
+                    "location_hint": "학생회관 1층",
+                },
+            }
+        ],
+    )
+
+    truth_rows = build_truth_rows(
+        [row],
+        database_url=app_env,
+        captured_at="2026-03-19T12:30:00+09:00",
+    )
+
+    assert truth_rows == [
+        EvalTruthRow(
+            id="PLF002",
+            normalized_expected={
+                "slug": "sophie-barat-hall",
+                "name": "학생회관",
+                "canonical_name": "학생미래인재관",
+                "category": "building",
+                "matched_facility": {
+                    "name": "우리은행",
+                    "location_hint": "학생회관 1층",
+                },
+            },
+            truth_source="official_source",
+            captured_at="2026-03-19T12:30:00+09:00",
             stability="stable",
         )
     ]
@@ -646,7 +826,7 @@ def test_payload_from_sources_normalizes_notice_public_category_and_sorting() ->
     ]
 
 
-def test_summarize_payload_places_alias_display_includes_aliases() -> None:
+def test_summarize_payload_places_alias_display_ignores_aliases() -> None:
     payload = [
         {
             "slug": "student-center",
@@ -664,7 +844,6 @@ def test_summarize_payload_places_alias_display_includes_aliases() -> None:
         "name": "학생회관",
         "canonical_name": "학생미래인재관",
         "category": "facility",
-        "aliases": ["학생회관", "student center"],
         "matched_facility": None,
     }
 

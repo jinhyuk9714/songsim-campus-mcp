@@ -11,10 +11,10 @@ API-first public student surface baseline with live-synced truth.
 
 ## 실행 메타
 
-- checked_at: `2026-03-19T02:09:28+00:00`
+- checked_at: `2026-03-19T02:32:02+00:00`
 - corpus_size: `1009`
 - executed: `1009`
-- hard fail 45
+- hard fail 44
 
 ## 판정 레벨
 
@@ -29,12 +29,12 @@ API-first public student surface baseline with live-synced truth.
 
 | Verdict | Count |
 | --- | --- |
-| pass | 952 |
+| pass | 960 |
 | soft_pass | 0 |
 | soft_fail | 0 |
-| fail | 45 |
+| fail | 44 |
 | watch | 5 |
-| skip | 7 |
+| skip | 0 |
 
 ## 도메인 요약
 
@@ -48,7 +48,7 @@ API-first public student surface baseline with live-synced truth.
 | leave_of_absence_guides | 40 | 40 |
 | notices | 110 | 66 |
 | out_of_scope | 30 | 30 |
-| place | 160 | 152 |
+| place | 160 | 160 |
 | registration_guides | 4 | 4 |
 | restaurants | 160 | 160 |
 | scholarship_guides | 40 | 40 |
@@ -81,14 +81,6 @@ API-first public student surface baseline with live-synced truth.
 
 | ID | Domain | User utterance | Verdict | Comparison |
 | --- | --- | --- | --- | --- |
-| PLC-0001 | place | 학생회관 어디야? | fail | exact_mismatch |
-| PLC-0002 | place | K관 어디야? | skip | missing_truth |
-| PLC-0003 | place | 중도 어디야? | skip | missing_truth |
-| PLC-0004 | place | 니콜스관 어디야? | skip | missing_truth |
-| PLC-0156 | place | 복사실이 어디야? | skip | missing_truth |
-| PLC-0157 | place | 우리은행 전화번호 알려줘 | skip | missing_truth |
-| PLC-0158 | place | 카페드림 어디야? | skip | missing_truth |
-| PLC-0159 | place | 트러스트짐 어디야? | skip | missing_truth |
 | NTC-0002 | notices | academic 공지 알려줘 | fail | set_mismatch |
 | NTC-0003 | notices | scholarship 공지 알려줘 | fail | set_mismatch |
 | NTC-0008 | notices | academic 최신 공지 보여줘 | fail | set_mismatch |
@@ -131,11 +123,11 @@ API-first public student surface baseline with live-synced truth.
 | NTC-0099 | notices | scholarship 최신 공지 보여줘 | fail | set_mismatch |
 | NTC-0102 | notices | academic 공지 알려줘 | fail | set_mismatch |
 | NTC-0103 | notices | scholarship 공지 알려줘 | fail | set_mismatch |
+| NTC-0108 | notices | academic 최신 공지 보여줘 | fail | set_mismatch |
+| NTC-0109 | notices | scholarship 최신 공지 보여줘 | fail | set_mismatch |
 
 ## 다음 액션
 
-- `PLC-0155`는 이번 배포에서 pass로 회복됐으므로, 동일 계열 회귀는 place/facility canary로 계속 유지한다.
-- 남은 `hard fail 45`는 현재 기준 `notices` academic/scholarship snapshot drift와 `PLC-0001` 1건이므로, 다음 조치는 public notice snapshot 복구와 `학생회관 어디야?` truth/actual 정렬이다.
-- 남은 `skip 7`은 place truth를 만드는 DB 경로와 live public snapshot이 어긋난 상태이므로, QA truth env와 public DB를 먼저 일치시킨 뒤 재실행한다.
-- course source-gap watchlist는 hard fail counts와 계속 분리한다.
-- 최종 공개 배포 전에는 stable canary만 50문장 release gate로 승격한다.
+- Keep the course source-gap watchlist separate from hard fail counts.
+- Re-run `songsim-eval-public sync-truth` before large public releases.
+- Promote only stable canaries into the 50-question release gate.

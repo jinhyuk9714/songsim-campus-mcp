@@ -19,6 +19,7 @@ from . import place_search_runtime, services
 from .ingest.official_sources import (
     AcademicCalendarSource,
     AcademicSupportGuideSource,
+    CampusFacilitiesSource,
     CampusMapSource,
     CertificateGuideSource,
     CourseCatalogSource,
@@ -220,7 +221,6 @@ def _summarize_payload(payload: Any, *, summary_kind: str) -> Any:
             "name": item.get("name"),
             "canonical_name": item.get("canonical_name"),
             "category": item.get("category"),
-            "aliases": [alias for alias in (item.get("aliases") or [])],
             "matched_facility": item.get("matched_facility"),
         }
     if summary_kind == "courses_top5":
@@ -555,6 +555,179 @@ def _search_places_from_source(
     return [item for _, _, _, item in ranked[: _limit_from_row(row, 10)]]
 
 
+def _load_source_place_rows(
+    *,
+    fetched_at: str,
+    source_cache: dict[str, Any],
+) -> list[dict[str, Any]]:
+    cache_key = "places_snapshot"
+    if cache_key not in source_cache:
+        source = CampusMapSource(services.CAMPUS_MAP_SOURCE_URL)
+        source_cache[cache_key] = services.apply_place_alias_overrides(
+            source.parse_place_list(
+                source.fetch_place_list(),
+                fetched_at=fetched_at,
+            )
+        )
+    return list(source_cache[cache_key])
+
+
+def _load_source_facility_rows(
+    *,
+    fetched_at: str,
+    source_cache: dict[str, Any],
+    place_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    cache_key = "campus_facilities_snapshot"
+    if cache_key not in source_cache:
+        source = CampusFacilitiesSource(services.FACILITIES_SOURCE_URL)
+        raw_rows = source.parse(source.fetch(), fetched_at=fetched_at)
+        normalized_rows: list[dict[str, Any]] = []
+        for row in raw_rows:
+            location_text = place_search_runtime._normalize_campus_facility_location(
+                row.get("location_text") or row.get("location")
+            )
+            normalized_rows.append(
+                {
+                    "facility_name": str(row.get("facility_name") or ""),
+                    "category": place_search_runtime._normalize_optional_text(row.get("category")),
+                    "phone": place_search_runtime._normalize_campus_facility_phone(
+                        row.get("phone") or row.get("contact")
+                    ),
+                    "location_text": location_text,
+                    "hours_text": place_search_runtime._normalize_optional_text(
+                        row.get("hours_text")
+                    ),
+                    "place_slug": place_search_runtime._resolve_campus_facility_place_slug(
+                        location_text,
+                        place_rows=place_rows,
+                    ),
+                    "source_url": row.get("source_url") or services.FACILITIES_SOURCE_URL,
+                    "source_tag": row.get("source_tag", "cuk_facilities"),
+                    "last_synced_at": row.get("last_synced_at"),
+                }
+            )
+        source_cache[cache_key] = normalized_rows
+    return list(source_cache[cache_key])
+
+
+def _search_facility_host_places_from_source(
+    row: EvalCorpusRow,
+    *,
+    fetched_at: str,
+    source_cache: dict[str, Any],
+) -> list[dict[str, Any]]:
+    places = _load_source_place_rows(fetched_at=fetched_at, source_cache=source_cache)
+    collapsed_query, compact_query = place_search_runtime._normalize_place_search_query(
+        str(row.api_request.params.get("query") or "")
+    )
+    if collapsed_query is None:
+        return []
+
+    facility_index = place_search_runtime._build_place_search_facility_index(places)
+    searchable_facilities = _load_source_facility_rows(
+        fetched_at=fetched_at,
+        source_cache=source_cache,
+        place_rows=places,
+    )
+    preferred_slugs = place_search_runtime._preferred_place_slugs_for_query(
+        collapsed_query,
+        context="place_search",
+    )
+    preferred_slug_set = set(preferred_slugs)
+    place_alias_lists: dict[str, list[str]] = {}
+    for place in places:
+        slug = str(place.get("slug") or "").strip()
+        if slug:
+            place_alias_lists[slug] = [str(alias) for alias in place.get("aliases", [])]
+
+    facility_best_by_slug: dict[str, tuple[int, int, dict[str, Any]]] = {}
+    for facility_index_value, facility in enumerate(searchable_facilities):
+        place_slug = str(facility.get("place_slug") or "").strip()
+        if not place_slug:
+            continue
+        rank = place_search_runtime._rank_campus_facility_candidate(
+            facility,
+            collapsed_query=collapsed_query,
+            compact_query=compact_query,
+        )
+        if rank is None:
+            continue
+        existing = facility_best_by_slug.get(place_slug)
+        if existing is None or (rank, facility_index_value) < (existing[0], existing[1]):
+            facility_best_by_slug[place_slug] = (rank, facility_index_value, facility)
+
+    ranked: list[tuple[int, int, int, int, dict[str, Any]]] = []
+    for index, place in enumerate(places):
+        place_rank = place_search_runtime._rank_place_search_candidate(
+            place,
+            collapsed_query=collapsed_query,
+            compact_query=compact_query,
+            facility_tokens=facility_index[index]["facility_tokens"],
+            generic_keywords=facility_index[index]["generic_keywords"],
+        )
+        slug = str(place.get("slug") or "").strip()
+        facility_match = facility_best_by_slug.get(slug)
+        if place_rank is None and facility_match is None:
+            continue
+
+        facility_sort = (
+            place_search_runtime._facility_phase_for_rank(facility_match[0])
+            if facility_match is not None
+            else None
+        )
+        place_sort = (
+            place_search_runtime._place_phase_for_rank(place_rank)
+            if place_rank is not None
+            else None
+        )
+        aliases = place_alias_lists.get(slug, [])
+        canonical_name = str(place.get("name") or "")
+        display_name = place_search_runtime._display_name_for_place_result(
+            slug,
+            canonical_name,
+            collapsed_query=collapsed_query,
+            compact_query=compact_query,
+            aliases=aliases,
+        )
+        if facility_sort is not None and (place_sort is None or facility_sort < place_sort):
+            phase, subrank = facility_sort
+            display_name = place_search_runtime._display_name_for_place_result(
+                slug,
+                canonical_name,
+                collapsed_query=collapsed_query,
+                compact_query=compact_query,
+                aliases=aliases,
+                has_matched_facility=True,
+            )
+            payload = {
+                **place,
+                "name": display_name,
+                "canonical_name": canonical_name,
+                "matched_facility": place_search_runtime._matched_facility_from_row(
+                    facility_match[2]
+                ).model_dump(exclude_none=True),
+            }
+        else:
+            if place_sort is None:
+                continue
+            phase, subrank = place_sort
+            payload = {
+                **place,
+                "name": display_name,
+                "canonical_name": canonical_name,
+            }
+        preference_rank = 0 if slug in preferred_slug_set else 1
+        ranked.append((phase, subrank, preference_rank, index, payload))
+
+    ranked.sort(key=lambda item: (item[0], item[1], item[2], item[3]))
+    if preferred_slugs:
+        ranked = [
+            item for item in ranked if str(item[4].get("slug") or "").strip() in preferred_slug_set
+        ]
+    return [item[4] for item in ranked[: _limit_from_row(row, 10)]]
+
+
 def _search_courses_from_source(
     row: EvalCorpusRow,
     *,
@@ -651,7 +824,11 @@ def _payload_from_sources(
     limit = _limit_from_row(row, 20)
     if path == "/places":
         if str(row.pass_rule.get("summary_kind") or "") == "places_top1_facility_host":
-            return None
+            return _search_facility_host_places_from_source(
+                row,
+                fetched_at=captured_at,
+                source_cache=source_cache,
+            )
         return _search_places_from_source(row, fetched_at=captured_at, source_cache=source_cache)
     if path == "/courses":
         return _search_courses_from_source(row, fetched_at=captured_at, source_cache=source_cache)
@@ -845,7 +1022,11 @@ def build_truth_rows(
             cached_payload = payload_cache.get(cache_key)
             if cached_payload is None:
                 payload: Any | None = None
-                prefer_official_source = row.api_request.path == "/notices"
+                summary_kind = str(row.pass_rule.get("summary_kind") or "")
+                prefer_official_source = row.api_request.path == "/notices" or (
+                    row.api_request.path == "/places"
+                    and summary_kind == "places_top1_alias_display"
+                )
                 use_official_source = prefer_official_source or conn is None
                 truth_source = "official_source" if use_official_source else "database_snapshot"
                 stability = "stable"
@@ -860,6 +1041,19 @@ def build_truth_rows(
                         )
                         truth_source = "official_source"
                         stability = "stable" if payload is not None else "degraded_skip"
+                    else:
+                        if (
+                            row.api_request.path == "/places"
+                            and summary_kind == "places_top1_facility_host"
+                            and _normalize_truth_payload(row, payload) is None
+                        ):
+                            payload = _payload_from_sources(
+                                row,
+                                captured_at=resolved_captured_at,
+                                source_cache=source_cache,
+                            )
+                            truth_source = "official_source"
+                            stability = "stable" if payload is not None else "degraded_skip"
                 else:
                     payload = _payload_from_sources(
                         row,
