@@ -7,6 +7,7 @@
 - Render health check가 가리키는 `/healthz`가 정상인지 확인
 - `registration_guides`가 공개 HTTP와 MCP 양쪽에서 보이는지 확인
 - `notices`의 `academic` 최신 3건이 공개 HTTP와 MCP 양쪽에서 보이는지 확인
+- nearby restaurants의 대표 alias origin과 strict `open_now` 경로가 공개 HTTP/MCP에서 유지되는지 확인
 - 대표 `courses` watchlist query가 500/timeout 없이 처리되는지 확인
 - 공개 MCP의 registration resource/tool contract가 깨지지 않았는지 확인
 
@@ -89,7 +90,28 @@ curl -fsS "$PUBLIC_HTTP_URL/notices?category=academic&limit=3" \
   | jq '.[0] | {title, category, source_tag}'
 ```
 
-## 5. MCP initialize + registration checks
+## 5. Nearby restaurants HTTP smoke
+
+```bash
+curl -fsS "$PUBLIC_HTTP_URL/restaurants/nearby?origin=%EC%A4%91%EB%8F%84&limit=3"
+curl -fsS "$PUBLIC_HTTP_URL/restaurants/nearby?origin=%ED%95%99%EC%83%9D%EC%8B%9D%EB%8B%B9&open_now=true&category=cafe&limit=3"
+```
+
+기대값:
+
+- 두 요청 모두 HTTP `200`
+- `origin=중도` 응답은 빈 배열이 아니고, 상위 결과들의 `"origin"`이 `"central-library"`로 정규화됨
+- `origin=학생식당&open_now=true&category=cafe` 응답은 현재 contract상 빈 배열이어도 괜찮음
+- 중요한 회귀 기준은 `open_now=true` 응답에 `open_now=null` item이 섞이지 않는 것
+
+`jq` 예시:
+
+```bash
+curl -fsS "$PUBLIC_HTTP_URL/restaurants/nearby?origin=%EC%A4%91%EB%8F%84&limit=3" \
+  | jq '.[0] | {name, origin, estimated_walk_minutes, source_tag}'
+```
+
+## 6. MCP initialize + registration checks
 
 아래 Python smoke는 live에서 검증한 payload 형태를 그대로 사용합니다.
 
@@ -155,12 +177,27 @@ with httpx.Client(timeout=20.0) as client:
     )
     print("tool_list_latest_notices", notices_call.status_code)
 
-    resource_read = client.post(
+    nearby_call = client.post(
         base,
         headers=call_headers,
         json={
             "jsonrpc": "2.0",
             "id": 4,
+            "method": "tools/call",
+            "params": {
+                "name": "tool_find_nearby_restaurants",
+                "arguments": {"origin": "중도", "limit": 3},
+            },
+        },
+    )
+    print("tool_find_nearby_restaurants", nearby_call.status_code)
+
+    resource_read = client.post(
+        base,
+        headers=call_headers,
+        json={
+            "jsonrpc": "2.0",
+            "id": 5,
             "method": "resources/read",
             "params": {"uri": "songsim://registration-guide"},
         },
@@ -174,10 +211,12 @@ PY
 - `initialize 200`
 - `tool_list_registration_guides 200`
 - `tool_list_latest_notices 200`
+- `tool_find_nearby_restaurants 200`
 - `registration resource 200`
 - `initialize` 응답의 `instructions`에 `registration` 문구가 포함됨
 - `tool_list_registration_guides` payload가 빈 결과가 아님
 - `tool_list_latest_notices` payload가 빈 결과가 아니고 academic 항목을 포함함
+- `tool_find_nearby_restaurants` payload가 빈 결과가 아니고 nearby 식당 요약 payload를 반환함
 - `resources/read` 결과의 첫 항목에 `source_tag=cuk_registration_guides`가 포함됨
 
 ## Pass 기준
@@ -185,8 +224,10 @@ PY
 - `/healthz`가 `200`과 `{"ok":true}`를 반환
 - `/registration-guides`가 `payment_and_return` topic과 `cuk_registration_guides` source tag를 반환
 - `/notices?category=academic&limit=3`가 `academic` notice와 `cuk_campus_notices` source tag를 반환
+- `/restaurants/nearby?origin=중도`가 `central-library` origin으로 nearby 결과를 반환
+- `/restaurants/nearby?origin=학생식당&open_now=true&category=cafe&limit=3`가 `200`으로 안정 응답하고, 빈 배열이어도 `open_now` strict contract와 일치
 - `/courses?query=CSE301...`가 빈 배열이어도 좋으니 `200`으로 안정 응답
-- MCP initialize가 성공하고 `tool_list_registration_guides`, `tool_list_latest_notices`, `songsim://registration-guide`가 모두 노출
-- MCP registration tool call이 에러 없이 응답
+- MCP initialize가 성공하고 `tool_list_registration_guides`, `tool_list_latest_notices`, `tool_find_nearby_restaurants`, `songsim://registration-guide`가 모두 노출
+- MCP registration/nearby tool call이 에러 없이 응답
 
-이 다섯 가지가 통과하면 registration-guides 공개 런치 closeout smoke는 충분합니다.
+이 여섯 가지가 통과하면 registration-guides + nearby restaurant 공개 smoke는 충분합니다.

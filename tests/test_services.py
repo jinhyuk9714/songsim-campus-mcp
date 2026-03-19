@@ -1744,6 +1744,39 @@ def test_find_nearby_restaurants_accepts_facility_alias_as_origin(app_env):
     assert all(item.origin == "student-center" for item in alias_items)
 
 
+def test_find_nearby_restaurants_alias_origin_reuses_same_fresh_kakao_cache(app_env):
+    init_db()
+    seed_demo(force=True)
+    client = FakeKakaoClient()
+
+    class ShouldNotBeCalledKakaoClient:
+        def search_sync(self, query: str, *, x=None, y=None, radius: int = 1000):
+            raise AssertionError("alias origin should resolve to the same fresh nearby cache key")
+
+    with connection() as conn:
+        slug_items = find_nearby_restaurants(
+            conn,
+            origin="central-library",
+            category="korean",
+            walk_minutes=15,
+            limit=2,
+            kakao_client=client,
+        )
+        alias_items = find_nearby_restaurants(
+            conn,
+            origin="중도",
+            category="korean",
+            walk_minutes=15,
+            limit=2,
+            kakao_client=ShouldNotBeCalledKakaoClient(),
+        )
+
+    assert client.calls == 1
+    assert [item.name for item in alias_items] == [item.name for item in slug_items]
+    assert all(item.origin == "central-library" for item in alias_items)
+    assert all(item.source_tag == "kakao_local_cache" for item in alias_items)
+
+
 def test_list_estimated_empty_classrooms_resolves_building_alias_and_sorts_available_rooms(app_env):
     init_db()
     seed_demo(force=True)

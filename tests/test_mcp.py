@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import datetime
 
 import pytest
 
@@ -13,6 +14,7 @@ from songsim_campus.repo import (
     replace_courses,
     replace_notices,
     replace_places,
+    replace_restaurant_cache_snapshot,
     replace_restaurants,
     replace_transport_guides,
     update_place_opening_hours,
@@ -2778,6 +2780,199 @@ def test_mcp_public_nearby_restaurants_budget_max_requires_price_evidence(app_en
     payload = asyncio.run(main())
 
     assert [item["name"] for item in payload] == ["버짓김밥"]
+
+    clear_settings_cache()
+
+
+def test_mcp_public_nearby_restaurants_can_filter_open_now_for_late_night_hours(
+    app_env,
+    monkeypatch,
+):
+    pytest.importorskip("mcp.server.fastmcp")
+    init_db()
+    seed_demo(force=True)
+    with connection() as conn:
+        replace_restaurants(
+            conn,
+            [
+                {
+                    "slug": "night-snack",
+                    "name": "야식분식",
+                    "category": "korean",
+                    "min_price": 7000,
+                    "max_price": 9000,
+                    "latitude": 37.4869,
+                    "longitude": 126.7999,
+                    "tags": ["한식"],
+                    "description": "야간 운영 테스트 식당",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                }
+            ],
+        )
+        update_place_opening_hours(
+            conn,
+            "central-library",
+            {"야식분식": "23:00~02:00"},
+            last_synced_at="2026-03-13T09:00:00+09:00",
+        )
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        result = await mcp.call_tool(
+            "tool_find_nearby_restaurants",
+            {
+                "origin": "central-library",
+                "open_now": True,
+                "at": "2026-03-16T23:30:00+09:00",
+            },
+        )
+        return _tool_payloads(result)[0]
+
+    payload = asyncio.run(main())
+
+    assert payload["name"] == "야식분식"
+    assert payload["open_now"] is True
+
+    clear_settings_cache()
+
+
+def test_mcp_public_nearby_restaurants_return_structured_error_for_missing_origin(
+    app_env,
+    monkeypatch,
+):
+    pytest.importorskip("mcp.server.fastmcp")
+    init_db()
+    seed_demo(force=True)
+    with connection() as conn:
+        replace_restaurants(
+            conn,
+            [
+                {
+                    "slug": "test-bap",
+                    "name": "테스트백반",
+                    "category": "korean",
+                    "min_price": 7000,
+                    "max_price": 9000,
+                    "latitude": 37.4866,
+                    "longitude": 126.8018,
+                    "tags": ["한식"],
+                    "description": "테스트 식당",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                }
+            ],
+        )
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        missing_origin = await mcp.call_tool(
+            "tool_find_nearby_restaurants",
+            {"origin": "does-not-exist", "limit": 1},
+        )
+        return _tool_payloads(missing_origin)[0]
+
+    missing_origin_payload = asyncio.run(main())
+
+    assert missing_origin_payload["type"] == "not_found"
+    assert missing_origin_payload["error"] == missing_origin_payload["message"]
+    assert "Origin place not found" in missing_origin_payload["message"]
+
+    clear_settings_cache()
+
+
+def test_mcp_public_nearby_restaurants_prefer_official_facility_hours_before_kakao_detail(
+    app_env,
+    monkeypatch,
+):
+    pytest.importorskip("mcp.server.fastmcp")
+    init_db()
+    calls = {"detail": 0}
+    monkeypatch.setattr(
+        "songsim_campus.services._now",
+        lambda: datetime.fromisoformat("2026-03-14T12:00:00+09:00"),
+    )
+
+    class ExplodingDetailClient:
+        def fetch_sync(self, place_id: str):
+            calls["detail"] += 1
+            raise AssertionError("detail client should not be used for official facility matches")
+
+    monkeypatch.setattr("songsim_campus.services.KakaoPlaceDetailClient", ExplodingDetailClient)
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                {
+                    "slug": "central-library",
+                    "name": "중앙도서관",
+                    "category": "library",
+                    "aliases": ["도서관", "중도"],
+                    "description": "테스트 도서관",
+                    "latitude": 37.48685,
+                    "longitude": 126.80164,
+                    "opening_hours": {},
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-14T10:00:00+09:00",
+                }
+            ],
+        )
+        replace_restaurant_cache_snapshot(
+            conn,
+            origin_slug="central-library",
+            kakao_query="카페",
+            radius_meters=15 * 75,
+            fetched_at="2026-03-14T10:00:00+09:00",
+            rows=[
+                {
+                    "id": -1,
+                    "slug": "kakao-cafe-dream",
+                    "name": "카페드림",
+                    "category": "cafe",
+                    "min_price": None,
+                    "max_price": None,
+                    "latitude": 37.48695,
+                    "longitude": 126.79995,
+                    "tags": ["카페"],
+                    "description": "테스트 카페",
+                    "source_tag": "kakao_local_cache",
+                    "last_synced_at": "2026-03-14T10:00:00+09:00",
+                    "kakao_place_id": "242731511",
+                    "source_url": "https://place.map.kakao.com/242731511",
+                }
+            ],
+        )
+        update_place_opening_hours(
+            conn,
+            "central-library",
+            {"카페드림": "평일 08:00~19:00 토 10:00~16:00 (일/공휴일휴무)"},
+            last_synced_at="2026-03-13T09:00:00+09:00",
+        )
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        result = await mcp.call_tool(
+            "tool_find_nearby_restaurants",
+            {
+                "origin": "central-library",
+                "category": "cafe",
+                "limit": 1,
+                "at": "2026-03-15T11:00:00+09:00",
+            },
+        )
+        return _tool_payloads(result)[0]
+
+    payload = asyncio.run(main())
+
+    assert payload["name"] == "카페드림"
+    assert payload["open_now"] is False
+    assert calls["detail"] == 0
 
     clear_settings_cache()
 

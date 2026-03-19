@@ -2374,6 +2374,58 @@ def test_nearby_restaurants_endpoint_uses_campus_graph_for_external_routes(clien
     assert response.json()[0]['estimated_walk_minutes'] == 6
 
 
+def test_nearby_restaurants_endpoint_falls_back_to_direct_distance_when_origin_is_not_in_graph(
+    client,
+):
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                {
+                    "slug": "annex-lobby",
+                    "name": "별관로비",
+                    "category": "facility",
+                    "aliases": [],
+                    "description": "",
+                    "latitude": 37.48590,
+                    "longitude": 126.80282,
+                    "opening_hours": {},
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                }
+            ],
+        )
+        replace_restaurants(
+            conn,
+            [
+                {
+                    "slug": "gate-bap",
+                    "name": "정문백반",
+                    "category": "korean",
+                    "min_price": 7000,
+                    "max_price": 9000,
+                    "latitude": 37.48590,
+                    "longitude": 126.80282,
+                    "tags": ["한식"],
+                    "description": "테스트 식당",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                }
+            ],
+        )
+
+    response = client.get(
+        "/restaurants/nearby",
+        params={"origin": "annex-lobby", "walk_minutes": 15, "limit": 3},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [item["slug"] for item in payload] == ["gate-bap"]
+    assert payload[0]["estimated_walk_minutes"] == 1
+    assert payload[0]["distance_meters"] is not None
+
+
 def test_nearby_restaurants_endpoint_budget_max_requires_price_evidence(client):
     with connection() as conn:
         replace_restaurants(
@@ -2435,6 +2487,62 @@ def test_nearby_restaurants_returns_404_for_missing_origin(client):
     response = client.get('/restaurants/nearby', params={'origin': 'does-not-exist'})
 
     assert response.status_code == 404
+
+
+def test_nearby_restaurants_returns_400_for_ambiguous_origin(client):
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                {
+                    "slug": "library-a",
+                    "name": "중앙도서관A",
+                    "category": "library",
+                    "aliases": ["중도"],
+                    "description": "",
+                    "latitude": 37.48643,
+                    "longitude": 126.80164,
+                    "opening_hours": {},
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "slug": "library-b",
+                    "name": "중앙도서관B",
+                    "category": "library",
+                    "aliases": ["중도"],
+                    "description": "",
+                    "latitude": 37.48653,
+                    "longitude": 126.80174,
+                    "opening_hours": {},
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+        replace_restaurants(
+            conn,
+            [
+                {
+                    "slug": "test-bap",
+                    "name": "테스트백반",
+                    "category": "korean",
+                    "min_price": 7000,
+                    "max_price": 9000,
+                    "latitude": 37.4866,
+                    "longitude": 126.8018,
+                    "tags": ["한식"],
+                    "description": "테스트 식당",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                }
+            ],
+        )
+
+    response = client.get("/restaurants/nearby", params={"origin": "중도", "walk_minutes": 15})
+
+    assert response.status_code == 400
+    assert response.json()["detail"].startswith("Ambiguous origin: 중도.")
 
 
 def test_nearby_restaurants_accepts_origin_alias(client):
@@ -2590,6 +2698,83 @@ def test_nearby_restaurants_endpoint_reuses_kakao_cache(client, monkeypatch):
     assert [item['name'] for item in first.json()] == [item['name'] for item in second.json()]
     assert all(item['source_tag'] == 'kakao_local' for item in first.json())
     assert all(item['source_tag'] == 'kakao_local_cache' for item in second.json())
+
+
+def test_nearby_restaurants_endpoint_falls_back_to_local_results_when_cache_expired_and_live_fails(
+    client,
+    monkeypatch,
+):
+    monkeypatch.setenv("SONGSIM_KAKAO_REST_API_KEY", "test-key")
+    clear_settings_cache()
+    old_now = datetime.fromisoformat("2026-03-10T12:00:00+09:00")
+    expired_now = datetime.fromisoformat("2026-03-14T20:30:00+09:00")
+
+    class ApiExpiredCacheKakaoClient:
+        def __init__(self, api_key: str):
+            assert api_key == "test-key"
+
+        def search_sync(self, query: str, *, x=None, y=None, radius: int = 1000):
+            return [
+                services.KakaoPlace(
+                    name="가톨릭백반",
+                    category="음식점 > 한식",
+                    address="경기 부천시 원미구",
+                    latitude=37.48674,
+                    longitude=126.80182,
+                    place_id="1",
+                    place_url="https://place.map.kakao.com/1",
+                )
+            ]
+
+    class ExplodingApiKakaoClient:
+        def __init__(self, api_key: str):
+            assert api_key == "test-key"
+
+        def search_sync(self, query: str, *, x=None, y=None, radius: int = 1000):
+            raise services.httpx.HTTPError("boom")
+
+    with connection() as conn:
+        replace_restaurants(
+            conn,
+            [
+                {
+                    "slug": "local-kimbap",
+                    "name": "로컬김밥",
+                    "category": "korean",
+                    "min_price": 7000,
+                    "max_price": 9000,
+                    "latitude": 37.48653,
+                    "longitude": 126.80174,
+                    "tags": ["한식"],
+                    "description": "로컬 fallback 후보",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                }
+            ],
+        )
+
+    monkeypatch.setattr("songsim_campus.services._now", lambda: old_now)
+    monkeypatch.setattr("songsim_campus.services.KakaoLocalClient", ApiExpiredCacheKakaoClient)
+    first = client.get(
+        "/restaurants/nearby",
+        params={"origin": "central-library", "category": "korean", "walk_minutes": 15},
+    )
+
+    monkeypatch.setattr("songsim_campus.services._now", lambda: expired_now)
+    monkeypatch.setattr("songsim_campus.services.KakaoLocalClient", ExplodingApiKakaoClient)
+    second = client.get(
+        "/restaurants/nearby",
+        params={"origin": "central-library", "category": "korean", "walk_minutes": 15},
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert all(item["source_tag"] == "kakao_local" for item in first.json())
+    assert [item["slug"] for item in second.json()] == ["local-kimbap"]
+    assert all(
+        item["source_tag"] not in {"kakao_local", "kakao_local_cache"}
+        for item in second.json()
+    )
 
 
 def test_nearby_restaurants_endpoint_uses_kakao_detail_hours(client, monkeypatch):
