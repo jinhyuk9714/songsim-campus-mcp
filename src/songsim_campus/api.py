@@ -27,6 +27,7 @@ from .schemas import (
     AcademicSupportGuide,
     CampusDiningMenu,
     CertificateGuide,
+    ClassGuide,
     Course,
     EstimatedEmptyClassroomResponse,
     GptCampusDiningMenuResult,
@@ -83,6 +84,7 @@ from .services import (
     list_academic_status_guides,
     list_academic_support_guides,
     list_certificate_guides,
+    list_class_guides,
     list_estimated_empty_classrooms,
     list_latest_notices,
     list_leave_of_absence_guides,
@@ -440,6 +442,17 @@ def create_app() -> FastAPI:
         with connection() as conn:
             try:
                 return list_registration_guides(conn, topic=topic, limit=limit)
+            except InvalidRequestError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/class-guides", response_model=list[ClassGuide])
+    def class_guides(
+        topic: str | None = Query(default=None, description="수업 안내 유형 필터"),
+        limit: int = Query(default=20, ge=1, le=50),
+    ) -> list[ClassGuide]:
+        with connection() as conn:
+            try:
+                return list_class_guides(conn, topic=topic, limit=limit)
             except InvalidRequestError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
 

@@ -8,6 +8,7 @@ from .mcp_public_serializers import (
     serialize_public_academic_status_guide,
     serialize_public_academic_support_guide,
     serialize_public_certificate_guide,
+    serialize_public_class_guide,
     serialize_public_course,
     serialize_public_dining_menu,
     serialize_public_error,
@@ -43,6 +44,7 @@ from .services import (
     list_academic_status_guides,
     list_academic_support_guides,
     list_certificate_guides,
+    list_class_guides,
     list_estimated_empty_classrooms,
     list_latest_notices,
     list_leave_of_absence_guides,
@@ -265,6 +267,37 @@ def register_shared_tools(
             guides = list_registration_guides(conn, topic=topic, limit=limit)
             if public_readonly:
                 return [serialize_public_registration_guide(item) for item in guides]
+            return [item.model_dump() for item in guides]
+
+    @mcp.tool(
+        description=(
+            (
+                "학교 수업 안내를 읽을 때 사용합니다. 수강신청 변경기간, 재수강 기준, "
+                "수강과목취소, 수업평가, 공결 신청, 외국어강의 의무이수 같은 정적 안내를 "
+                "current snapshot으로 돌려줍니다."
+            )
+            if public_readonly
+            else "학교 수업 안내 current snapshot을 가져옵니다."
+        ),
+        meta=tool_meta,
+    )
+    def tool_list_class_guides(
+        topic: Annotated[
+            str | None,
+            Field(
+                description=(
+                    "수업 안내 유형 필터. registration_change, retake, "
+                    "course_cancellation, course_evaluation, excused_absence, "
+                    "foreign_language_requirement 중 하나를 사용합니다."
+                )
+            ),
+        ] = None,
+        limit: Annotated[int, Field(description="최대 결과 수. 기본값은 20입니다.")] = 20,
+    ):
+        with connection_factory() as conn:
+            guides = list_class_guides(conn, topic=topic, limit=limit)
+            if public_readonly:
+                return [serialize_public_class_guide(item) for item in guides]
             return [item.model_dump() for item in guides]
 
     @mcp.tool(

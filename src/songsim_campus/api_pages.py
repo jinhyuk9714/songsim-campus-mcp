@@ -81,6 +81,7 @@ def render_admin_sync_page(
         {"title": "academic_calendar", "fields": []},
         {"title": "academic_support_guides", "fields": []},
         {"title": "academic_status_guides", "fields": []},
+        {"title": "class_guides", "fields": []},
         {"title": "leave_of_absence_guides", "fields": []},
         {"title": "scholarship_guides", "fields": []},
         {"title": "wifi_guides", "fields": []},
@@ -298,6 +299,7 @@ def render_landing_page(
         "성심교정 중앙도서관 위치 알려줘",
         "2026년 1학기 객체지향 과목 찾아줘",
         "2026학년도 3월 학사일정 보여줘",
+        "수업평가 기간 알려줘",
         "등록금 납부 방법 알려줘",
         "재학증명서 발급 안내 알려줘",
         "장학제도 안내 알려줘",
@@ -453,6 +455,10 @@ def render_landing_page(
               re-admission guides
             </li>
             <li><code>/registration-guides</code> tuition bill, payment, and refund guides</li>
+            <li>
+              <code>/class-guides</code> class registration, retake, evaluation,
+              and excused-absence guides
+            </li>
             <li><code>/certificate-guides</code> certificate issuance guides</li>
             <li><code>/leave-of-absence-guides</code> leave-of-absence application guides</li>
             <li><code>/scholarship-guides</code> scholarship baseline guides</li>

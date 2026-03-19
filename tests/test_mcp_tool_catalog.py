@@ -32,6 +32,7 @@ def test_register_shared_tools_public_mode_exposes_expected_tool_names_and_metad
         "tool_list_academic_support_guides",
         "tool_list_academic_status_guides",
         "tool_list_registration_guides",
+        "tool_list_class_guides",
         "tool_list_certificate_guides",
         "tool_list_leave_of_absence_guides",
         "tool_list_scholarship_guides",
@@ -54,6 +55,8 @@ def test_register_shared_tools_public_mode_exposes_expected_tool_names_and_metad
     assert "예상 공실" in payloads["tool_list_estimated_empty_classrooms"]["description"]
     assert "등록금 고지서" in payloads["tool_list_registration_guides"]["description"]
     assert "초과학기생" in payloads["tool_list_registration_guides"]["description"]
+    assert "수업평가" in payloads["tool_list_class_guides"]["description"]
+    assert "외국어강의" in payloads["tool_list_class_guides"]["description"]
     assert "securitySchemes" in payloads["tool_search_places"]["_meta"]
     assert "K관" in (
         payloads["tool_search_places"]["inputSchema"]["properties"]["query"]["description"]
@@ -61,6 +64,9 @@ def test_register_shared_tools_public_mode_exposes_expected_tool_names_and_metad
     assert "walk_minutes" in payloads["tool_find_nearby_restaurants"]["description"]
     assert "payment_and_return" in (
         payloads["tool_list_registration_guides"]["inputSchema"]["properties"]["topic"]["description"]
+    )
+    assert "course_evaluation" in (
+        payloads["tool_list_class_guides"]["inputSchema"]["properties"]["topic"]["description"]
     )
 
 

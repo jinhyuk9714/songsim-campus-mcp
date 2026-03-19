@@ -4,12 +4,13 @@ from songsim_campus.mcp_public_serializers import (
     format_opening_hours_preview,
     restaurant_price_hint,
     serialize_public_certificate_guide,
+    serialize_public_class_guide,
     serialize_public_course,
     serialize_public_error,
     serialize_public_registration_guide,
     truncate_preview,
 )
-from songsim_campus.schemas import CertificateGuide, Course, RegistrationGuide
+from songsim_campus.schemas import CertificateGuide, ClassGuide, Course, RegistrationGuide
 from songsim_campus.services import InvalidRequestError, NotFoundError
 
 
@@ -110,3 +111,21 @@ def test_serialize_public_registration_guide_falls_back_to_first_step_summary():
     payload = serialize_public_registration_guide(guide)
 
     assert payload["guide_summary"] == "개강 후 30일 전까지는 등록금의 5/6 반환"
+
+
+def test_serialize_public_class_guide_falls_back_to_first_step_summary():
+    guide = ClassGuide(
+        id=1,
+        topic="course_evaluation",
+        title="수업평가 방법",
+        summary="",
+        steps=["강의평가 메뉴에서 입력합니다.", "다음 단계"],
+        links=[{"label": "수업", "url": "https://example.com/class"}],
+        source_url="https://example.com/class",
+        source_tag="test",
+        last_synced_at="2026-03-18T10:00:00+09:00",
+    )
+
+    payload = serialize_public_class_guide(guide)
+
+    assert payload["guide_summary"] == "강의평가 메뉴에서 입력합니다."
