@@ -11,10 +11,10 @@ API-first public student surface baseline with live-synced truth.
 
 ## 실행 메타
 
-- checked_at: `2026-03-19T02:32:02+00:00`
+- checked_at: `2026-03-19T03:42:22+00:00`
 - corpus_size: `1009`
 - executed: `1009`
-- hard fail 44
+- hard fail 0
 
 ## 판정 레벨
 
@@ -29,10 +29,10 @@ API-first public student surface baseline with live-synced truth.
 
 | Verdict | Count |
 | --- | --- |
-| pass | 960 |
+| pass | 1004 |
 | soft_pass | 0 |
 | soft_fail | 0 |
-| fail | 44 |
+| fail | 0 |
 | watch | 5 |
 | skip | 0 |
 
@@ -46,7 +46,7 @@ API-first public student surface baseline with live-synced truth.
 | classrooms | 60 | 60 |
 | courses | 160 | 160 |
 | leave_of_absence_guides | 40 | 40 |
-| notices | 110 | 66 |
+| notices | 110 | 110 |
 | out_of_scope | 30 | 30 |
 | place | 160 | 160 |
 | registration_guides | 4 | 4 |
@@ -79,52 +79,7 @@ API-first public student surface baseline with live-synced truth.
 
 ## 주요 이슈
 
-| ID | Domain | User utterance | Verdict | Comparison |
-| --- | --- | --- | --- | --- |
-| NTC-0002 | notices | academic 공지 알려줘 | fail | set_mismatch |
-| NTC-0003 | notices | scholarship 공지 알려줘 | fail | set_mismatch |
-| NTC-0008 | notices | academic 최신 공지 보여줘 | fail | set_mismatch |
-| NTC-0009 | notices | scholarship 최신 공지 보여줘 | fail | set_mismatch |
-| NTC-0012 | notices | academic 공지 알려줘 | fail | set_mismatch |
-| NTC-0013 | notices | scholarship 공지 알려줘 | fail | set_mismatch |
-| NTC-0018 | notices | academic 최신 공지 보여줘 | fail | set_mismatch |
-| NTC-0019 | notices | scholarship 최신 공지 보여줘 | fail | set_mismatch |
-| NTC-0022 | notices | academic 공지 알려줘 | fail | set_mismatch |
-| NTC-0023 | notices | scholarship 공지 알려줘 | fail | set_mismatch |
-| NTC-0028 | notices | academic 최신 공지 보여줘 | fail | set_mismatch |
-| NTC-0029 | notices | scholarship 최신 공지 보여줘 | fail | set_mismatch |
-| NTC-0032 | notices | academic 공지 알려줘 | fail | set_mismatch |
-| NTC-0033 | notices | scholarship 공지 알려줘 | fail | set_mismatch |
-| NTC-0038 | notices | academic 최신 공지 보여줘 | fail | set_mismatch |
-| NTC-0039 | notices | scholarship 최신 공지 보여줘 | fail | set_mismatch |
-| NTC-0042 | notices | academic 공지 알려줘 | fail | set_mismatch |
-| NTC-0043 | notices | scholarship 공지 알려줘 | fail | set_mismatch |
-| NTC-0048 | notices | academic 최신 공지 보여줘 | fail | set_mismatch |
-| NTC-0049 | notices | scholarship 최신 공지 보여줘 | fail | set_mismatch |
-| NTC-0052 | notices | academic 공지 알려줘 | fail | set_mismatch |
-| NTC-0053 | notices | scholarship 공지 알려줘 | fail | set_mismatch |
-| NTC-0058 | notices | academic 최신 공지 보여줘 | fail | set_mismatch |
-| NTC-0059 | notices | scholarship 최신 공지 보여줘 | fail | set_mismatch |
-| NTC-0062 | notices | academic 공지 알려줘 | fail | set_mismatch |
-| NTC-0063 | notices | scholarship 공지 알려줘 | fail | set_mismatch |
-| NTC-0068 | notices | academic 최신 공지 보여줘 | fail | set_mismatch |
-| NTC-0069 | notices | scholarship 최신 공지 보여줘 | fail | set_mismatch |
-| NTC-0072 | notices | academic 공지 알려줘 | fail | set_mismatch |
-| NTC-0073 | notices | scholarship 공지 알려줘 | fail | set_mismatch |
-| NTC-0078 | notices | academic 최신 공지 보여줘 | fail | set_mismatch |
-| NTC-0079 | notices | scholarship 최신 공지 보여줘 | fail | set_mismatch |
-| NTC-0082 | notices | academic 공지 알려줘 | fail | set_mismatch |
-| NTC-0083 | notices | scholarship 공지 알려줘 | fail | set_mismatch |
-| NTC-0088 | notices | academic 최신 공지 보여줘 | fail | set_mismatch |
-| NTC-0089 | notices | scholarship 최신 공지 보여줘 | fail | set_mismatch |
-| NTC-0092 | notices | academic 공지 알려줘 | fail | set_mismatch |
-| NTC-0093 | notices | scholarship 공지 알려줘 | fail | set_mismatch |
-| NTC-0098 | notices | academic 최신 공지 보여줘 | fail | set_mismatch |
-| NTC-0099 | notices | scholarship 최신 공지 보여줘 | fail | set_mismatch |
-| NTC-0102 | notices | academic 공지 알려줘 | fail | set_mismatch |
-| NTC-0103 | notices | scholarship 공지 알려줘 | fail | set_mismatch |
-| NTC-0108 | notices | academic 최신 공지 보여줘 | fail | set_mismatch |
-| NTC-0109 | notices | scholarship 최신 공지 보여줘 | fail | set_mismatch |
+_No hard issues._
 
 ## 다음 액션
 
