@@ -132,6 +132,13 @@ def test_init_db_acquires_schema_lock_before_running_statements(monkeypatch, tmp
     )
     executed: list[str] = []
 
+    class FakeResult:
+        def __init__(self, row):
+            self._row = row
+
+        def fetchone(self):
+            return self._row
+
     class FakeConnection:
         def __enter__(self):
             return self
@@ -141,8 +148,13 @@ def test_init_db_acquires_schema_lock_before_running_statements(monkeypatch, tmp
             return False
 
         def execute(self, statement, params=None):
+            if statement == "SELECT pg_advisory_lock(%s)":
+                executed.append(f"{statement}::{params!r}")
+                return FakeResult((1,))
+            if statement == "SELECT to_regclass(%s)":
+                return FakeResult((None,))
             executed.append(statement if params is None else f"{statement}::{params!r}")
-            return self
+            return FakeResult(None)
 
         def commit(self):
             executed.append("COMMIT")
@@ -161,3 +173,81 @@ def test_init_db_acquires_schema_lock_before_running_statements(monkeypatch, tmp
     assert "CREATE TABLE IF NOT EXISTS alpha (id integer)" in executed[1]
     assert "CREATE TABLE IF NOT EXISTS beta (id integer)" in executed[2]
     assert executed[-2:] == ["COMMIT", "CLOSE"]
+
+
+class _FakeResult:
+    def __init__(self, row):
+        self._row = row
+
+    def fetchone(self):
+        return self._row
+
+
+class _FakeConnection:
+    def __init__(self) -> None:
+        self.executed: list[str] = []
+        self.committed = False
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        return None
+
+    def execute(self, statement: str, params=None):
+        if statement == "SELECT pg_advisory_lock(%s)":
+            return _FakeResult((1,))
+        if statement == "SELECT 1 FROM pg_extension WHERE extname = %s":
+            return _FakeResult((1,))
+        if statement == "SELECT to_regclass(%s)":
+            relation_name = params[0]
+            if relation_name in {
+                "public.existing_table",
+                "public.existing_idx",
+            }:
+                return _FakeResult((relation_name,))
+            return _FakeResult((None,))
+        if "FROM information_schema.columns" in statement:
+            table_name, column_name = params
+            if (table_name, column_name) == ("existing_table", "existing_column"):
+                return _FakeResult((1,))
+            return _FakeResult(None)
+        self.executed.append(" ".join(statement.split()))
+        return _FakeResult(None)
+
+    def commit(self) -> None:
+        self.committed = True
+
+
+def test_init_db_executes_only_missing_schema_statements(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    schema_path = tmp_path / "schema.sql"
+    schema_path.write_text(
+        "\n".join(
+            [
+                "CREATE EXTENSION IF NOT EXISTS postgis;",
+                "CREATE TABLE IF NOT EXISTS existing_table (id INTEGER PRIMARY KEY);",
+                "CREATE TABLE IF NOT EXISTS missing_table (id INTEGER PRIMARY KEY);",
+                "ALTER TABLE existing_table ADD COLUMN IF NOT EXISTS existing_column TEXT;",
+                "ALTER TABLE existing_table ADD COLUMN IF NOT EXISTS missing_column TEXT;",
+                "CREATE INDEX IF NOT EXISTS existing_idx ON existing_table(id);",
+                "CREATE INDEX IF NOT EXISTS missing_idx ON missing_table(id);",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    fake_connection = _FakeConnection()
+
+    monkeypatch.setattr(db_module, "SCHEMA_PATH", schema_path)
+    monkeypatch.setattr(db_module, "get_connection", lambda: fake_connection)
+
+    init_db()
+
+    assert fake_connection.executed == [
+        "CREATE TABLE IF NOT EXISTS missing_table (id INTEGER PRIMARY KEY)",
+        "ALTER TABLE existing_table ADD COLUMN IF NOT EXISTS missing_column TEXT",
+        "CREATE INDEX IF NOT EXISTS missing_idx ON missing_table(id)",
+    ]
+    assert fake_connection.committed is True
