@@ -408,7 +408,20 @@ def test_meal_recommendations_endpoint_uses_campus_graph_for_external_routes(cli
                     "description": "테스트 식당",
                     "source_tag": "kakao_local",
                     "last_synced_at": "2026-03-13T09:00:00+09:00",
-                }
+                },
+                {
+                    "slug": "gate-bap-farther",
+                    "name": "정문백반2",
+                    "category": "korean",
+                    "min_price": 7000,
+                    "max_price": 9000,
+                    "latitude": 37.48578,
+                    "longitude": 126.80302,
+                    "tags": ["한식"],
+                    "description": "테스트 식당",
+                    "source_tag": "kakao_local",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
             ],
         )
 
@@ -430,5 +443,9 @@ def test_meal_recommendations_endpoint_uses_campus_graph_for_external_routes(cli
     )
 
     assert response.status_code == 200
-    assert response.json()["items"][0]["restaurant"]["estimated_walk_minutes"] == 6
-    assert response.json()["items"][0]["total_estimated_walk_minutes"] == 11
+    payload = response.json()["items"]
+    assert payload[0]["restaurant"]["estimated_walk_minutes"] == 6
+    assert payload[0]["total_estimated_walk_minutes"] == 11
+    assert [item["total_estimated_walk_minutes"] for item in payload[:2]] == sorted(
+        item["total_estimated_walk_minutes"] for item in payload[:2]
+    )

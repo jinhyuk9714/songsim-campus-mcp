@@ -609,7 +609,14 @@ def test_meal_recommendations_use_campus_graph_for_external_route_segments(app_e
                     latitude=37.48590,
                     longitude=126.80282,
                     source_tag="kakao_local",
-                )
+                ),
+                _restaurant_row(
+                    slug="gate-bap-farther",
+                    name="정문백반2",
+                    latitude=37.48575,
+                    longitude=126.80305,
+                    source_tag="kakao_local",
+                ),
             ],
         )
         profile = create_profile(conn)
@@ -632,6 +639,9 @@ def test_meal_recommendations_use_campus_graph_for_external_route_segments(app_e
     assert recommendation.next_place.slug == "kim-sou-hwan-hall"
     assert recommendation.items[0].restaurant.estimated_walk_minutes == 6
     assert recommendation.items[0].total_estimated_walk_minutes == 11
+    assert [
+        item.total_estimated_walk_minutes for item in recommendation.items[:2]
+    ] == sorted(item.total_estimated_walk_minutes for item in recommendation.items[:2])
 
 
 def test_meal_recommendations_accept_origin_alias(app_env):

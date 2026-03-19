@@ -584,6 +584,22 @@ def test_mcp_profile_personalization_tools_share_service_data(app_env):
                 {
                     "year": 2026,
                     "semester": 1,
+                    "code": "CSE101",
+                    "title": "자료구조",
+                    "professor": "테스트교수",
+                    "department": "컴퓨터정보공학부",
+                    "section": "01",
+                    "day_of_week": "월",
+                    "period_start": 7,
+                    "period_end": 8,
+                    "room": "K201",
+                    "raw_schedule": "월7~8(K201)",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "year": 2026,
+                    "semester": 1,
                     "code": "CSE201",
                     "title": "1학년 프로젝트입문",
                     "professor": "테스트교수",
@@ -629,6 +645,13 @@ def test_mcp_profile_personalization_tools_share_service_data(app_env):
                 'admission_type': 'freshman',
             },
         )
+        timetable = await mcp.call_tool(
+            'tool_set_profile_timetable',
+            {
+                'profile_id': profile['id'],
+                'courses': [{'year': 2026, 'semester': 1, 'code': 'CSE101', 'section': '01'}],
+            },
+        )
         interests = await mcp.call_tool(
             'tool_set_profile_interests',
             {'profile_id': profile['id'], 'tags': ['scholarship', 'language']},
@@ -637,19 +660,40 @@ def test_mcp_profile_personalization_tools_share_service_data(app_env):
             'tool_get_profile_course_recommendations',
             {'profile_id': profile['id'], 'year': 2026, 'semester': 1},
         )
+        meals = await mcp.call_tool(
+            'tool_get_profile_meal_recommendations',
+            {
+                'profile_id': profile['id'],
+                'origin': 'central-library',
+                'at': '2026-03-16T12:00:00+09:00',
+                'year': 2026,
+                'semester': 1,
+            },
+        )
         return (
             json.loads(updated[0].text),
+            json.loads(timetable[0].text),
             json.loads(interests[0].text),
             json.loads(courses[0].text),
+            json.loads(meals[0].text),
         )
 
-    updated_payload, interests_payload, course_payload = asyncio.run(main())
+    (
+        updated_payload,
+        timetable_payload,
+        interests_payload,
+        course_payload,
+        meal_payload,
+    ) = asyncio.run(main())
 
     assert updated_payload['department'] == '컴퓨터정보공학부'
+    assert timetable_payload['title'] == '자료구조'
     assert interests_payload['tags'] == ['scholarship', 'language']
     assert course_payload['course']['code'] == 'CSE201'
     assert course_payload['course']['section'] == '02'
     assert course_payload['matched_reasons'] == ['department:컴퓨터정보공학부', 'student_year:1']
+    assert meal_payload['next_place']['slug'] == 'kim-sou-hwan-hall'
+    assert meal_payload['items']
 
 
 def test_mcp_nearby_restaurant_tool_supports_open_now_filter(app_env):

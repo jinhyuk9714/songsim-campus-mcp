@@ -19,6 +19,7 @@ from pypdf import PdfReader
 from . import (
     ops_runtime,
     place_search_runtime,
+    profile_meal_runtime,
     repo,
     restaurant_nearby_runtime,
     restaurant_search_runtime,
@@ -68,7 +69,6 @@ from .schemas import (
     LibrarySeatStatusResponse,
     MatchedCourse,
     MatchedNotice,
-    MealRecommendation,
     MealRecommendationResponse,
     NearbyRestaurant,
     Notice,
@@ -3151,96 +3151,45 @@ def get_profile_meal_recommendations(
         year=year or resolved_year,
         semester=semester or resolved_semester,
     )
-    day_label = _day_label_from_datetime(current)
-    same_day_courses = [
-        course
-        for course in timetable
-        if course.day_of_week == day_label
-        and _period_start_minutes(course.period_start) is not None
-    ]
-    same_day_courses.sort(key=lambda item: _period_start_minutes(item.period_start) or 9999)
+    context = profile_meal_runtime.compute_profile_meal_context(
+        timetable,
+        now=current,
+        resolve_place_from_room=lambda room: _resolve_place_from_room(conn, room),
+    )
+    if context.reason is not None:
+        return profile_meal_runtime.build_profile_meal_response(
+            [],
+            context=context,
+            estimate_restaurant_to_place_walk_minutes=lambda _restaurant, _next_place: 0,
+            open_now=open_now,
+            limit=limit,
+        )
 
-    next_course = None
-    for course in same_day_courses:
-        start_minutes = _period_start_minutes(course.period_start)
-        current_minutes = current.hour * 60 + current.minute
-        if start_minutes is not None and start_minutes > current_minutes:
-            next_course = course
-            break
-
-    next_place = _resolve_place_from_room(conn, next_course.room) if next_course else None
-    available_minutes = None
-    if next_course and next_course.period_start is not None:
-        start_minutes = _period_start_minutes(next_course.period_start)
-        current_minutes = current.hour * 60 + current.minute
-        if start_minutes is not None:
-            available_minutes = start_minutes - current_minutes - 10
-            if available_minutes < 20:
-                return MealRecommendationResponse(
-                    items=[],
-                    next_course=next_course,
-                    next_place=next_place,
-                    available_minutes=available_minutes,
-                    reason="Not enough time before the next class.",
-                )
-
-    walk_limit = 15 if available_minutes is None else max(1, min(available_minutes, 60))
     nearby = find_nearby_restaurants(
         conn,
         origin=origin,
         category=category,
         budget_max=budget_max,
-        walk_minutes=walk_limit,
+        walk_minutes=context.walk_limit,
         limit=max(limit * 5, 20),
         at=current,
         open_now=open_now,
         kakao_place_detail_client=kakao_place_detail_client,
     )
-
-    items: list[MealRecommendation] = []
-    for restaurant in nearby:
-        total_walk_minutes = restaurant.estimated_walk_minutes
-        if (
-            next_place is not None
-            and next_place.latitude is not None
-            and next_place.longitude is not None
-        ):
-            second_leg = _estimate_restaurant_to_place_walk_minutes(
+    return profile_meal_runtime.build_profile_meal_response(
+        nearby,
+        context=context,
+        estimate_restaurant_to_place_walk_minutes=lambda restaurant, next_place: (
+            _estimate_restaurant_to_place_walk_minutes(
                 conn,
                 restaurant_latitude=restaurant.latitude,
                 restaurant_longitude=restaurant.longitude,
                 restaurant_source_tag=restaurant.source_tag,
                 next_place=next_place,
             )
-            total_walk_minutes = (restaurant.estimated_walk_minutes or 0) + second_leg
-            if available_minutes is not None and total_walk_minutes + 10 > available_minutes:
-                continue
-        items.append(
-            MealRecommendation(
-                restaurant=restaurant,
-                next_course=next_course,
-                next_place=next_place,
-                total_estimated_walk_minutes=total_walk_minutes,
-            )
-        )
-
-    items.sort(
-        key=lambda item: (
-            item.total_estimated_walk_minutes or 999,
-            item.restaurant.min_price or 0,
-            item.restaurant.name,
-        )
-    )
-    return MealRecommendationResponse(
-        items=items[:limit],
-        next_course=next_course,
-        next_place=next_place,
-        available_minutes=available_minutes,
-        reason=(
-            "No currently open restaurants matched the filters."
-            if open_now and not items
-            else None
         ),
+        open_now=open_now,
+        limit=limit,
     )
 
 
