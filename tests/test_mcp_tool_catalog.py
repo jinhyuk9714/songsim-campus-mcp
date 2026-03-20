@@ -36,6 +36,7 @@ def test_register_shared_tools_public_mode_exposes_expected_tool_names_and_metad
         "tool_list_seasonal_semester_guides",
         "tool_list_academic_milestone_guides",
         "tool_search_phone_book",
+        "tool_list_affiliated_notices",
         "tool_list_dormitory_guides",
         "tool_list_certificate_guides",
         "tool_list_leave_of_absence_guides",
@@ -67,6 +68,8 @@ def test_register_shared_tools_public_mode_exposes_expected_tool_names_and_metad
     assert "졸업요건" in payloads["tool_list_academic_milestone_guides"]["description"]
     assert "주요전화번호" in payloads["tool_search_phone_book"]["description"]
     assert "유실물" in payloads["tool_search_phone_book"]["description"]
+    assert "국제학부" in payloads["tool_list_affiliated_notices"]["description"]
+    assert "기숙사" in payloads["tool_list_affiliated_notices"]["description"]
     assert "기숙사" in payloads["tool_list_dormitory_guides"]["description"]
     assert "latest_notices" in (
         payloads["tool_list_dormitory_guides"]["inputSchema"]["properties"]["topic"][
@@ -101,6 +104,11 @@ def test_register_shared_tools_public_mode_exposes_expected_tool_names_and_metad
     )
     assert "트리니티" in (
         payloads["tool_search_phone_book"]["inputSchema"]["properties"]["query"]["description"]
+    )
+    assert "international_studies" in (
+        payloads["tool_list_affiliated_notices"]["inputSchema"]["properties"]["topic"][
+            "description"
+        ]
     )
 
 

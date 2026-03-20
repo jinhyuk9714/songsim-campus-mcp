@@ -2688,6 +2688,9 @@ class AffiliatedNoticeBoardSourceBase(NoticeSource):
         *,
         default_title: str = "",
         default_category: str = "",
+        default_summary: str = "",
+        default_published_at: str = "",
+        default_source_url: str | None = None,
     ) -> dict:
         soup = BeautifulSoup(html, "html.parser")
         title = _clean_text(
@@ -2703,9 +2706,9 @@ class AffiliatedNoticeBoardSourceBase(NoticeSource):
         return {
             "topic": self.topic,
             "title": title or default_title,
-            "published_at": published_at,
-            "summary": body_text[:180].strip(),
-            "source_url": self.url,
+            "published_at": published_at or default_published_at,
+            "summary": body_text[:180].strip() or default_summary,
+            "source_url": default_source_url or self.url,
             "source_tag": self.source_tag,
         }
 

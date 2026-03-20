@@ -35,6 +35,14 @@ GPT_ACTION_PATHS: dict[str, dict[str, str]] = {
         "summary": "List latest public notices",
         "description": "List the latest public Songsim campus notices.",
     },
+    "/affiliated-notices": {
+        "operationId": "listAffiliatedNotices",
+        "summary": "List affiliated department and dormitory notices",
+        "description": (
+            "List current affiliated department and dormitory notice bundles such as "
+            "국제학부 학과공지 and dormitory board notices."
+        ),
+    },
     "/certificate-guides": {
         "operationId": "listCertificateGuides",
         "summary": "List certificate issuance guides",

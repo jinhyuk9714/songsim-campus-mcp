@@ -114,7 +114,15 @@ def test_affiliated_notice_sources_expose_expected_defaults(
         "published_at",
     ),
     [
-        case[:7]
+        (
+            case[0],
+            case[1],
+            case[3],
+            case[4],
+            case[5],
+            case[6],
+            case[7],
+        )
         for case in CASES
     ],
 )
@@ -177,9 +185,14 @@ def test_affiliated_notice_detail_parsers_extract_representative_rows(
     published_at: str,
     summary: str,
 ) -> None:
+    source_url = (
+        f"{board_url}?mode=view&articleNo=fixture"
+        "&article.offset=0&articleLimit=10"
+    )
     parsed = source_cls().parse_detail(
         _fixture(detail_fixture),
         default_title="fallback title",
+        default_source_url=source_url,
     )
 
     assert parsed == {
@@ -187,6 +200,6 @@ def test_affiliated_notice_detail_parsers_extract_representative_rows(
         "title": title,
         "published_at": published_at,
         "summary": summary,
-        "source_url": board_url,
+        "source_url": source_url,
         "source_tag": "cuk_affiliated_notice_boards",
     }
