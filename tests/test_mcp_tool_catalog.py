@@ -86,6 +86,7 @@ def test_register_shared_tools_public_mode_exposes_expected_tool_names_and_metad
     assert "국제학부" in payloads["tool_list_affiliated_notices"]["description"]
     assert "기숙사" in payloads["tool_list_affiliated_notices"]["description"]
     assert "외부기관공지" in payloads["tool_list_campus_life_notices"]["description"]
+    assert "행사안내" in payloads["tool_list_campus_life_notices"]["description"]
     assert "campus life notices" in payloads["tool_list_campus_life_notices"]["description"]
     assert "기숙사" in payloads["tool_list_dormitory_guides"]["description"]
     assert "latest_notices" in (
@@ -164,6 +165,16 @@ def test_register_shared_tools_public_mode_exposes_expected_tool_names_and_metad
         ]
     )
     assert "외부기관공지" in (
+        payloads["tool_list_campus_life_notices"]["inputSchema"]["properties"]["query"][
+            "description"
+        ]
+    )
+    assert "events" in (
+        payloads["tool_list_campus_life_notices"]["inputSchema"]["properties"]["topic"][
+            "description"
+        ]
+    )
+    assert "행사" in (
         payloads["tool_list_campus_life_notices"]["inputSchema"]["properties"]["query"][
             "description"
         ]

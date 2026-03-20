@@ -26,6 +26,7 @@ from .ingest.official_sources import (
     AcademicCalendarSource,
     AcademicSupportGuideSource,
     CampusFacilitiesSource,
+    CampusLifeEventsNoticeBoardSource,
     CampusLifeOutsideAgenciesNoticeBoardSource,
     CampusMapSource,
     CertificateGuideSource,
@@ -1460,31 +1461,43 @@ def _payload_from_sources(
         topic_filter = str(row.api_request.params.get("topic") or "").strip() or "all_topics"
         cache_key = f"campus_life_notices:{topic_filter}"
         if cache_key not in source_cache:
-            source = CampusLifeOutsideAgenciesNoticeBoardSource()
             rows: list[dict[str, Any]] = []
-            for item in source.parse_list(source.fetch_list(limit=50)):
-                article_no = str(item.get("article_no") or "").strip()
-                if not article_no:
-                    continue
-                detail = source.parse_detail(
-                    source.fetch_detail(article_no, limit=50),
-                    default_title=item.get("title", ""),
-                    default_category="외부기관공지",
-                    default_summary=item.get("summary", ""),
-                    default_published_at=item.get("published_at", ""),
-                    default_source_url=item.get("source_url"),
+            sources = [
+                CampusLifeOutsideAgenciesNoticeBoardSource(),
+                CampusLifeEventsNoticeBoardSource(),
+            ]
+            for source in sources:
+                default_category = (
+                    "행사안내"
+                    if getattr(source, "topic", "") == "events"
+                    else "외부기관공지"
                 )
-                rows.append(
-                    {
-                        "topic": detail.get("topic") or item.get("topic") or "outside_agencies",
-                        "title": detail.get("title") or item.get("title") or "",
-                        "published_at": detail.get("published_at") or item.get("published_at"),
-                        "summary": detail.get("summary") or item.get("summary") or "",
-                        "source_url": detail.get("source_url") or item.get("source_url"),
-                        "source_tag": detail.get("source_tag") or source.source_tag,
-                        "last_synced_at": captured_at,
-                    }
-                )
+                for item in source.parse_list(source.fetch_list(limit=50)):
+                    article_no = str(item.get("article_no") or "").strip()
+                    if not article_no:
+                        continue
+                    detail = source.parse_detail(
+                        source.fetch_detail(article_no, limit=50),
+                        default_title=item.get("title", ""),
+                        default_category=default_category,
+                        default_summary=item.get("summary", ""),
+                        default_published_at=item.get("published_at", ""),
+                        default_source_url=item.get("source_url"),
+                    )
+                    rows.append(
+                        {
+                            "topic": detail.get("topic")
+                            or item.get("topic")
+                            or getattr(source, "topic", None)
+                            or "outside_agencies",
+                            "title": detail.get("title") or item.get("title") or "",
+                            "published_at": detail.get("published_at") or item.get("published_at"),
+                            "summary": detail.get("summary") or item.get("summary") or "",
+                            "source_url": detail.get("source_url") or item.get("source_url"),
+                            "source_tag": detail.get("source_tag") or source.source_tag,
+                            "last_synced_at": captured_at,
+                        }
+                    )
             rows = _dedupe_topic_local_first_seen_rows(rows)
             rows.sort(
                 key=lambda item: (

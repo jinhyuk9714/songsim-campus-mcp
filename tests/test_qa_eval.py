@@ -1627,6 +1627,55 @@ def test_render_validation_report_includes_campus_life_notices_coverage() -> Non
     assert report.count("| campus_life_notices | 1 | 1 |") == 2
 
 
+def test_render_validation_report_includes_campus_life_notices_events_coverage() -> None:
+    rows = [
+        EvalCorpusRow.model_validate(
+            {
+                "id": "CLN002",
+                "domain": "campus_life_notices",
+                "style": "normal",
+                "user_utterance": "행사안내 알려줘",
+                "api_request": {
+                    "path": "/campus-life-notices",
+                    "params": {"topic": "events", "limit": 5},
+                },
+                "expected_mcp_flow": "tool_list_campus_life_notices",
+                "truth_mode": "set_contains",
+                "pass_rule": {"summary_kind": "campus_life_notices_top5"},
+                "watch_policy": "none",
+                "notes": "",
+            }
+        )
+    ]
+    results = [
+        {
+            "id": "CLN002",
+            "status": "completed",
+            "verdict": "pass",
+            "actual_summary": [
+                {
+                    "topic": "events",
+                    "title": "성심 오케스트라 연주회",
+                    "published_at": "2025-11-28",
+                }
+            ],
+            "comparison": "set_contains",
+            "truth_source": "official_source",
+            "checked_at": "2026-03-20T10:20:00+09:00",
+        }
+    ]
+
+    report = render_validation_report(
+        rows=rows,
+        results=results,
+        checked_at="2026-03-20T10:20:00+09:00",
+        base_url="https://songsim-public-api.onrender.com",
+    )
+
+    assert "Guide-Domain Coverage" in report
+    assert report.count("| campus_life_notices | 1 | 1 |") == 2
+
+
 def test_build_truth_rows_dedupes_affiliated_notices_by_topic_first_seen(app_env, monkeypatch):
     row_international = EvalCorpusRow.model_validate(
         {
@@ -1862,7 +1911,7 @@ def test_default_eval_assets_match_distribution_plan() -> None:
     rows = load_eval_rows(DEFAULT_CORPUS_PATH)
     watchlist_rows = load_eval_rows(DEFAULT_WATCHLIST_PATH)
 
-    assert len(rows) == 1053
+    assert len(rows) == 1054
     assert len(watchlist_rows) == 5
 
     by_domain: dict[str, int] = {}
@@ -1874,7 +1923,7 @@ def test_default_eval_assets_match_distribution_plan() -> None:
         "courses": 160,
         "notices": 110,
         "affiliated_notices": 6,
-        "campus_life_notices": 3,
+        "campus_life_notices": 4,
         "restaurants": 160,
         "transport": 50,
         "classrooms": 60,
@@ -2015,7 +2064,7 @@ def test_default_eval_assets_match_distribution_plan() -> None:
 
     campus_life_notice_rows = [row for row in rows if row.domain == "campus_life_notices"]
 
-    assert len(campus_life_notice_rows) == 3
+    assert len(campus_life_notice_rows) == 4
     assert {row.api_request.path for row in campus_life_notice_rows} == {
         "/campus-life-notices"
     }
@@ -2026,5 +2075,6 @@ def test_default_eval_assets_match_distribution_plan() -> None:
         "campus_life_notices_top5"
     }
     assert {row.api_request.params["topic"] for row in campus_life_notice_rows} == {
-        "outside_agencies"
+        "outside_agencies",
+        "events",
     }

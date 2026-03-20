@@ -3093,3 +3093,47 @@ class CampusLifeOutsideAgenciesNoticeBoardSource(AffiliatedNoticeBoardSourceBase
         url: str = "https://www.catholic.ac.kr/ko/campuslife/notice_outside.do",
     ):
         super().__init__(url)
+
+
+class CampusLifeEventsNoticeBoardSource(AffiliatedNoticeBoardSourceBase):
+    """Parser for the 행사안내 board on the campus life site."""
+
+    source_tag = "cuk_campus_life_notices"
+    topic = "events"
+
+    def __init__(
+        self,
+        url: str = "https://www.catholic.ac.kr/ko/campuslife/notice_event.do",
+    ):
+        super().__init__(url)
+
+    def parse_list(self, html: str) -> list[dict]:
+        soup = BeautifulSoup(html, "html.parser")
+        rows: list[dict] = []
+        for item in soup.select("li.b-img-con-box"):
+            anchor = item.select_one("a[href*='articleNo=']")
+            if anchor is None:
+                continue
+            title_node = item.select_one(".b-img-title")
+            date_node = item.select_one(".b-date")
+            title_text = (
+                title_node.get_text(" ", strip=True)
+                if title_node
+                else anchor.get_text(" ", strip=True)
+            )
+            title = _clean_text(title_text)
+            article_no = self._extract_article_no(anchor.get("href", ""))
+            published_at = self._normalize_date(date_node.get_text() if date_node else "")
+            if not article_no or not title:
+                continue
+            rows.append(
+                {
+                    "topic": self.topic,
+                    "article_no": article_no,
+                    "title": title,
+                    "published_at": published_at,
+                    "source_url": urljoin(self.url, unescape(anchor.get("href", ""))),
+                    "source_tag": self.source_tag,
+                }
+            )
+        return rows

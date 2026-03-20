@@ -41,6 +41,8 @@ def test_public_usage_guide_text_contains_current_anchor_phrases():
     assert "보건실 전화번호" in content
     assert "학점교류 담당 전화번호" in content
     assert "기숙사 최신 공지" in content
+    assert "행사안내" in content
+    assert "교내 행사 공지" in content
     assert "재입학 지원자격" in content
     assert "/gpt/" not in content
 

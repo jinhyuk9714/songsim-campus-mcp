@@ -657,6 +657,26 @@ def test_search_courses_normalizes_spacing_variants(app_env):
     assert courses[0].title == "객체지향프로그래밍설계"
 
 
+def test_search_courses_normalizes_database_alias_and_code_spacing(app_env):
+    init_db()
+
+    with connection() as conn:
+        repo.replace_courses(
+            conn,
+            [
+                _course_row(year=2026, semester=1, code="CSE420", title="임베디드시스템"),
+                _course_row(year=2026, semester=1, code="MTH101", title="데이터베이스활용"),
+            ],
+        )
+        alias_courses = search_courses(conn, query="데이타베이스", limit=5)
+        spaced_code_courses = search_courses(conn, query="CSE 420", limit=5)
+        mixed_case_code_courses = search_courses(conn, query="cSe 420", limit=5)
+
+    assert [course.code for course in alias_courses] == ["MTH101"]
+    assert [course.code for course in spaced_code_courses] == ["CSE420"]
+    assert [course.code for course in mixed_case_code_courses] == ["CSE420"]
+
+
 def test_search_courses_filters_by_period_start(app_env):
     init_db()
     seed_demo(force=True)
@@ -3726,7 +3746,7 @@ def test_investigate_course_query_coverage_reports_covered_and_source_gaps(app_e
         )
         reports = investigate_course_query_coverage(
             conn,
-            queries=['데이터베이스', 'CSE301', 'CSE 420'],
+            queries=['데이타베이스', 'CSE301', 'cSe 420'],
             source=FakeCourseCoverageSource(),
             year=2026,
             semester=1,
@@ -3735,7 +3755,7 @@ def test_investigate_course_query_coverage_reports_covered_and_source_gaps(app_e
 
     assert reports == [
         {
-            'query': '데이터베이스',
+            'query': '데이타베이스',
             'year': 2026,
             'semester': 1,
             'status': 'covered',
@@ -3783,7 +3803,7 @@ def test_investigate_course_query_coverage_reports_covered_and_source_gaps(app_e
             'search_matches': [],
         },
         {
-            'query': 'CSE 420',
+            'query': 'cSe 420',
             'year': 2026,
             'semester': 1,
             'status': 'covered',
@@ -4981,6 +5001,69 @@ def test_refresh_campus_life_notices_replaces_rows_and_orders_by_query_and_date(
     assert all_notices[0].source_url == "https://www.catholic.ac.kr/ko/campuslife/notice_outside.do?articleNo=2"
 
 
+def test_refresh_campus_life_notices_merges_sources_with_topic_local_dedupe(app_env):
+    init_db()
+
+    with connection() as conn:
+        notices = refresh_campus_life_notices_from_source(
+            conn,
+            sources=[
+                FakeAffiliatedNoticeSource(
+                    "outside_agencies",
+                    [
+                        {
+                            "article_no": "1",
+                            "topic": "outside_agencies",
+                            "title": "캠퍼스 공지 A",
+                            "published_at": "2026-03-21",
+                            "summary": "outside winner",
+                            "source_url": "https://www.catholic.ac.kr/ko/campuslife/notice_outside.do?articleNo=1",
+                        },
+                        {
+                            "article_no": "1",
+                            "topic": "outside_agencies",
+                            "title": "캠퍼스 공지 A duplicate",
+                            "published_at": "2026-03-21",
+                            "summary": "outside duplicate",
+                            "source_url": "https://www.catholic.ac.kr/ko/campuslife/notice_outside.do?articleNo=1-dup",
+                        },
+                    ],
+                ),
+                FakeAffiliatedNoticeSource(
+                    "events",
+                    [
+                        {
+                            "article_no": "1",
+                            "topic": "events",
+                            "title": "캠퍼스 공지 A",
+                            "published_at": "2026-03-21",
+                            "summary": "events winner",
+                            "source_url": "https://www.catholic.ac.kr/ko/campuslife/notice_event.do?articleNo=1",
+                        },
+                        {
+                            "article_no": "1",
+                            "topic": "events",
+                            "title": "캠퍼스 공지 A duplicate",
+                            "published_at": "2026-03-21",
+                            "summary": "events duplicate",
+                            "source_url": "https://www.catholic.ac.kr/ko/campuslife/notice_event.do?articleNo=1-dup",
+                        },
+                    ],
+                ),
+            ],
+            fetched_at="2026-03-20T00:00:00+09:00",
+        )
+        all_notices = list_campus_life_notices(conn, limit=20)
+        events_only = list_campus_life_notices(conn, topic="events", limit=20)
+
+    assert len(notices) == 2
+    assert {item.topic for item in all_notices} == {"outside_agencies", "events"}
+    assert [item.title for item in all_notices].count("캠퍼스 공지 A") == 2
+    assert {item.summary for item in all_notices} == {"outside winner", "events winner"}
+    assert [item.topic for item in events_only] == ["events"]
+    assert events_only[0].summary == "events winner"
+
+
 def test_list_affiliated_notices_rejects_unknown_topic(app_env):
     init_db()
 
@@ -5017,7 +5100,10 @@ def test_list_campus_life_notices_rejects_unknown_topic(app_env):
             ],
         )
 
-    with connection() as conn, pytest.raises(InvalidRequestError, match="outside_agencies"):
+    with connection() as conn, pytest.raises(
+        InvalidRequestError,
+        match="outside_agencies or events",
+    ):
         list_campus_life_notices(conn, topic="invalid")
 
 

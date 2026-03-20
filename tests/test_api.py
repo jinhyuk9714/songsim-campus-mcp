@@ -252,6 +252,22 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
             }
         ]
     def stub_campus_life_notices(conn, topic=None, query=None, limit=20):
+        if topic == "events":
+            return [
+                CampusLifeNotice(
+                    id=266521,
+                    topic="events",
+                    title="[음악과] 『개교 170주년 기념』성심 오케스트라 연주회",
+                    published_at="2025-11-28",
+                    summary=(
+                        "음악과에서 『개교 170주년 기념』성심 오케스트라 연주회를 개최하오니 "
+                        "많은 관심과 참여 부탁드립니다."
+                    ),
+                    source_url="https://www.catholic.ac.kr/ko/campuslife/notice_event.do?mode=view&articleNo=266521&article.offset=0&articleLimit=16",
+                    source_tag="cuk_campus_life_notices",
+                    last_synced_at="2026-03-20T10:00:00+09:00",
+                )
+            ]
         return [
             CampusLifeNotice(
                 id=269665,
@@ -422,6 +438,10 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
             "/campus-life-notices",
             params={"query": "외부기관공지"},
         )
+        campus_life_events = public_client.get(
+            "/campus-life-notices",
+            params={"topic": "events", "limit": 5},
+        )
         pc_software = public_client.get(
             "/pc-software",
             params={"query": "SPSS"},
@@ -446,6 +466,7 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     assert "/phone-book" in landing.text
     assert "/campus-life-support-guides" in landing.text
     assert "/campus-life-notices" in landing.text
+    assert "행사안내 알려줘" in landing.text
     assert "/pc-software" in landing.text
     assert "/affiliated-notices" in landing.text
     assert "/dormitory-guides" in landing.text
@@ -467,6 +488,8 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     assert campus_life_support.json()[0]["topic"] == "health_center"
     assert campus_life_notices.status_code == 200
     assert campus_life_notices.json()[0]["topic"] == "outside_agencies"
+    assert campus_life_events.status_code == 200
+    assert campus_life_events.json()[0]["topic"] == "events"
     assert pc_software.status_code == 200
     assert pc_software.json()[0]["room"] == "마리아관 1실습실 (M307)"
     assert create_profile.status_code == 404

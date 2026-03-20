@@ -41,6 +41,7 @@ from .ingest.official_sources import (
     AcademicCalendarSource,
     AcademicSupportGuideSource,
     CampusFacilitiesSource,
+    CampusLifeEventsNoticeBoardSource,
     CampusLifeOutsideAgenciesNoticeBoardSource,
     CampusMapSource,
     CertificateGuideSource,
@@ -399,7 +400,7 @@ AFFILIATED_NOTICE_TOPICS = {
     "dorm_francis_general",
     "dorm_francis_checkin_out",
 }
-CAMPUS_LIFE_NOTICE_TOPICS = {"outside_agencies"}
+CAMPUS_LIFE_NOTICE_TOPICS = {"outside_agencies", "events"}
 CLASS_GUIDE_SOURCE_URLS = {
     "registration_change": "https://www.catholic.ac.kr/ko/support/register_for_class.do",
     "retake": "https://www.catholic.ac.kr/ko/support/re-register_for_class.do",
@@ -1174,6 +1175,13 @@ def _normalized_query_variants(value: str | None) -> tuple[str | None, str | Non
     collapsed = _collapse_whitespace(cleaned)
     compacted = _compact_text(cleaned)
     return collapsed, compacted or None
+
+
+def _normalize_course_query_text(value: str | None) -> str | None:
+    collapsed, _ = _normalized_query_variants(value)
+    if collapsed is None:
+        return None
+    return collapsed.replace("데이타베이스", "데이터베이스")
 
 
 def _matches_exact_text_candidate(
@@ -2362,8 +2370,9 @@ def search_courses(
     period_start: int | None = None,
     limit: int = 20,
 ) -> list[Course]:
-    collapsed_query, compact_query = _normalized_query_variants(query)
-    if collapsed_query is None:
+    query_candidates = _course_query_candidates(query)
+    normalized_query = _normalize_course_query_text(query)
+    if normalized_query is None:
         return [
             Course.model_validate(item)
             for item in repo.search_courses(
@@ -2376,9 +2385,8 @@ def search_courses(
             )
         ]
 
-    queries = [collapsed_query or ""]
-    if compact_query is not None and compact_query != queries[0]:
-        queries.append(compact_query)
+    collapsed_query, compact_query = _normalized_query_variants(normalized_query)
+    queries = query_candidates
 
     ranked_items: list[tuple[int, int, int, str, str, str, int, dict[str, Any]]] = []
     seen_ids: set[int] = set()
@@ -2589,8 +2597,11 @@ def _collect_course_snapshot_rows(
 
 
 def _course_query_candidates(query: str) -> list[str]:
-    collapsed_query, compact_query = _normalized_query_variants(query)
-    queries = [collapsed_query or ""]
+    collapsed_query = _normalize_course_query_text(query)
+    if collapsed_query is None:
+        return [""]
+    _, compact_query = _normalized_query_variants(collapsed_query)
+    queries = [collapsed_query]
     if compact_query is not None and compact_query != queries[0]:
         queries.append(compact_query)
     return queries
@@ -2765,7 +2776,7 @@ def list_campus_life_notices(
     normalized_limit = max(1, min(limit, 50))
     normalized_topic = topic.strip() if topic else None
     if normalized_topic and normalized_topic not in CAMPUS_LIFE_NOTICE_TOPICS:
-        raise InvalidRequestError("topic must be outside_agencies.")
+        raise InvalidRequestError("topic must be outside_agencies or events.")
     normalized_query = query.strip() if query else None
     return [
         CampusLifeNotice.model_validate(item)
@@ -4742,14 +4753,25 @@ def refresh_campus_life_notices_from_source(
     conn: DBConnection,
     *,
     source: Any | None = None,
+    sources: list[Any] | None = None,
     fetched_at: str | None = None,
 ) -> list[CampusLifeNotice]:
     synced_at = fetched_at or _now_iso()
-    resolved_source = source or CampusLifeOutsideAgenciesNoticeBoardSource()
+    if source is not None and sources is not None:
+        raise InvalidRequestError("pass either source or sources, not both.")
+    if sources is not None:
+        resolved_sources = list(sources)
+    elif source is not None:
+        resolved_sources = [source]
+    else:
+        resolved_sources = [
+            CampusLifeOutsideAgenciesNoticeBoardSource(),
+            CampusLifeEventsNoticeBoardSource(),
+        ]
     rows: list[dict[str, Any]] = []
-    seen_article_nos: set[str] = set()
-    seen_source_urls: set[str] = set()
-    seen_title_published: set[tuple[str, str]] = set()
+    seen_article_nos: dict[str, set[str]] = {}
+    seen_source_urls: dict[str, set[str]] = {}
+    seen_title_published: dict[str, set[tuple[str, str]]] = {}
 
     def _normalized_campus_life_notice_text(value: Any | None) -> str | None:
         if value is None:
@@ -4759,62 +4781,68 @@ def refresh_campus_life_notices_from_source(
             return None
         return _collapse_whitespace(cleaned)
 
-    list_html = resolved_source.fetch_list(offset=0, limit=10)
-    for item in resolved_source.parse_list(list_html):
-        article_no = item.get("article_no") or item.get("id")
-        if not article_no:
-            continue
-        try:
-            detail_html = resolved_source.fetch_detail(article_no, offset=0, limit=10)
-            detail = resolved_source.parse_detail(
-                detail_html,
-                default_title=item.get("title", ""),
-                default_category=item.get("board_category", ""),
-                default_summary=item.get("summary", ""),
-                default_published_at=item.get("published_at", ""),
-                default_source_url=item.get("source_url"),
+    for resolved_source in resolved_sources:
+        list_html = resolved_source.fetch_list(offset=0, limit=10)
+        for item in resolved_source.parse_list(list_html):
+            article_no = item.get("article_no") or item.get("id")
+            if not article_no:
+                continue
+            try:
+                detail_html = resolved_source.fetch_detail(article_no, offset=0, limit=10)
+                detail = resolved_source.parse_detail(
+                    detail_html,
+                    default_title=item.get("title", ""),
+                    default_category=item.get("board_category", ""),
+                    default_summary=item.get("summary", ""),
+                    default_published_at=item.get("published_at", ""),
+                    default_source_url=item.get("source_url"),
+                )
+            except httpx.HTTPError:
+                detail = {}
+            title = (detail.get("title") or item.get("title") or "").strip()
+            published_at = detail.get("published_at") or item.get("published_at")
+            if not title or not published_at:
+                continue
+            topic = _normalize_optional_text(
+                detail.get("topic") or item.get("topic") or getattr(resolved_source, "topic", None)
             )
-        except httpx.HTTPError:
-            detail = {}
-        title = (detail.get("title") or item.get("title") or "").strip()
-        published_at = detail.get("published_at") or item.get("published_at")
-        if not title or not published_at:
-            continue
-        topic = _normalize_optional_text(detail.get("topic") or item.get("topic"))
-        if topic is None:
-            topic = "outside_agencies"
-        if topic not in CAMPUS_LIFE_NOTICE_TOPICS:
-            raise InvalidRequestError("topic must be outside_agencies.")
-        article_no_key = _normalized_campus_life_notice_text(article_no)
-        if article_no_key is not None:
-            if article_no_key in seen_article_nos:
-                continue
-            seen_article_nos.add(article_no_key)
-        source_url = detail.get("source_url") or item.get("source_url")
-        source_url_key = _normalized_campus_life_notice_text(source_url)
-        if source_url_key is not None:
-            if source_url_key in seen_source_urls:
-                continue
-            seen_source_urls.add(source_url_key)
-        normalized_title = _normalized_campus_life_notice_text(title)
-        normalized_published_at = _normalized_campus_life_notice_text(published_at)
-        if normalized_title is not None and normalized_published_at is not None:
-            dedupe_key = (normalized_title, normalized_published_at)
-            if dedupe_key in seen_title_published:
-                continue
-            seen_title_published.add(dedupe_key)
-        rows.append(
-            {
-                "topic": topic,
-                "title": title,
-                "published_at": published_at,
-                "summary": detail.get("summary") or item.get("summary") or "",
-                "source_url": source_url,
-                "source_tag": detail.get("source_tag")
-                or getattr(resolved_source, "source_tag", "cuk_campus_life_notices"),
-                "last_synced_at": synced_at,
-            }
-        )
+            if topic is None:
+                topic = "outside_agencies"
+            if topic not in CAMPUS_LIFE_NOTICE_TOPICS:
+                raise InvalidRequestError("topic must be outside_agencies or events.")
+            topic_article_nos = seen_article_nos.setdefault(topic, set())
+            topic_source_urls = seen_source_urls.setdefault(topic, set())
+            topic_title_published = seen_title_published.setdefault(topic, set())
+            article_no_key = _normalized_campus_life_notice_text(article_no)
+            if article_no_key is not None:
+                if article_no_key in topic_article_nos:
+                    continue
+                topic_article_nos.add(article_no_key)
+            source_url = detail.get("source_url") or item.get("source_url")
+            source_url_key = _normalized_campus_life_notice_text(source_url)
+            if source_url_key is not None:
+                if source_url_key in topic_source_urls:
+                    continue
+                topic_source_urls.add(source_url_key)
+            normalized_title = _normalized_campus_life_notice_text(title)
+            normalized_published_at = _normalized_campus_life_notice_text(published_at)
+            if normalized_title is not None and normalized_published_at is not None:
+                dedupe_key = (normalized_title, normalized_published_at)
+                if dedupe_key in topic_title_published:
+                    continue
+                topic_title_published.add(dedupe_key)
+            rows.append(
+                {
+                    "topic": topic,
+                    "title": title,
+                    "published_at": published_at,
+                    "summary": detail.get("summary") or item.get("summary") or "",
+                    "source_url": source_url,
+                    "source_tag": detail.get("source_tag")
+                    or getattr(resolved_source, "source_tag", "cuk_campus_life_notices"),
+                    "last_synced_at": synced_at,
+                }
+            )
     repo.replace_campus_life_notices(conn, rows)
     return [
         CampusLifeNotice.model_validate(item)

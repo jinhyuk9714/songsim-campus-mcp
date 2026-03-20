@@ -175,8 +175,8 @@ def public_usage_guide_text() -> str:
                 "SSID, 중앙도서관 와이파이, or 무선랜 접속 방법 questions."
             ),
             (
-                "26. Use tool_list_campus_life_notices for outside-agency notice bundles such "
-                "as 외부기관공지, 대외 프로그램 공지, or 외부기관 장학/모집 공지."
+                "26. Use tool_list_campus_life_notices for campus-life notice bundles such "
+                "as 외부기관공지, 대외 프로그램 공지, 행사안내, or 교내 행사 공지."
             ),
             (
                 "27. Use tool_list_affiliated_notices for affiliated department and dormitory "
@@ -214,6 +214,8 @@ def public_usage_guide_text() -> str:
             "- 외부기관공지 알려줘",
             "- 대외 프로그램 공지 있어?",
             "- 외부기관 장학 공지 있어?",
+            "- 행사안내 알려줘",
+            "- 교내 행사 공지 있어?",
             "- 보건실 전화번호 알려줘",
             "- 보건실 위치와 운영시간 알려줘",
             "- 유실물 찾는 방법 알려줘",
@@ -455,7 +457,7 @@ def register_shared_resources(mcp: Any, connection_factory: Any, docs_dir: Path)
 
     @mcp.resource("songsim://campus-life-notices")
     def campus_life_notices_resource() -> str:
-        """Return campus-life outside-agency notices as JSON."""
+        """Return campus-life outside-agency and event notices as JSON."""
         with connection_factory() as conn:
             return json.dumps(
                 [item.model_dump() for item in list_campus_life_notices(conn, limit=50)],

@@ -998,24 +998,24 @@ def register_shared_tools(
     @mcp.tool(
         description=(
             (
-                "대학생활 외부기관공지 번들(campus life notices)을 읽을 때 사용합니다. "
-                "외부기관공지 board를 topic/query로 좁혀서 장학, 모집, 프로그램 같은 "
-                "대외 공지를 current snapshot 기준으로 찾습니다."
+                "대학생활 공지 번들(campus life notices)을 읽을 때 사용합니다. "
+                "외부기관공지와 행사안내 board를 topic/query로 좁혀서 장학, 모집, "
+                "프로그램, 행사 공지를 current snapshot 기준으로 찾습니다."
             )
             if public_readonly
-            else "대학생활 외부기관공지 current snapshot을 가져옵니다."
+            else "대학생활 외부기관공지/행사안내 current snapshot을 가져옵니다."
         ),
         meta=tool_meta,
     )
     def tool_list_campus_life_notices(
         topic: Annotated[
             str | None,
-            Field(description="공지 번들 topic 필터. 현재 outside_agencies만 사용합니다."),
+            Field(description="공지 번들 topic 필터. 예: outside_agencies, events"),
         ] = None,
         query: Annotated[
             str | None,
             Field(
-                description="제목 또는 요약 검색어. 예: 외부기관공지, 장학, 모집, 프로그램",
+                description="제목 또는 요약 검색어. 예: 외부기관공지, 장학, 모집, 프로그램, 행사",
             ),
         ] = None,
         limit: Annotated[int, Field(description="최대 결과 수. 기본값은 20입니다.")] = 20,

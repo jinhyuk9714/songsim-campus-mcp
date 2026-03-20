@@ -2072,10 +2072,10 @@ def test_mcp_public_search_places_returns_matched_facility_metadata(app_env, mon
     assert [item["slug"] for item in store_payloads[:2]] == ["student-center", "dormitory-stephen"]
     assert [item["slug"] for item in copy_payloads] == ["student-center"]
     assert [item["slug"] for item in atm_payloads] == ["student-center"]
-    assert gym_payloads[0]["matched_facility"]["location_hint"] == "학생회관"
-    assert store_payloads[0]["matched_facility"]["location_hint"] == "학생회관"
-    assert copy_payloads[0]["matched_facility"]["location_hint"] == "학생회관"
-    assert atm_payloads[0]["matched_facility"]["location_hint"] == "학생회관"
+    assert gym_payloads[0]["matched_facility"]["location_hint"] == "학생회관 1층"
+    assert store_payloads[0]["matched_facility"]["location_hint"] == "학생회관 1층"
+    assert copy_payloads[0]["matched_facility"]["location_hint"] == "학생회관 1층"
+    assert atm_payloads[0]["matched_facility"]["location_hint"] == "학생회관 1층"
 
     clear_settings_cache()
 
@@ -2944,8 +2944,8 @@ def test_mcp_public_campus_life_notices_return_outside_agency_topic(
     monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
     clear_settings_cache()
 
-    stub = lambda conn=None, topic=None, query=None, limit=20: [  # noqa: E731
-        CampusLifeNotice(
+    def stub(conn=None, topic=None, query=None, limit=20):  # noqa: ANN001
+        outside_agency = CampusLifeNotice(
             id=269665,
             topic="outside_agencies",
             title="[인천병무지청] 2026년 4월 각 군 모집일정 안내",
@@ -2958,7 +2958,24 @@ def test_mcp_public_campus_life_notices_return_outside_agency_topic(
             source_tag="cuk_campus_life_notices",
             last_synced_at="2026-03-20T10:00:00+09:00",
         )
-    ]
+        event = CampusLifeNotice(
+            id=266521,
+            topic="events",
+            title="[음악과] 『개교 170주년 기념』성심 오케스트라 연주회",
+            published_at="2025-11-28",
+            summary=(
+                "음악과에서 『개교 170주년 기념』성심 오케스트라 연주회를 개최하오니 "
+                "많은 관심과 참여 부탁드립니다."
+            ),
+            source_url="https://www.catholic.ac.kr/ko/campuslife/notice_event.do?mode=view&articleNo=266521&article.offset=0&articleLimit=16",
+            source_tag="cuk_campus_life_notices",
+            last_synced_at="2026-03-20T10:00:00+09:00",
+        )
+        if topic == "events":
+            return [event]
+        if topic is None:
+            return [outside_agency, event]
+        return [outside_agency]
     monkeypatch.setattr("songsim_campus.mcp_public_catalog.list_campus_life_notices", stub)
     monkeypatch.setattr("songsim_campus.mcp_tool_catalog.list_campus_life_notices", stub)
 
@@ -2976,9 +2993,24 @@ def test_mcp_public_campus_life_notices_return_outside_agency_topic(
 
     assert resource_payload[0]["topic"] == "outside_agencies"
     assert resource_payload[0]["source_tag"] == "cuk_campus_life_notices"
+    assert resource_payload[1]["topic"] == "events"
     assert tool_payload[0]["topic"] == "outside_agencies"
     assert tool_payload[0]["source_tag"] == "cuk_campus_life_notices"
     assert tool_payload[0]["title"] == "[인천병무지청] 2026년 4월 각 군 모집일정 안내"
+
+    async def events_main():
+        mcp = build_mcp()
+        result = await mcp.call_tool(
+            "tool_list_campus_life_notices",
+            {"topic": "events", "limit": 5},
+        )
+        return _tool_payloads(result)
+
+    event_tool_payload = asyncio.run(events_main())
+
+    assert event_tool_payload[0]["topic"] == "events"
+    assert event_tool_payload[0]["source_tag"] == "cuk_campus_life_notices"
+    assert event_tool_payload[0]["title"] == "[음악과] 『개교 170주년 기념』성심 오케스트라 연주회"
 
     clear_settings_cache()
 

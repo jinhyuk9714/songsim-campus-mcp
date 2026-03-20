@@ -319,6 +319,7 @@ def render_landing_page(
         "기숙사 OT 공지 알려줘",
         "프란치스코관 입퇴사공지 알려줘",
         "등록금 납부 방법 알려줘",
+        "행사안내 알려줘",
         "보건실 위치와 운영시간 알려줘",
         "유실물 찾는 방법 알려줘",
         "성심교정 주차요금 알려줘",
@@ -510,8 +511,8 @@ def render_landing_page(
               and Songsim parking guides
             </li>
             <li>
-              <code>/campus-life-notices</code> outside-agency campus life notices
-              and current public board entries
+              <code>/campus-life-notices</code> outside-agency and event campus-life
+              notice bundles
             </li>
             <li>
               <code>/pc-software</code> lab rooms and installed software search
@@ -523,9 +524,6 @@ def render_landing_page(
             <li>
               <code>/affiliated-notices</code> affiliated department and dormitory board
               notice bundles
-            </li>
-            <li>
-              <code>/campus-life-notices</code> outside-agency campus-life notice bundle
             </li>
             <li><code>/certificate-guides</code> certificate issuance guides</li>
             <li><code>/leave-of-absence-guides</code> leave-of-absence application guides</li>

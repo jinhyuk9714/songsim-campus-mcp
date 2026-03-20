@@ -165,6 +165,7 @@ curl -fsS "$PUBLIC_HTTP_URL/affiliated-notices?topic=international_studies&limit
 
 ```bash
 curl -fsS "$PUBLIC_HTTP_URL/campus-life-notices?query=%EC%99%B8%EB%B6%80%EA%B8%B0%EA%B4%80%EA%B3%B5%EC%A7%80&limit=3"
+curl -fsS "$PUBLIC_HTTP_URL/campus-life-notices?topic=events&limit=3"
 ```
 
 기대값:
@@ -172,6 +173,7 @@ curl -fsS "$PUBLIC_HTTP_URL/campus-life-notices?query=%EC%99%B8%EB%B6%80%EA%B8%B
 - HTTP `200`
 - JSON array
 - 첫 결과 또는 상위 결과 안에 `"topic":"outside_agencies"`
+- `topic=events` 요청에서는 `"topic":"events"`가 보임
 - `"source_tag":"cuk_campus_life_notices"`가 보임
 
 `jq` 예시:
@@ -749,7 +751,7 @@ PY
 - `tool_list_student_exchange_guides` payload가 빈 결과가 아니고 `exchange_student` 또는 `domestic_partner_universities` 항목을 포함함
 - `tool_search_student_exchange_partners` payload가 빈 결과가 아니고 `네덜란드` 또는 `Utrecht University` 항목을 포함함
 - `tool_search_phone_book` payload가 빈 결과가 아니고 `보건실` 항목을 포함함
-- `tool_list_campus_life_notices` payload가 빈 결과가 아니고 `outside_agencies` 항목을 포함함
+- `tool_list_campus_life_notices` payload가 빈 결과가 아니고 `outside_agencies` 또는 `events` 항목을 포함함
 - `tool_list_affiliated_notices` payload가 빈 결과가 아니고 `international_studies` 또는 dorm topic 항목을 포함함
 - `tool_list_dormitory_guides` payload가 빈 결과가 아니고 `latest_notices` 또는 `hall_info` 항목을 포함함
 - `tool_list_latest_notices` payload가 빈 결과가 아니고 academic 항목을 포함함
