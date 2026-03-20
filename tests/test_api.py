@@ -231,6 +231,19 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     monkeypatch.setenv("SONGSIM_ADMIN_ENABLED", "true")
     monkeypatch.setenv("SONGSIM_PUBLIC_HTTP_URL", "https://songsim-api.onrender.com")
     monkeypatch.setenv("SONGSIM_PUBLIC_MCP_URL", "https://songsim-mcp.onrender.com/mcp")
+    def stub_affiliated_notices(conn, topic=None, query=None, limit=20):
+        return [
+            {
+                "id": 1,
+                "topic": "international_studies",
+                "title": "국제학부 공지",
+                "published_at": "2026-03-20",
+                "summary": "국제학부 학사 공지",
+                "source_url": "https://is.catholic.ac.kr/is/community/notice.do?mode=view&articleNo=1",
+                "source_tag": "cuk_affiliated_notice_boards",
+                "last_synced_at": "2026-03-20T10:00:00+09:00",
+            }
+        ]
     def stub_dormitory_guides(conn, topic=None, limit=20):
         return [
             {
@@ -245,6 +258,7 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
                 "last_synced_at": "2026-03-20T10:00:00+09:00",
             }
         ]
+    monkeypatch.setattr(services, "list_affiliated_notices", stub_affiliated_notices, raising=False)
     monkeypatch.setattr(services, "list_dormitory_guides", stub_dormitory_guides, raising=False)
     monkeypatch.setattr("songsim_campus.api.list_dormitory_guides", stub_dormitory_guides)
     clear_settings_cache()
@@ -255,6 +269,10 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
         docs = public_client.get("/docs")
         openapi = public_client.get("/openapi.json")
         places = public_client.get("/places", params={"query": "도서관"})
+        affiliated_notices = public_client.get(
+            "/affiliated-notices",
+            params={"topic": "international_studies", "query": "공지"},
+        )
         dormitory_guides = public_client.get(
             "/dormitory-guides",
             params={"topic": "hall_info"},
@@ -275,6 +293,7 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     assert "/seasonal-semester-guides" in landing.text
     assert "/academic-milestone-guides" in landing.text
     assert "/phone-book" in landing.text
+    assert "/affiliated-notices" in landing.text
     assert "/dormitory-guides" in landing.text
     assert "configured without OAuth" in landing.text
     assert "GPT Actions OpenAPI" not in landing.text
@@ -282,6 +301,8 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     assert "Admin Sync" not in landing.text
     assert docs.status_code == 200
     assert places.status_code == 200
+    assert affiliated_notices.status_code == 200
+    assert affiliated_notices.json()[0]["topic"] == "international_studies"
     assert dormitory_guides.status_code == 200
     assert dormitory_guides.json()[0]["title"] == "스테파노관"
     assert create_profile.status_code == 404
@@ -293,6 +314,7 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     assert "/seasonal-semester-guides" in openapi.text
     assert "/academic-milestone-guides" in openapi.text
     assert "/phone-book" in openapi.text
+    assert "/affiliated-notices" in openapi.text
     assert "/dormitory-guides" in openapi.text
     assert "/profiles" not in openapi.text
     assert "/admin/sync" not in openapi.text
@@ -353,6 +375,7 @@ def test_api_page_helpers_render_expected_strings():
     assert "/seasonal-semester-guides" in landing_html
     assert "/academic-milestone-guides" in landing_html
     assert "/phone-book" in landing_html
+    assert "/affiliated-notices" in landing_html
     assert "/dormitory-guides" in landing_html
     assert "configured without OAuth" in landing_html
     assert "GPT Actions OpenAPI" not in landing_html
@@ -378,6 +401,7 @@ def test_api_page_helpers_render_expected_strings():
     assert "Songsim Admin Sync" in sync_html
     assert "Automation Status" in sync_html
     assert "academic_support_guides" in sync_html
+    assert "affiliated_notices" in sync_html
 
     observability_html = render_admin_observability_page(
         state={
@@ -458,6 +482,7 @@ def test_public_readonly_mode_exposes_gpt_actions_openapi(app_env, monkeypatch):
         "/scholarship-guides",
         "/wifi-guides",
         "/notices",
+        "/affiliated-notices",
         "/notice-categories",
         "/periods",
         "/library-seats",

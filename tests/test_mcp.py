@@ -885,6 +885,7 @@ def test_mcp_public_readonly_mode_registers_only_read_only_tools(app_env, monkey
         "tool_search_dining_menus",
         "tool_search_restaurants",
         "tool_find_nearby_restaurants",
+        "tool_list_affiliated_notices",
         "tool_list_latest_notices",
         "tool_list_transport_guides",
     }
@@ -899,6 +900,7 @@ def test_mcp_public_readonly_mode_registers_only_read_only_tools(app_env, monkey
     assert "songsim://seasonal-semester-guide" in resource_uris
     assert "songsim://academic-milestone-guide" in resource_uris
     assert "songsim://phone-book" in resource_uris
+    assert "songsim://affiliated-notices" in resource_uris
     assert "songsim://dormitory-guide" in resource_uris
     assert "songsim://certificate-guide" in resource_uris
     assert "songsim://leave-of-absence-guide" in resource_uris
@@ -946,6 +948,7 @@ def test_mcp_public_readonly_mode_registers_prompts_and_extended_resources(app_e
         "songsim://seasonal-semester-guide",
         "songsim://academic-milestone-guide",
         "songsim://phone-book",
+        "songsim://affiliated-notices",
         "songsim://dormitory-guide",
         "songsim://certificate-guide",
         "songsim://leave-of-absence-guide",
@@ -2630,6 +2633,60 @@ def test_mcp_public_notices_return_category_display_and_summary_preview(app_env,
     assert payload["summary"].endswith("...")
     assert "category" not in payload
     assert "labels" not in payload
+
+    clear_settings_cache()
+
+
+def test_mcp_public_affiliated_notices_return_topic_and_summary_preview(
+    app_env,
+    monkeypatch,
+):
+    pytest.importorskip('mcp.server.fastmcp')
+    init_db()
+
+    class FakeAffiliatedNotice:
+        def __init__(self, payload: dict[str, object]):
+            self._payload = payload
+
+        def model_dump(self):
+            return dict(self._payload)
+
+    monkeypatch.setattr(
+        "songsim_campus.services.list_affiliated_notices",
+        lambda conn, topic=None, query=None, limit=20: [
+            FakeAffiliatedNotice(
+                {
+                    "id": 1,
+                    "topic": "international_studies",
+                    "title": "국제학부 공지",
+                    "published_at": "2026-03-20",
+                    "summary": "국제학부 학사 공지 " * 20,
+                    "source_url": "https://is.catholic.ac.kr/is/community/notice.do?mode=view&articleNo=1",
+                    "source_tag": "cuk_affiliated_notice_boards",
+                    "last_synced_at": "2026-03-20T10:00:00+09:00",
+                }
+            )
+        ],
+        raising=False,
+    )
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        result = await mcp.call_tool(
+            "tool_list_affiliated_notices",
+            {"topic": "international_studies", "query": "공지", "limit": 1},
+        )
+        return _tool_payloads(result)[0]
+
+    payload = asyncio.run(main())
+
+    assert payload["topic"] == "international_studies"
+    assert payload["title"] == "국제학부 공지"
+    assert payload["source_tag"] == "cuk_affiliated_notice_boards"
+    assert len(payload["summary"]) <= 160
+    assert payload["summary"].endswith("...")
 
     clear_settings_cache()
 

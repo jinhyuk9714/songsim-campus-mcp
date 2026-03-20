@@ -55,7 +55,7 @@ def build_mcp():
             "Use this read-only Songsim campus info server to answer student questions "
             "about places, courses, academic calendar, academic support, academic status, "
             "registration, class, seasonal semester, academic milestone, phone book, "
-            "dormitory, notices, certificate, leave-of-absence, "
+            "dormitory, notices, affiliated notices, certificate, leave-of-absence, "
             "and scholarship guides, "
             "wifi guides, "
             "dining, nearby restaurants, library seats, empty classrooms, and transport."

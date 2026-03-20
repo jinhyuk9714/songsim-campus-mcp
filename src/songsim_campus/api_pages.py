@@ -78,6 +78,7 @@ def render_admin_sync_page(
                 )
             ],
         },
+        {"title": "affiliated_notices", "fields": []},
         {"title": "academic_calendar", "fields": []},
         {"title": "academic_support_guides", "fields": []},
         {"title": "academic_status_guides", "fields": []},
@@ -305,6 +306,11 @@ def render_landing_page(
         "2026학년도 3월 학사일정 보여줘",
         "수업평가 기간 알려줘",
         "계절학기 신청 시기 알려줘",
+        "국제학부 최신 공지 알려줘",
+        "국제학부 공결 신청 공지 있어?",
+        "기숙사 일반공지 알려줘",
+        "기숙사 OT 공지 알려줘",
+        "프란치스코관 입퇴사공지 알려줘",
         "등록금 납부 방법 알려줘",
         "보건실 전화번호 알려줘",
         "트리니티 문의 전화번호 알려줘",
@@ -481,6 +487,10 @@ def render_landing_page(
               <code>/dormitory-guides</code> dormitory hall info, quick links, and latest
               notice cards
             </li>
+            <li>
+              <code>/affiliated-notices</code> affiliated department and dormitory board
+              notice bundles
+            </li>
             <li><code>/certificate-guides</code> certificate issuance guides</li>
             <li><code>/leave-of-absence-guides</code> leave-of-absence application guides</li>
             <li><code>/scholarship-guides</code> scholarship baseline guides</li>
@@ -504,7 +514,7 @@ def render_landing_page(
             <li>
               Use prompts to pick the first tool for places, courses, academic
               calendar, notices, guides, dining, library seats, classrooms,
-              restaurants, or transport
+              restaurants, affiliated notices, or transport
             </li>
             <li>Call tools after the prompt narrows the correct public read-only flow</li>
           </ul>

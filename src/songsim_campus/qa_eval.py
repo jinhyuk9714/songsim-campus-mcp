@@ -53,6 +53,7 @@ EvalDomain = Literal[
     "place",
     "courses",
     "notices",
+    "affiliated_notices",
     "restaurants",
     "transport",
     "classrooms",
@@ -258,6 +259,16 @@ def _summarize_payload(payload: Any, *, summary_kind: str) -> Any:
             {
                 "title": item.get("title"),
                 "category": item.get("category"),
+                "published_at": item.get("published_at"),
+            }
+            for item in rows[:5]
+        ]
+    if summary_kind == "affiliated_notices_top5":
+        rows = payload if isinstance(payload, list) else []
+        return [
+            {
+                "topic": item.get("topic"),
+                "title": item.get("title"),
                 "published_at": item.get("published_at"),
             }
             for item in rows[:5]
@@ -551,6 +562,16 @@ def _payload_from_db(conn: psycopg.Connection, row: EvalCorpusRow) -> Any:
                 conn,
                 category=params.get("category"),
                 limit=_limit_from_row(row, 10),
+            )
+        ]
+    if path == "/affiliated-notices":
+        return [
+            item.model_dump()
+            for item in services.list_affiliated_notices(
+                conn,
+                topic=params.get("topic"),
+                query=params.get("query"),
+                limit=_limit_from_row(row, 20),
             )
         ]
     if path == "/transport":
@@ -1222,6 +1243,84 @@ def _payload_from_sources(
             reverse=True,
         )
         return rows[:limit]
+    if path == "/affiliated-notices":
+        cache_key = "affiliated_notices"
+        if cache_key not in source_cache:
+            board_specs = [
+                (
+                    "international_studies",
+                    "https://is.catholic.ac.kr/is/community/notice.do",
+                ),
+                (
+                    "dorm_k_a_general",
+                    "https://dorm.catholic.ac.kr/dormitory/board/comm_notice.do",
+                ),
+                (
+                    "dorm_k_a_checkin_out",
+                    "https://dorm.catholic.ac.kr/dormitory/board/checkin-out_notice1.do",
+                ),
+                (
+                    "dorm_francis_general",
+                    "https://dorm.catholic.ac.kr/dormitory/board/comm_notice3.do",
+                ),
+                (
+                    "dorm_francis_checkin_out",
+                    "https://dorm.catholic.ac.kr/dormitory/board/checkin-out_notice.do",
+                ),
+            ]
+            rows: list[dict[str, Any]] = []
+            for topic, url in board_specs:
+                source = NoticeSource(url)
+                list_html = source.fetch_list(limit=50)
+                for item in source.parse_list(list_html):
+                    article_no = str(item.get("article_no") or "").strip()
+                    if not article_no:
+                        continue
+                    detail_html = source.fetch_detail(article_no, limit=50)
+                    detail = source.parse_detail(
+                        detail_html,
+                        default_title=item.get("title", ""),
+                        default_category=item.get("board_category", ""),
+                    )
+                    if topic_filter := row.api_request.params.get("topic"):
+                        if topic_filter != topic:
+                            continue
+                    payload = {
+                        "topic": topic,
+                        "title": detail.get("title") or item.get("title") or "",
+                        "published_at": detail.get("published_at") or item.get("published_at"),
+                        "summary": detail.get("summary") or "",
+                        "source_url": item.get("source_url"),
+                        "source_tag": "cuk_affiliated_notice_boards",
+                        "last_synced_at": captured_at,
+                    }
+                    query_filter = str(row.api_request.params.get("query") or "").strip()
+                    if query_filter:
+                        haystack = f"{payload['title']} {payload['summary']}".casefold()
+                        if query_filter.casefold() not in haystack:
+                            continue
+                    rows.append(payload)
+            rows.sort(
+                key=lambda item: (
+                    str(item.get("published_at") or ""),
+                    str(item.get("title") or ""),
+                ),
+                reverse=True,
+            )
+            source_cache[cache_key] = rows
+        rows = list(source_cache[cache_key])
+        topic = row.api_request.params.get("topic")
+        if topic:
+            rows = [item for item in rows if item.get("topic") == topic]
+        query = str(row.api_request.params.get("query") or "").strip()
+        if query:
+            lowered = query.casefold()
+            rows = [
+                item
+                for item in rows
+                if lowered in f"{item.get('title', '')} {item.get('summary', '')}".casefold()
+            ]
+        return rows[:limit]
     return None
 
 
@@ -1523,6 +1622,7 @@ def render_validation_report(
     corpus_counter = Counter(row.domain for row in rows if row.truth_mode != "watch_only")
     guide_domains = [
         "academic_calendar",
+        "affiliated_notices",
         "certificate_guides",
         "dormitory_guides",
         "registration_guides",

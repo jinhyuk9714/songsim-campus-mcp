@@ -829,6 +829,44 @@ def register_shared_tools(
 
     @mcp.tool(
         description=(
+            (
+                "학과/기관 공지 통합 번들을 읽을 때 사용합니다. "
+                "국제학부 학과공지와 기숙사 board notice bundle을 topic/query로 "
+                "좁힐 수 있습니다."
+            )
+            if public_readonly
+            else "학과/기관 공지 통합 current snapshot을 가져옵니다."
+        ),
+        meta=tool_meta,
+    )
+    def tool_list_affiliated_notices(
+        topic: Annotated[
+            str | None,
+            Field(
+                description=(
+                    "공지 번들 topic 필터. 예: international_studies, "
+                    "dorm_k_a_general, dorm_k_a_checkin_out, dorm_francis_general, "
+                    "dorm_francis_checkin_out"
+                )
+            ),
+        ] = None,
+        query: Annotated[
+            str | None,
+            Field(description="제목 또는 요약 검색어. 예: 공결, 입퇴사, OT"),
+        ] = None,
+        limit: Annotated[int, Field(description="최대 결과 수. 기본값은 20입니다.")] = 20,
+    ):
+        from . import services as _services
+        from .mcp_public_serializers import serialize_public_affiliated_notice
+
+        with connection_factory() as conn:
+            notices = _services.list_affiliated_notices(conn, topic=topic, query=query, limit=limit)
+            if public_readonly:
+                return [serialize_public_affiliated_notice(item) for item in notices]
+            return [item.model_dump() for item in notices]
+
+    @mcp.tool(
+        description=(
             "성심교정 지하철·버스 접근 안내를 찾을 때 사용합니다. "
             "정적 subway/bus 안내용이며, query에 지하철·1호선·역곡역·bus 같은 "
             "자연어 cue를 넣을 수 있습니다. 셔틀은 현재 지원하지 않아 빈 결과가 정상입니다."

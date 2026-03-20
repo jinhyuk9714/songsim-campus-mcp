@@ -46,7 +46,7 @@ def public_usage_guide_text() -> str:
                 "seasonal semester guides, academic milestone guides, phone book entries, "
                 "leave-of-absence guides, scholarship guides, wifi guides, notices, dining "
                 "menus, library seats, empty classrooms, nearby restaurants, restaurant "
-                "search, transport guides."
+                "search, affiliated notices, transport guides."
             ),
             "Use these public read-only tools for student information questions first.",
             "",
@@ -147,14 +147,18 @@ def public_usage_guide_text() -> str:
                 "21. Use tool_list_wifi_guides for campus wifi guidance such as 니콜스관 "
                 "SSID, 중앙도서관 와이파이, or 무선랜 접속 방법 questions."
             ),
-            "22. Use tool_list_latest_notices for latest notices; category is optional.",
             (
-                "23. Use tool_list_transport_guides for static subway or bus access "
+                "22. Use tool_list_affiliated_notices for affiliated department and dormitory "
+                "board notice bundles such as 국제학부 최신 공지 or 기숙사 일반공지."
+            ),
+            "23. Use tool_list_latest_notices for latest notices; category is optional.",
+            (
+                "24. Use tool_list_transport_guides for static subway or bus access "
                 "guidance. You can pass query with natural-language cues like 지하철, "
                 "1호선, 역곡역, or 버스. 셔틀은 현재 지원하지 않아 빈 결과가 정상입니다."
             ),
             (
-                "24. Optional reference resources exist for notice categories and class periods "
+                "25. Optional reference resources exist for notice categories and class periods "
                 "when you need them."
             ),
             "",
@@ -171,6 +175,11 @@ def public_usage_guide_text() -> str:
             "- 등록금 납부 방법 알려줘",
             "- 등록금 반환 기준 알려줘",
             "- 초과학기생 등록은 어떻게 해?",
+            "- 국제학부 최신 공지 알려줘",
+            "- 국제학부 공결 신청 공지 있어?",
+            "- 기숙사 일반공지 알려줘",
+            "- 프란치스코관 입퇴사공지 알려줘",
+            "- 기숙사 OT 공지 알려줘",
             "- 보건실 전화번호 알려줘",
             "- 학사지원팀 전화번호 알려줘",
             "- 트리니티 문의 전화번호 알려줘",
@@ -335,6 +344,18 @@ def register_shared_resources(mcp: Any, connection_factory: Any, docs_dir: Path)
         with connection_factory() as conn:
             return json.dumps(
                 [item.model_dump() for item in search_phone_book_entries(conn, limit=50)],
+                ensure_ascii=False,
+                indent=2,
+            )
+
+    @mcp.resource("songsim://affiliated-notices")
+    def affiliated_notices_resource() -> str:
+        """Return affiliated department and dormitory notices as JSON."""
+        from . import services as _services
+
+        with connection_factory() as conn:
+            return json.dumps(
+                [item.model_dump() for item in _services.list_affiliated_notices(conn, limit=50)],
                 ensure_ascii=False,
                 indent=2,
             )

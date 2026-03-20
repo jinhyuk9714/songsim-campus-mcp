@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from typing import Any
 
 from .schemas import (
     AcademicMilestoneGuide,
@@ -107,6 +108,13 @@ def serialize_public_notice(notice: Notice) -> dict[str, object]:
         summary=truncate_preview(notice.summary, limit=160),
         source_url=notice.source_url,
     ).model_dump(exclude_none=True)
+
+
+def serialize_public_affiliated_notice(notice: Any) -> dict[str, object]:
+    payload = notice.model_dump()
+    if payload.get("summary"):
+        payload["summary"] = truncate_preview(str(payload["summary"]), limit=160)
+    return payload
 
 
 def restaurant_price_hint(min_price: int | None, max_price: int | None) -> str | None:

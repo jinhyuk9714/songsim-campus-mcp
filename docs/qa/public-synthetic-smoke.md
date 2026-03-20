@@ -10,6 +10,7 @@
 - `seasonal_semester_guides`가 공개 HTTP와 MCP 양쪽에서 보이는지 확인
 - `phone_book_entries`가 공개 HTTP와 MCP 양쪽에서 보이는지 확인
 - `dormitory_guides`가 공개 HTTP와 MCP 양쪽에서 보이는지 확인
+- `affiliated_notices`가 공개 HTTP와 MCP 양쪽에서 보이는지 확인
 - `notices`의 `academic` 최신 3건이 공개 HTTP와 MCP 양쪽에서 보이는지 확인
 - nearby restaurants의 대표 alias origin과 strict `open_now` 경로가 공개 HTTP/MCP에서 유지되는지 확인
 - 대표 `courses` watchlist query가 500/timeout 없이 처리되는지 확인
@@ -112,6 +113,27 @@ curl -fsS "$PUBLIC_HTTP_URL/notices?category=academic&limit=3"
 ```bash
 curl -fsS "$PUBLIC_HTTP_URL/notices?category=academic&limit=3" \
   | jq '.[0] | {title, category, source_tag}'
+```
+
+## 5.5 Affiliated notices HTTP smoke
+
+```bash
+curl -fsS "$PUBLIC_HTTP_URL/affiliated-notices?topic=international_studies&limit=3"
+curl -fsS "$PUBLIC_HTTP_URL/affiliated-notices?topic=dorm_k_a_checkin_out&query=입퇴사&limit=3"
+```
+
+기대값:
+
+- HTTP `200`
+- JSON array
+- 첫 결과 또는 상위 결과 안에 `"topic":"international_studies"` 또는 `"topic":"dorm_k_a_checkin_out"`
+- `"source_tag":"cuk_affiliated_notice_boards"`가 보임
+
+`jq` 예시:
+
+```bash
+curl -fsS "$PUBLIC_HTTP_URL/affiliated-notices?topic=international_studies&limit=3" \
+  | jq '.[0] | {topic, title, published_at, source_tag}'
 ```
 
 ## 6. Seasonal semester guides HTTP smoke
@@ -323,6 +345,21 @@ with httpx.Client(timeout=20.0) as client:
     )
     print("tool_list_latest_notices", notices_call.status_code)
 
+    affiliated_notices_call = client.post(
+        base,
+        headers=call_headers,
+        json={
+            "jsonrpc": "2.0",
+            "id": 31,
+            "method": "tools/call",
+            "params": {
+                "name": "tool_list_affiliated_notices",
+                "arguments": {"topic": "international_studies", "limit": 3},
+            },
+        },
+    )
+    print("tool_list_affiliated_notices", affiliated_notices_call.status_code)
+
     nearby_call = client.post(
         base,
         headers=call_headers,
@@ -398,6 +435,18 @@ with httpx.Client(timeout=20.0) as client:
     )
     print("phone book resource", phone_book_resource_read.status_code)
 
+    affiliated_notices_resource_read = client.post(
+        base,
+        headers=call_headers,
+        json={
+            "jsonrpc": "2.0",
+            "id": 32,
+            "method": "resources/read",
+            "params": {"uri": "songsim://affiliated-notices"},
+        },
+    )
+    print("affiliated notices resource", affiliated_notices_resource_read.status_code)
+
     dormitory_tool_call = client.post(
         base,
         headers=call_headers,
@@ -435,6 +484,7 @@ PY
 - `tool_list_seasonal_semester_guides 200`
 - `tool_list_academic_milestone_guides 200`
 - `tool_search_phone_book 200`
+- `tool_list_affiliated_notices 200`
 - `tool_list_latest_notices 200`
 - `tool_find_nearby_restaurants 200`
 - `registration resource 200`
@@ -442,6 +492,7 @@ PY
 - `seasonal semester resource 200`
 - `academic milestone resource 200`
 - `phone book resource 200`
+- `affiliated notices resource 200`
 - `tool_list_dormitory_guides 200`
 - `dormitory resource 200`
 - `initialize` 응답의 `instructions`에 `registration` 문구가 포함됨
@@ -450,6 +501,7 @@ PY
 - `tool_list_seasonal_semester_guides` payload가 빈 결과가 아니고 `seasonal_semester` 항목을 포함함
 - `tool_list_academic_milestone_guides` payload가 빈 결과가 아니고 `grade_evaluation` 항목을 포함함
 - `tool_search_phone_book` payload가 빈 결과가 아니고 `보건실` 항목을 포함함
+- `tool_list_affiliated_notices` payload가 빈 결과가 아니고 `international_studies` 또는 dorm topic 항목을 포함함
 - `tool_list_dormitory_guides` payload가 빈 결과가 아니고 `latest_notices` 또는 `hall_info` 항목을 포함함
 - `tool_list_latest_notices` payload가 빈 결과가 아니고 academic 항목을 포함함
 - `tool_find_nearby_restaurants` payload가 빈 결과가 아니고 nearby 식당 요약 payload를 반환함
@@ -458,6 +510,7 @@ PY
 - `seasonal semester` resource 결과의 첫 항목에 `source_tag=cuk_seasonal_semester_guides`가 포함됨
 - `academic milestone` resource 결과의 첫 항목에 `source_tag=cuk_academic_milestone_guides`가 포함됨
 - `phone book` resource 결과의 첫 항목에 `source_tag=cuk_phone_book`가 포함됨
+- `affiliated notices` resource 결과의 첫 항목에 `source_tag=cuk_affiliated_notice_boards`가 포함됨
 - `dormitory resource` 결과의 첫 항목에 `source_tag=cuk_dormitory_guides`가 포함됨
 
 ## Pass 기준
@@ -468,11 +521,12 @@ PY
 - `/seasonal-semester-guides`가 `seasonal_semester` topic과 `cuk_seasonal_semester_guides` source tag를 반환
 - `/academic-milestone-guides`가 `grade_evaluation` topic과 `cuk_academic_milestone_guides` source tag를 반환
 - `/phone-book`가 `보건실` 또는 질의한 부서의 `cuk_phone_book` source tag를 반환
+- `/affiliated-notices`가 `international_studies` 또는 질의한 dorm/topic의 `cuk_affiliated_notice_boards` source tag를 반환
 - `/notices?category=academic&limit=3`가 `academic` notice와 `cuk_campus_notices` source tag를 반환
 - `/restaurants/nearby?origin=중도`가 `central-library` origin으로 nearby 결과를 반환
 - `/restaurants/nearby?origin=학생식당&open_now=true&category=cafe&limit=3`가 `200`으로 안정 응답하고, 빈 배열이어도 `open_now` strict contract와 일치
 - `/courses?query=CSE301...`가 빈 배열이어도 좋으니 `200`으로 안정 응답
-- MCP initialize가 성공하고 `tool_list_registration_guides`, `tool_list_class_guides`, `tool_list_seasonal_semester_guides`, `tool_list_academic_milestone_guides`, `tool_search_phone_book`, `tool_list_dormitory_guides`, `tool_list_latest_notices`, `tool_find_nearby_restaurants`, `songsim://registration-guide`, `songsim://class-guide`, `songsim://seasonal-semester-guide`, `songsim://academic-milestone-guide`, `songsim://phone-book`, `songsim://dormitory-guide`가 모두 노출
-- MCP registration/nearby tool call이 에러 없이 응답
+- MCP initialize가 성공하고 `tool_list_registration_guides`, `tool_list_class_guides`, `tool_list_seasonal_semester_guides`, `tool_list_academic_milestone_guides`, `tool_search_phone_book`, `tool_list_affiliated_notices`, `tool_list_dormitory_guides`, `tool_list_latest_notices`, `tool_find_nearby_restaurants`, `songsim://registration-guide`, `songsim://class-guide`, `songsim://seasonal-semester-guide`, `songsim://academic-milestone-guide`, `songsim://phone-book`, `songsim://affiliated-notices`, `songsim://dormitory-guide`가 모두 노출
+- MCP registration/affiliated/nearby tool call이 에러 없이 응답
 
-이 기준이 통과하면 class-guides + registration-guides + seasonal-semester-guides + academic-milestone-guides + phone-book + dormitory + nearby restaurant 공개 smoke는 충분합니다.
+이 기준이 통과하면 class-guides + registration-guides + seasonal-semester-guides + academic-milestone-guides + phone-book + affiliated notices + dormitory + nearby restaurant 공개 smoke는 충분합니다.

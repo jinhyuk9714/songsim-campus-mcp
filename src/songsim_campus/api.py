@@ -26,6 +26,7 @@ from .schemas import (
     AcademicMilestoneGuide,
     AcademicStatusGuide,
     AcademicSupportGuide,
+    AffiliatedNotice,
     CampusDiningMenu,
     CertificateGuide,
     ClassGuide,
@@ -809,6 +810,17 @@ def create_app() -> FastAPI:
     ) -> list[Notice]:
         with connection() as conn:
             return list_latest_notices(conn, category=category, limit=limit)
+
+    @app.get("/affiliated-notices", response_model=list[AffiliatedNotice])
+    def affiliated_notices(
+        topic: str | None = Query(default=None, description="공지 번들 유형 필터"),
+        query: str | None = Query(default=None, description="공지 제목 또는 요약 검색어"),
+        limit: int = Query(default=20, ge=1, le=50),
+    ) -> list[dict[str, object]]:
+        from . import services as _services
+
+        with connection() as conn:
+            return _services.list_affiliated_notices(conn, topic=topic, query=query, limit=limit)
 
     @app.get("/transport", response_model=list[TransportGuide])
     def transport(

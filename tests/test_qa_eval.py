@@ -1386,6 +1386,55 @@ def test_render_validation_report_includes_phone_book_coverage() -> None:
     assert report.count("| phone_book | 1 | 1 |") == 2
 
 
+def test_render_validation_report_includes_affiliated_notices_coverage() -> None:
+    rows = [
+        EvalCorpusRow.model_validate(
+            {
+                "id": "AN001",
+                "domain": "affiliated_notices",
+                "style": "normal",
+                "user_utterance": "국제학부 최신 공지 알려줘",
+                "api_request": {
+                    "path": "/affiliated-notices",
+                    "params": {"topic": "international_studies", "limit": 5},
+                },
+                "expected_mcp_flow": "tool_list_affiliated_notices",
+                "truth_mode": "set_contains",
+                "pass_rule": {"summary_kind": "affiliated_notices_top5"},
+                "watch_policy": "none",
+                "notes": "",
+            }
+        )
+    ]
+    results = [
+        {
+            "id": "AN001",
+            "status": "completed",
+            "verdict": "pass",
+            "actual_summary": [
+                {
+                    "topic": "international_studies",
+                    "title": "국제학부 공지",
+                    "published_at": "2026-03-20",
+                }
+            ],
+            "comparison": "set_contains",
+            "truth_source": "official_source",
+            "checked_at": "2026-03-20T10:20:00+09:00",
+        }
+    ]
+
+    report = render_validation_report(
+        rows=rows,
+        results=results,
+        checked_at="2026-03-20T10:20:00+09:00",
+        base_url="https://songsim-public-api.onrender.com",
+    )
+
+    assert "Guide-Domain Coverage" in report
+    assert report.count("| affiliated_notices | 1 | 1 |") == 2
+
+
 def test_run_evaluation_records_http_errors_without_crashing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1426,7 +1475,7 @@ def test_default_eval_assets_match_distribution_plan() -> None:
     rows = load_eval_rows(DEFAULT_CORPUS_PATH)
     watchlist_rows = load_eval_rows(DEFAULT_WATCHLIST_PATH)
 
-    assert len(rows) == 1028
+    assert len(rows) == 1034
     assert len(watchlist_rows) == 5
 
     by_domain: dict[str, int] = {}
@@ -1437,6 +1486,7 @@ def test_default_eval_assets_match_distribution_plan() -> None:
         "place": 160,
         "courses": 160,
         "notices": 110,
+        "affiliated_notices": 6,
         "restaurants": 160,
         "transport": 50,
         "classrooms": 60,
@@ -1518,3 +1568,21 @@ def test_default_eval_assets_match_distribution_plan() -> None:
     assert {row.api_request.path for row in phone_rows} == {"/phone-book"}
     assert {row.expected_mcp_flow for row in phone_rows} == {"tool_search_phone_book"}
     assert {row.pass_rule["summary_kind"] for row in phone_rows} == {"phone_book_top5"}
+
+    affiliated_rows = [row for row in rows if row.domain == "affiliated_notices"]
+
+    assert len(affiliated_rows) == 6
+    assert {row.api_request.path for row in affiliated_rows} == {"/affiliated-notices"}
+    assert {row.expected_mcp_flow for row in affiliated_rows} == {
+        "tool_list_affiliated_notices"
+    }
+    assert {row.pass_rule["summary_kind"] for row in affiliated_rows} == {
+        "affiliated_notices_top5"
+    }
+    assert {row.api_request.params["topic"] for row in affiliated_rows} == {
+        "international_studies",
+        "dorm_k_a_general",
+        "dorm_k_a_checkin_out",
+        "dorm_francis_general",
+        "dorm_francis_checkin_out",
+    }

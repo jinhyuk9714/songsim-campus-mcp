@@ -107,6 +107,7 @@ def test_mcp_oauth_metadata_and_initialize_flow(app_env, monkeypatch):
     assert "seasonal semester" in initialize.json()["result"]["instructions"]
     assert "academic milestone" in initialize.json()["result"]["instructions"]
     assert "phone book" in initialize.json()["result"]["instructions"]
+    assert "affiliated notices" in initialize.json()["result"]["instructions"]
     assert "wifi guides" in initialize.json()["result"]["instructions"]
     assert session_id
     assert list_tools.status_code == 200
@@ -133,6 +134,7 @@ def test_mcp_oauth_metadata_and_initialize_flow(app_env, monkeypatch):
         "tool_find_nearby_restaurants",
         "tool_search_restaurants",
         "tool_search_dining_menus",
+        "tool_list_affiliated_notices",
         "tool_list_latest_notices",
         "tool_list_transport_guides",
     }
