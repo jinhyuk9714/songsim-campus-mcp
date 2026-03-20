@@ -2655,3 +2655,113 @@ class NoticeSource:
         if not match:
             return None
         return f"{match.group(1)}-{match.group(2)}-{match.group(3)}"
+
+
+class AffiliatedNoticeBoardSourceBase(NoticeSource):
+    """Shared parser for affiliated academic/dormitory notice boards."""
+
+    source_tag = "cuk_affiliated_notice_boards"
+    topic = ""
+
+    def parse_list(self, html: str) -> list[dict]:
+        rows = []
+        for item in super().parse_list(html):
+            article_no = item.get("article_no")
+            title = _clean_text(str(item.get("title") or ""))
+            if not article_no or not title:
+                continue
+            rows.append(
+                {
+                    "topic": self.topic,
+                    "article_no": article_no,
+                    "title": title,
+                    "published_at": item.get("published_at"),
+                    "source_url": item.get("source_url"),
+                    "source_tag": self.source_tag,
+                }
+            )
+        return rows
+
+    def parse_detail(
+        self,
+        html: str,
+        *,
+        default_title: str = "",
+        default_category: str = "",
+    ) -> dict:
+        soup = BeautifulSoup(html, "html.parser")
+        title = _clean_text(
+            soup.select_one(".b-title-box .b-title").get_text()
+            if soup.select_one(".b-title-box .b-title")
+            else default_title
+        )
+        published_at = self._normalize_date(
+            self._extract_meta_value(soup, label="등록일") or ""
+        )
+        body_root = soup.select_one(".b-content-box .b-con-box")
+        body_text = _clean_text(body_root.get_text(" ", strip=True) if body_root else "")
+        return {
+            "topic": self.topic,
+            "title": title or default_title,
+            "published_at": published_at,
+            "summary": body_text[:180].strip(),
+            "source_url": self.url,
+            "source_tag": self.source_tag,
+        }
+
+
+class InternationalStudiesAffiliatedNoticeBoardSource(AffiliatedNoticeBoardSourceBase):
+    """Parser for the 국제학부 학과공지 board."""
+
+    topic = "international_studies"
+
+    def __init__(self, url: str = "https://is.catholic.ac.kr/is/community/notice.do"):
+        super().__init__(url)
+
+
+class DormKAGeneralAffiliatedNoticeBoardSource(AffiliatedNoticeBoardSourceBase):
+    """Parser for the 스테파노관, 안드레아관 일반 공지 board."""
+
+    topic = "dorm_k_a_general"
+
+    def __init__(
+        self,
+        url: str = "https://dorm.catholic.ac.kr/dormitory/board/comm_notice.do",
+    ):
+        super().__init__(url)
+
+
+class DormKACheckinOutAffiliatedNoticeBoardSource(AffiliatedNoticeBoardSourceBase):
+    """Parser for the 스테파노관, 안드레아관 입퇴사공지 board."""
+
+    topic = "dorm_k_a_checkin_out"
+
+    def __init__(
+        self,
+        url: str = "https://dorm.catholic.ac.kr/dormitory/board/checkin-out_notice1.do",
+    ):
+        super().__init__(url)
+
+
+class DormFrancisGeneralAffiliatedNoticeBoardSource(AffiliatedNoticeBoardSourceBase):
+    """Parser for the 프란치스코관 일반 공지 board."""
+
+    topic = "dorm_francis_general"
+
+    def __init__(
+        self,
+        url: str = "https://dorm.catholic.ac.kr/dormitory/board/comm_notice3.do",
+    ):
+        super().__init__(url)
+
+
+class DormFrancisCheckinOutAffiliatedNoticeBoardSource(AffiliatedNoticeBoardSourceBase):
+    """Parser for the 프란치스코관 입퇴사공지 board."""
+
+    topic = "dorm_francis_checkin_out"
+
+    def __init__(
+        self,
+        url: str = "https://dorm.catholic.ac.kr/dormitory/board/checkin-out_notice.do",
+    ):
+        super().__init__(url)
