@@ -12,6 +12,7 @@ from songsim_campus.repo import (
     replace_campus_dining_menus,
     replace_campus_facilities,
     replace_courses,
+    replace_dormitory_guides,
     replace_notices,
     replace_places,
     replace_restaurant_cache_snapshot,
@@ -440,6 +441,46 @@ def test_mcp_academic_status_tool_and_resource_share_service_data(app_env):
     assert resource_payload[0]["source_tag"] == "cuk_academic_status_guides"
 
 
+def test_mcp_dormitory_tool_and_resource_share_service_data(app_env):
+    pytest.importorskip("mcp.server.fastmcp")
+    init_db()
+    seed_demo(force=True)
+    with connection() as conn:
+        replace_dormitory_guides(
+            conn,
+            [
+                {
+                    "topic": "hall_info",
+                    "title": "스테파노관",
+                    "summary": "성심교정 기숙사",
+                    "steps": ["수용인원", "편의시설", "연락처"],
+                    "links": [],
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/dormitory_songsim.do",
+                    "source_tag": "cuk_dormitory_guides",
+                    "last_synced_at": "2026-03-20T10:00:00+09:00",
+                },
+            ],
+        )
+
+    async def main():
+        mcp = build_mcp()
+        tool_result = await mcp.call_tool(
+            "tool_list_dormitory_guides",
+            {"topic": "hall_info", "limit": 10},
+        )
+        resource_result = await mcp.read_resource("songsim://dormitory-guide")
+        return tool_result, list(resource_result)
+
+    tool_result, resource_result = asyncio.run(main())
+
+    tool_payload = json.loads(tool_result[0].text)
+    resource_payload = json.loads(resource_result[0].content)
+
+    assert tool_payload["title"] == "스테파노관"
+    assert tool_payload["topic"] == "hall_info"
+    assert resource_payload[0]["source_tag"] == "cuk_dormitory_guides"
+
+
 def test_mcp_transport_tool_accepts_query_and_mode_precedence(app_env, monkeypatch):
     pytest.importorskip('mcp.server.fastmcp')
     init_db()
@@ -833,6 +874,7 @@ def test_mcp_public_readonly_mode_registers_only_read_only_tools(app_env, monkey
         "tool_list_seasonal_semester_guides",
         "tool_list_academic_milestone_guides",
         "tool_search_phone_book",
+        "tool_list_dormitory_guides",
         "tool_list_certificate_guides",
         "tool_list_leave_of_absence_guides",
         "tool_list_scholarship_guides",
@@ -857,6 +899,7 @@ def test_mcp_public_readonly_mode_registers_only_read_only_tools(app_env, monkey
     assert "songsim://seasonal-semester-guide" in resource_uris
     assert "songsim://academic-milestone-guide" in resource_uris
     assert "songsim://phone-book" in resource_uris
+    assert "songsim://dormitory-guide" in resource_uris
     assert "songsim://certificate-guide" in resource_uris
     assert "songsim://leave-of-absence-guide" in resource_uris
     assert "songsim://scholarship-guide" in resource_uris
@@ -903,6 +946,7 @@ def test_mcp_public_readonly_mode_registers_prompts_and_extended_resources(app_e
         "songsim://seasonal-semester-guide",
         "songsim://academic-milestone-guide",
         "songsim://phone-book",
+        "songsim://dormitory-guide",
         "songsim://certificate-guide",
         "songsim://leave-of-absence-guide",
         "songsim://scholarship-guide",
@@ -970,6 +1014,8 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
     assert "졸업요건" in tools["tool_list_academic_milestone_guides"]["description"]
     assert "주요전화번호" in tools["tool_search_phone_book"]["description"]
     assert "기숙사 운영팀" in tools["tool_search_phone_book"]["description"]
+    assert "기숙사" in tools["tool_list_dormitory_guides"]["description"]
+    assert "스테파노관" in tools["tool_list_dormitory_guides"]["description"]
     assert "장학제도" in tools["tool_list_scholarship_guides"]["description"]
     assert "공식 문서" in tools["tool_list_scholarship_guides"]["description"]
     assert "무선랜" in tools["tool_list_wifi_guides"]["description"]
@@ -1052,6 +1098,9 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
         tools["tool_list_academic_milestone_guides"]["inputSchema"]["properties"]["topic"][
             "description"
         ]
+    )
+    assert "latest_notices" in (
+        tools["tool_list_dormitory_guides"]["inputSchema"]["properties"]["topic"]["description"]
     )
     assert "유실물" in (
         tools["tool_search_phone_book"]["inputSchema"]["properties"]["query"]["description"]
@@ -1240,6 +1289,7 @@ def test_mcp_public_usage_and_class_period_resources_are_readable(app_env, monke
     assert "tool_list_seasonal_semester_guides" in usage_content
     assert "tool_list_academic_milestone_guides" in usage_content
     assert "tool_search_phone_book" in usage_content
+    assert "tool_list_dormitory_guides" in usage_content
     assert "tool_list_scholarship_guides" in usage_content
     assert "tool_list_leave_of_absence_guides" in usage_content
     assert "tool_list_wifi_guides" in usage_content
@@ -1258,6 +1308,9 @@ def test_mcp_public_usage_and_class_period_resources_are_readable(app_env, monke
     assert "등록금 납부 방법" in usage_content
     assert "수업평가 기간" in usage_content
     assert "계절학기 신청 시기" in usage_content
+    assert "성심교정 기숙사 안내해줘" in usage_content
+    assert "기숙사 입사안내 어디서 봐?" in usage_content
+    assert "기숙사 최신 공지 알려줘" in usage_content
     assert "헬스장" in usage_content
     assert "편의점" in usage_content
     assert "/gpt/" not in usage_content

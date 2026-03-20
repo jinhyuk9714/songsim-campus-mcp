@@ -231,6 +231,22 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     monkeypatch.setenv("SONGSIM_ADMIN_ENABLED", "true")
     monkeypatch.setenv("SONGSIM_PUBLIC_HTTP_URL", "https://songsim-api.onrender.com")
     monkeypatch.setenv("SONGSIM_PUBLIC_MCP_URL", "https://songsim-mcp.onrender.com/mcp")
+    def stub_dormitory_guides(conn, topic=None, limit=20):
+        return [
+            {
+                "id": 1,
+                "topic": "hall_info",
+                "title": "스테파노관",
+                "summary": "성심교정 기숙사 소개",
+                "steps": ["스테파노관 소개"],
+                "links": [],
+                "source_url": "https://www.catholic.ac.kr/ko/campuslife/dormitory_songsim.do",
+                "source_tag": "cuk_dormitory_guides",
+                "last_synced_at": "2026-03-20T10:00:00+09:00",
+            }
+        ]
+    monkeypatch.setattr(services, "list_dormitory_guides", stub_dormitory_guides, raising=False)
+    monkeypatch.setattr("songsim_campus.api.list_dormitory_guides", stub_dormitory_guides)
     clear_settings_cache()
 
     app = create_app()
@@ -239,6 +255,10 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
         docs = public_client.get("/docs")
         openapi = public_client.get("/openapi.json")
         places = public_client.get("/places", params={"query": "도서관"})
+        dormitory_guides = public_client.get(
+            "/dormitory-guides",
+            params={"topic": "hall_info"},
+        )
         create_profile = public_client.post("/profiles", json={"display_name": "성심학생"})
         admin_sync = public_client.get("/admin/sync")
 
@@ -255,12 +275,15 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     assert "/seasonal-semester-guides" in landing.text
     assert "/academic-milestone-guides" in landing.text
     assert "/phone-book" in landing.text
+    assert "/dormitory-guides" in landing.text
     assert "configured without OAuth" in landing.text
     assert "GPT Actions OpenAPI" not in landing.text
     assert "/gpt/*" not in landing.text
     assert "Admin Sync" not in landing.text
     assert docs.status_code == 200
     assert places.status_code == 200
+    assert dormitory_guides.status_code == 200
+    assert dormitory_guides.json()[0]["title"] == "스테파노관"
     assert create_profile.status_code == 404
     assert admin_sync.status_code == 404
     assert "/academic-support-guides" in openapi.text
@@ -270,6 +293,7 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     assert "/seasonal-semester-guides" in openapi.text
     assert "/academic-milestone-guides" in openapi.text
     assert "/phone-book" in openapi.text
+    assert "/dormitory-guides" in openapi.text
     assert "/profiles" not in openapi.text
     assert "/admin/sync" not in openapi.text
 
@@ -329,6 +353,7 @@ def test_api_page_helpers_render_expected_strings():
     assert "/seasonal-semester-guides" in landing_html
     assert "/academic-milestone-guides" in landing_html
     assert "/phone-book" in landing_html
+    assert "/dormitory-guides" in landing_html
     assert "configured without OAuth" in landing_html
     assert "GPT Actions OpenAPI" not in landing_html
     assert "Admin Sync" not in landing_html

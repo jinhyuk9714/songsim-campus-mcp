@@ -143,6 +143,70 @@ def test_build_truth_rows_uses_database_snapshot_for_academic_support_guides(app
     ]
 
 
+def test_build_truth_rows_uses_database_snapshot_for_dormitory_guides(app_env: str) -> None:
+    row = EvalCorpusRow.model_validate(
+        {
+            "id": "DG001",
+            "domain": "dormitory_guides",
+            "style": "normal",
+            "user_utterance": "기숙사 최신 공지 알려줘",
+            "api_request": {
+                "path": "/dormitory-guides",
+                "params": {"topic": "latest_notices", "limit": 3},
+            },
+            "expected_mcp_flow": "tool_list_dormitory_guides",
+            "truth_mode": "set_contains",
+            "pass_rule": {"summary_kind": "dormitory_guides_top5"},
+            "watch_policy": "none",
+            "notes": "",
+        }
+    )
+    init_db()
+    with connection() as conn:
+        repo.replace_dormitory_guides(
+            conn,
+            [
+                {
+                    "topic": "latest_notices",
+                    "title": "일반공지(K관/A관)",
+                    "summary": "홈 최신 공지",
+                    "steps": ["[K관, A관] 3월 청소점호 안내"],
+                    "links": [
+                        {
+                            "label": "공지 보기",
+                            "url": "https://dorm.catholic.ac.kr/dormitory/board/comm_notice.do?mode=view&articleNo=269375",
+                        }
+                    ],
+                    "source_url": "https://dorm.catholic.ac.kr/",
+                    "source_tag": "cuk_dormitory_guides",
+                    "last_synced_at": "2026-03-20T10:00:00+09:00",
+                }
+            ],
+        )
+
+    truth_rows = build_truth_rows(
+        [row],
+        database_url=app_env,
+        captured_at="2026-03-20T10:10:00+09:00",
+    )
+
+    assert truth_rows == [
+        EvalTruthRow(
+            id="DG001",
+            normalized_expected=[
+                {
+                    "topic": "latest_notices",
+                    "title": "일반공지(K관/A관)",
+                    "summary": "홈 최신 공지",
+                }
+            ],
+            truth_source="database_snapshot",
+            captured_at="2026-03-20T10:10:00+09:00",
+            stability="stable",
+        )
+    ]
+
+
 def test_build_truth_rows_prefers_official_source_for_notices_even_with_database(
     app_env: str,
     monkeypatch: pytest.MonkeyPatch,
@@ -1362,7 +1426,7 @@ def test_default_eval_assets_match_distribution_plan() -> None:
     rows = load_eval_rows(DEFAULT_CORPUS_PATH)
     watchlist_rows = load_eval_rows(DEFAULT_WATCHLIST_PATH)
 
-    assert len(rows) == 1023
+    assert len(rows) == 1028
     assert len(watchlist_rows) == 5
 
     by_domain: dict[str, int] = {}
@@ -1386,6 +1450,7 @@ def test_default_eval_assets_match_distribution_plan() -> None:
         "class_guides": 5,
         "seasonal_semester_guides": 4,
         "academic_milestone_guides": 5,
+        "dormitory_guides": 5,
         "phone_book": 5,
         "out_of_scope": 30,
     }

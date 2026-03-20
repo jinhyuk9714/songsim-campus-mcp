@@ -67,6 +67,7 @@ EvalDomain = Literal[
     "seasonal_semester_guides",
     "academic_milestone_guides",
     "phone_book",
+    "dormitory_guides",
     "out_of_scope",
 ]
 EvalStyle = Literal["normal", "alias", "composite", "typo", "ambiguous", "out_of_scope"]
@@ -318,6 +319,16 @@ def _summarize_payload(payload: Any, *, summary_kind: str) -> Any:
             for item in rows[:5]
         ]
     if summary_kind == "academic_milestone_guides_top5":
+        rows = payload if isinstance(payload, list) else []
+        return [
+            {
+                "topic": item.get("topic"),
+                "title": item.get("title"),
+                "summary": item.get("summary"),
+            }
+            for item in rows[:5]
+        ]
+    if summary_kind == "dormitory_guides_top5":
         rows = payload if isinstance(payload, list) else []
         return [
             {
@@ -607,6 +618,13 @@ def _payload_from_db(conn: psycopg.Connection, row: EvalCorpusRow) -> Any:
         return [item.model_dump() for item in items]
     if path == "/academic-milestone-guides":
         items = services.list_academic_milestone_guides(
+            conn,
+            topic=row.api_request.params.get("topic"),
+            limit=_limit_from_row(row, 20),
+        )
+        return [item.model_dump() for item in items]
+    if path == "/dormitory-guides":
+        items = services.list_dormitory_guides(
             conn,
             topic=row.api_request.params.get("topic"),
             limit=_limit_from_row(row, 20),
@@ -1069,8 +1087,30 @@ def _payload_from_sources(
                 GraduationRequirementGuideSource(
                     services.ACADEMIC_MILESTONE_GUIDE_SOURCE_URLS["graduation_requirement"]
                 ),
-            ):
-                rows.extend(source.parse(source.fetch(), fetched_at=captured_at))
+                ):
+                    rows.extend(source.parse(source.fetch(), fetched_at=captured_at))
+            source_cache[cache_key] = rows
+        rows = list(source_cache[cache_key])
+        if topic := row.api_request.params.get("topic"):
+            rows = [item for item in rows if item.get("topic") == topic]
+        return rows[:limit]
+    if path == "/dormitory-guides":
+        cache_key = "dormitory_guides"
+        if cache_key not in source_cache:
+            rows: list[dict[str, Any]] = []
+            try:
+                from .ingest.official_sources import (
+                    DormitoryHomepageGuideSource,
+                    DormitorySongsimGuideSource,
+                )
+
+                for source in (
+                    DormitorySongsimGuideSource(services.DORMITORY_SONGSIM_SOURCE_URL),
+                    DormitoryHomepageGuideSource(services.DORMITORY_HOME_SOURCE_URL),
+                ):
+                    rows.extend(source.parse(source.fetch(), fetched_at=captured_at))
+            except Exception:
+                rows = []
             source_cache[cache_key] = rows
         rows = list(source_cache[cache_key])
         if topic := row.api_request.params.get("topic"):
@@ -1484,6 +1524,7 @@ def render_validation_report(
     guide_domains = [
         "academic_calendar",
         "certificate_guides",
+        "dormitory_guides",
         "registration_guides",
         "class_guides",
         "seasonal_semester_guides",

@@ -85,6 +85,7 @@ def render_admin_sync_page(
         {"title": "seasonal_semester_guides", "fields": []},
         {"title": "academic_milestone_guides", "fields": []},
         {"title": "phone_book_entries", "fields": []},
+        {"title": "dormitory_guides", "fields": []},
         {"title": "leave_of_absence_guides", "fields": []},
         {"title": "scholarship_guides", "fields": []},
         {"title": "wifi_guides", "fields": []},
@@ -307,6 +308,8 @@ def render_landing_page(
         "등록금 납부 방법 알려줘",
         "보건실 전화번호 알려줘",
         "트리니티 문의 전화번호 알려줘",
+        "성심교정 기숙사 안내해줘",
+        "기숙사 최신 공지 알려줘",
         "재학증명서 발급 안내 알려줘",
         "장학제도 안내 알려줘",
         "니콜스관 WIFI 안내 알려줘",
@@ -474,6 +477,10 @@ def render_landing_page(
               attendance threshold, and graduation requirement guides
             </li>
             <li><code>/phone-book</code> campus-wide department contacts and phone numbers</li>
+            <li>
+              <code>/dormitory-guides</code> dormitory hall info, quick links, and latest
+              notice cards
+            </li>
             <li><code>/certificate-guides</code> certificate issuance guides</li>
             <li><code>/leave-of-absence-guides</code> leave-of-absence application guides</li>
             <li><code>/scholarship-guides</code> scholarship baseline guides</li>

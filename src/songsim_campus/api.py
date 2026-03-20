@@ -30,6 +30,7 @@ from .schemas import (
     CertificateGuide,
     ClassGuide,
     Course,
+    DormitoryGuide,
     EstimatedEmptyClassroomResponse,
     GptCampusDiningMenuResult,
     GptLibrarySeatStatusResponse,
@@ -89,6 +90,7 @@ from .services import (
     list_academic_support_guides,
     list_certificate_guides,
     list_class_guides,
+    list_dormitory_guides,
     list_estimated_empty_classrooms,
     list_latest_notices,
     list_leave_of_absence_guides,
@@ -491,6 +493,17 @@ def create_app() -> FastAPI:
     ) -> list[PhoneBookEntry]:
         with connection() as conn:
             return search_phone_book_entries(conn, query=query, limit=limit)
+
+    @app.get("/dormitory-guides", response_model=list[DormitoryGuide])
+    def dormitory_guides(
+        topic: str | None = Query(default=None, description="기숙사 안내 유형 필터"),
+        limit: int = Query(default=20, ge=1, le=50),
+    ) -> list[DormitoryGuide]:
+        with connection() as conn:
+            try:
+                return list_dormitory_guides(conn, topic=topic, limit=limit)
+            except InvalidRequestError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/leave-of-absence-guides", response_model=list[LeaveOfAbsenceGuide])
     def leave_of_absence_guides(

@@ -9,6 +9,7 @@
 - `class_guides`가 공개 HTTP와 MCP 양쪽에서 보이는지 확인
 - `seasonal_semester_guides`가 공개 HTTP와 MCP 양쪽에서 보이는지 확인
 - `phone_book_entries`가 공개 HTTP와 MCP 양쪽에서 보이는지 확인
+- `dormitory_guides`가 공개 HTTP와 MCP 양쪽에서 보이는지 확인
 - `notices`의 `academic` 최신 3건이 공개 HTTP와 MCP 양쪽에서 보이는지 확인
 - nearby restaurants의 대표 alias origin과 strict `open_now` 경로가 공개 HTTP/MCP에서 유지되는지 확인
 - 대표 `courses` watchlist query가 500/timeout 없이 처리되는지 확인
@@ -174,7 +175,29 @@ curl -fsS "$PUBLIC_HTTP_URL/restaurants/nearby?origin=%EC%A4%91%EB%8F%84&limit=3
   | jq '.[0] | {name, origin, estimated_walk_minutes, source_tag}'
 ```
 
-## 9. MCP initialize + guide checks
+## 9. Dormitory guides HTTP smoke
+
+```bash
+curl -fsS "$PUBLIC_HTTP_URL/dormitory-guides?topic=hall_info&limit=2"
+curl -fsS "$PUBLIC_HTTP_URL/dormitory-guides?topic=latest_notices&limit=2"
+```
+
+기대값:
+
+- HTTP `200`
+- JSON array
+- `topic=hall_info` 결과는 `스테파노관` 또는 `안드레아관` 같은 기숙사 동을 포함
+- `topic=latest_notices` 결과는 홈 최신 공지 카드를 반환
+- `"source_tag":"cuk_dormitory_guides"`가 보임
+
+`jq` 예시:
+
+```bash
+curl -fsS "$PUBLIC_HTTP_URL/dormitory-guides?topic=latest_notices&limit=2" \
+  | jq '.[0] | {topic, title, source_tag}'
+```
+
+## 10. MCP initialize + guide checks
 
 아래 Python smoke는 live에서 검증한 payload 형태를 그대로 사용합니다.
 
@@ -374,6 +397,33 @@ with httpx.Client(timeout=20.0) as client:
         },
     )
     print("phone book resource", phone_book_resource_read.status_code)
+
+    dormitory_tool_call = client.post(
+        base,
+        headers=call_headers,
+        json={
+            "jsonrpc": "2.0",
+            "id": 10,
+            "method": "tools/call",
+            "params": {
+                "name": "tool_list_dormitory_guides",
+                "arguments": {"topic": "latest_notices", "limit": 2},
+            },
+        },
+    )
+    print("tool_list_dormitory_guides", dormitory_tool_call.status_code)
+
+    dormitory_resource_read = client.post(
+        base,
+        headers=call_headers,
+        json={
+            "jsonrpc": "2.0",
+            "id": 11,
+            "method": "resources/read",
+            "params": {"uri": "songsim://dormitory-guide"},
+        },
+    )
+    print("dormitory resource", dormitory_resource_read.status_code)
 PY
 ```
 
@@ -392,12 +442,15 @@ PY
 - `seasonal semester resource 200`
 - `academic milestone resource 200`
 - `phone book resource 200`
+- `tool_list_dormitory_guides 200`
+- `dormitory resource 200`
 - `initialize` 응답의 `instructions`에 `registration` 문구가 포함됨
 - `tool_list_registration_guides` payload가 빈 결과가 아님
 - `tool_list_class_guides` payload가 빈 결과가 아니고 `course_evaluation` 항목을 포함함
 - `tool_list_seasonal_semester_guides` payload가 빈 결과가 아니고 `seasonal_semester` 항목을 포함함
 - `tool_list_academic_milestone_guides` payload가 빈 결과가 아니고 `grade_evaluation` 항목을 포함함
 - `tool_search_phone_book` payload가 빈 결과가 아니고 `보건실` 항목을 포함함
+- `tool_list_dormitory_guides` payload가 빈 결과가 아니고 `latest_notices` 또는 `hall_info` 항목을 포함함
 - `tool_list_latest_notices` payload가 빈 결과가 아니고 academic 항목을 포함함
 - `tool_find_nearby_restaurants` payload가 빈 결과가 아니고 nearby 식당 요약 payload를 반환함
 - `resources/read` 결과의 첫 항목에 `source_tag=cuk_registration_guides`가 포함됨
@@ -405,6 +458,7 @@ PY
 - `seasonal semester` resource 결과의 첫 항목에 `source_tag=cuk_seasonal_semester_guides`가 포함됨
 - `academic milestone` resource 결과의 첫 항목에 `source_tag=cuk_academic_milestone_guides`가 포함됨
 - `phone book` resource 결과의 첫 항목에 `source_tag=cuk_phone_book`가 포함됨
+- `dormitory resource` 결과의 첫 항목에 `source_tag=cuk_dormitory_guides`가 포함됨
 
 ## Pass 기준
 
@@ -418,7 +472,7 @@ PY
 - `/restaurants/nearby?origin=중도`가 `central-library` origin으로 nearby 결과를 반환
 - `/restaurants/nearby?origin=학생식당&open_now=true&category=cafe&limit=3`가 `200`으로 안정 응답하고, 빈 배열이어도 `open_now` strict contract와 일치
 - `/courses?query=CSE301...`가 빈 배열이어도 좋으니 `200`으로 안정 응답
-- MCP initialize가 성공하고 `tool_list_registration_guides`, `tool_list_class_guides`, `tool_list_seasonal_semester_guides`, `tool_list_academic_milestone_guides`, `tool_search_phone_book`, `tool_list_latest_notices`, `tool_find_nearby_restaurants`, `songsim://registration-guide`, `songsim://class-guide`, `songsim://seasonal-semester-guide`, `songsim://academic-milestone-guide`, `songsim://phone-book`가 모두 노출
+- MCP initialize가 성공하고 `tool_list_registration_guides`, `tool_list_class_guides`, `tool_list_seasonal_semester_guides`, `tool_list_academic_milestone_guides`, `tool_search_phone_book`, `tool_list_dormitory_guides`, `tool_list_latest_notices`, `tool_find_nearby_restaurants`, `songsim://registration-guide`, `songsim://class-guide`, `songsim://seasonal-semester-guide`, `songsim://academic-milestone-guide`, `songsim://phone-book`, `songsim://dormitory-guide`가 모두 노출
 - MCP registration/nearby tool call이 에러 없이 응답
 
-이 기준이 통과하면 class-guides + registration-guides + seasonal-semester-guides + academic-milestone-guides + phone-book + nearby restaurant 공개 smoke는 충분합니다.
+이 기준이 통과하면 class-guides + registration-guides + seasonal-semester-guides + academic-milestone-guides + phone-book + dormitory + nearby restaurant 공개 smoke는 충분합니다.

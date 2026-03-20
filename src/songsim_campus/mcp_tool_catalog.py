@@ -12,6 +12,7 @@ from .mcp_public_serializers import (
     serialize_public_class_guide,
     serialize_public_course,
     serialize_public_dining_menu,
+    serialize_public_dormitory_guide,
     serialize_public_error,
     serialize_public_leave_of_absence_guide,
     serialize_public_nearby_restaurant,
@@ -48,6 +49,7 @@ from .services import (
     list_academic_support_guides,
     list_certificate_guides,
     list_class_guides,
+    list_dormitory_guides,
     list_estimated_empty_classrooms,
     list_latest_notices,
     list_leave_of_absence_guides,
@@ -270,6 +272,36 @@ def register_shared_tools(
         with connection_factory() as conn:
             entries = search_phone_book_entries(conn, query=query, limit=limit)
             return [item.model_dump() for item in entries]
+
+    @mcp.tool(
+        description=(
+            (
+                "학교 기숙사 안내를 읽을 때 사용합니다. 스테파노관, 안드레아관, "
+                "프란치스코관 정보와 기숙사운영팀 연락처, 입사·퇴사 안내, 생활안내, "
+                "그리고 홈에 노출된 최신 공지 카드를 current snapshot으로 돌려줍니다."
+            )
+            if public_readonly
+            else "학교 기숙사 안내 current snapshot을 가져옵니다."
+        ),
+        meta=tool_meta,
+    )
+    def tool_list_dormitory_guides(
+        topic: Annotated[
+            str | None,
+            Field(
+                description=(
+                    "기숙사 안내 유형 필터. hall_info, quick_links, latest_notices "
+                    "중 하나를 사용합니다."
+                )
+            ),
+        ] = None,
+        limit: Annotated[int, Field(description="최대 결과 수. 기본값은 20입니다.")] = 20,
+    ):
+        with connection_factory() as conn:
+            guides = list_dormitory_guides(conn, topic=topic, limit=limit)
+            if public_readonly:
+                return [serialize_public_dormitory_guide(item) for item in guides]
+            return [item.model_dump() for item in guides]
 
     @mcp.tool(
         description=(
