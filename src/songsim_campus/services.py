@@ -67,6 +67,7 @@ from .ingest.official_sources import (
     ReturnFromLeaveOfAbsenceGuideSource,
     ScholarshipGuideSource,
     SeasonalSemesterGuideSource,
+    StudentExchangePartnerSource,
     TransportGuideSource,
     WifiGuideSource,
     classify_notice_category,
@@ -117,6 +118,7 @@ from .schemas import (
     ScholarshipGuide,
     SeasonalSemesterGuide,
     StudentExchangeGuide,
+    StudentExchangePartner,
     SyncRun,
     TransportGuide,
     WifiGuide,
@@ -169,6 +171,17 @@ STUDENT_EXCHANGE_GUIDE_SOURCE_URLS = {
     "exchange_student": "https://www.catholic.ac.kr/ko/support/exchange_oversea2.do",
     "exchange_programs": "https://www.catholic.ac.kr/ko/support/exchange_oversea3.do",
 }
+STUDENT_EXCHANGE_PARTNER_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/exchange_oversea1.do"
+STUDENT_EXCHANGE_PARTNER_LIST_URL = "https://www.catholic.ac.kr/exchangeOverseaVue/getList.do"
+STUDENT_EXCHANGE_PARTNER_CONTINENT_ALIASES = {
+    "유럽": "EUROPE",
+    "아시아": "ASIA",
+    "오세아니아": "OCEANIA",
+    "북미": "NORTH AMERICA",
+    "남미": "SOUTH AMERICA",
+    "아프리카": "AFRICA",
+    "중동": "MIDDLE EAST",
+}
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 CAMPUS_WALK_GRAPH_PATH = DATA_DIR / "campus_walk_graph.json"
 PERSONALIZATION_RULES_PATH = DATA_DIR / "personalization_rules.json"
@@ -188,6 +201,7 @@ SYNC_DATASET_TABLES = (
     "seasonal_semester_guides",
     "academic_milestone_guides",
     "student_exchange_guides",
+    "student_exchange_partners",
     "dormitory_guides",
     "phone_book_entries",
     "scholarship_guides",
@@ -208,6 +222,7 @@ PUBLIC_READY_CORE_DATASETS = frozenset(
         "seasonal_semester_guides",
         "academic_milestone_guides",
         "student_exchange_guides",
+        "student_exchange_partners",
         "dormitory_guides",
         "phone_book_entries",
         "scholarship_guides",
@@ -250,6 +265,7 @@ ADMIN_SYNC_TARGETS = {
     "seasonal_semester_guides",
     "academic_milestone_guides",
     "student_exchange_guides",
+    "student_exchange_partners",
     "dormitory_guides",
     "phone_book_entries",
     "scholarship_guides",
@@ -2890,6 +2906,90 @@ def list_student_exchange_guides(
     ]
 
 
+def search_student_exchange_partners(
+    conn: DBConnection,
+    *,
+    query: str | None = None,
+    limit: int = 20,
+) -> list[StudentExchangePartner]:
+    normalized_limit = max(1, min(limit, 50))
+    normalized_query = (query or "").strip()
+    rows = [
+        StudentExchangePartner.model_validate(item)
+        for item in repo.list_student_exchange_partners(
+            conn,
+            limit=max(repo.count_rows(conn, "student_exchange_partners"), 1),
+        )
+    ]
+    if not normalized_query:
+        return rows[:normalized_limit]
+
+    collapsed_query = normalized_query.casefold()
+    compact_query = re.sub(r"\s+", "", normalized_query).casefold()
+    continent_query = STUDENT_EXCHANGE_PARTNER_CONTINENT_ALIASES.get(
+        normalized_query,
+        normalized_query,
+    )
+    collapsed_continent_query = continent_query.casefold()
+    compact_continent_query = re.sub(r"\s+", "", continent_query).casefold()
+
+    ranked: list[tuple[int, str, str, str, StudentExchangePartner]] = []
+    for partner in rows:
+        university_name = (partner.university_name or "").casefold()
+        country_ko = (partner.country_ko or "").casefold()
+        continent = (partner.continent or "").casefold()
+        country_en = (partner.country_en or "").casefold()
+        location = (partner.location or "").casefold()
+        university_compact = re.sub(r"\s+", "", partner.university_name).casefold()
+        country_ko_compact = re.sub(r"\s+", "", partner.country_ko or "").casefold()
+        country_en_compact = re.sub(r"\s+", "", partner.country_en or "").casefold()
+        continent_compact = re.sub(r"\s+", "", partner.continent or "").casefold()
+        location_compact = re.sub(r"\s+", "", partner.location or "").casefold()
+
+        rank: int | None = None
+        if university_name == collapsed_query or university_compact == compact_query:
+            rank = 0
+        elif country_ko == collapsed_query or country_ko_compact == compact_query:
+            rank = 1
+        elif (
+            continent == collapsed_query
+            or continent_compact == compact_query
+            or continent == collapsed_continent_query
+            or continent_compact == compact_continent_query
+        ):
+            rank = 2
+        elif (
+            collapsed_query in university_name
+            or compact_query in university_compact
+            or collapsed_query in country_ko
+            or compact_query in country_ko_compact
+            or collapsed_query in country_en
+            or compact_query in country_en_compact
+            or collapsed_query in continent
+            or compact_query in continent_compact
+            or collapsed_continent_query in continent
+            or compact_continent_query in continent_compact
+            or collapsed_query in location
+            or compact_query in location_compact
+        ):
+            rank = 3
+
+        if rank is None:
+            continue
+        ranked.append(
+            (
+                rank,
+                partner.country_ko or "",
+                partner.university_name,
+                partner.partner_code,
+                partner,
+            )
+        )
+
+    ranked.sort(key=lambda item: (item[0], item[1], item[2], item[3]))
+    return [item[4] for item in ranked[:normalized_limit]]
+
+
 def list_dormitory_guides(
     conn: DBConnection,
     *,
@@ -2907,6 +3007,25 @@ def list_dormitory_guides(
             topic=normalized_topic,
             limit=normalized_limit,
         )
+    ]
+
+
+def refresh_student_exchange_partners_from_source(
+    conn: DBConnection,
+    *,
+    source: Any | None = None,
+    fetched_at: str | None = None,
+) -> list[StudentExchangePartner]:
+    synced_at = fetched_at or _now_iso()
+    resolved_source = source or StudentExchangePartnerSource(
+        landing_url=STUDENT_EXCHANGE_PARTNER_SOURCE_URL,
+        list_url=STUDENT_EXCHANGE_PARTNER_LIST_URL,
+    )
+    rows = resolved_source.parse(resolved_source.fetch(), fetched_at=synced_at)
+    repo.replace_student_exchange_partners(conn, rows)
+    return [
+        StudentExchangePartner.model_validate(item)
+        for item in repo.list_student_exchange_partners(conn, limit=max(len(rows), 1))
     ]
 
 
@@ -3130,6 +3249,12 @@ def _run_admin_sync_target(
         }
     if target == "student_exchange_guides":
         return {"student_exchange_guides": len(refresh_student_exchange_guides_from_source(conn))}
+    if target == "student_exchange_partners":
+        return {
+            "student_exchange_partners": len(
+                refresh_student_exchange_partners_from_source(conn)
+            )
+        }
     if target == "dormitory_guides":
         return {"dormitory_guides": len(refresh_dormitory_guides_from_source(conn))}
     if target == "phone_book_entries":
@@ -4822,6 +4947,7 @@ def sync_official_snapshot(
     student_exchange_guides = refresh_student_exchange_guides_from_source(conn)
     dormitory_guides = refresh_dormitory_guides_from_source(conn)
     phone_book_entries = refresh_phone_book_entries_from_source(conn)
+    student_exchange_partners = refresh_student_exchange_partners_from_source(conn)
     scholarship_guides = refresh_scholarship_guides_from_source(conn)
     academic_support_guides = refresh_academic_support_guides_from_source(conn)
     wifi_guides = refresh_wifi_guides_from_source(conn)
@@ -4842,6 +4968,7 @@ def sync_official_snapshot(
         "seasonal_semester_guides": len(seasonal_semester_guides),
         "academic_milestone_guides": len(academic_milestone_guides),
         "student_exchange_guides": len(student_exchange_guides),
+        "student_exchange_partners": len(student_exchange_partners),
         "dormitory_guides": len(dormitory_guides),
         "phone_book_entries": len(phone_book_entries),
         "scholarship_guides": len(scholarship_guides),

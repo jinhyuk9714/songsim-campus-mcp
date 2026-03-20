@@ -36,6 +36,7 @@ def test_register_shared_tools_public_mode_exposes_expected_tool_names_and_metad
         "tool_list_seasonal_semester_guides",
         "tool_list_academic_milestone_guides",
         "tool_list_student_exchange_guides",
+        "tool_search_student_exchange_partners",
         "tool_search_phone_book",
         "tool_list_affiliated_notices",
         "tool_list_dormitory_guides",
@@ -70,6 +71,9 @@ def test_register_shared_tools_public_mode_exposes_expected_tool_names_and_metad
     assert "학생교류" in payloads["tool_list_student_exchange_guides"]["description"]
     assert "국내 학점교류" in payloads["tool_list_student_exchange_guides"]["description"]
     assert "교류대학 현황" in payloads["tool_list_student_exchange_guides"]["description"]
+    assert "해외협정대학" in payloads["tool_search_student_exchange_partners"]["description"]
+    assert "네덜란드" in payloads["tool_search_student_exchange_partners"]["description"]
+    assert "Utrecht" in payloads["tool_search_student_exchange_partners"]["description"]
     assert "주요전화번호" in payloads["tool_search_phone_book"]["description"]
     assert "유실물" in payloads["tool_search_phone_book"]["description"]
     assert "국제학부" in payloads["tool_list_affiliated_notices"]["description"]
@@ -108,6 +112,16 @@ def test_register_shared_tools_public_mode_exposes_expected_tool_names_and_metad
     )
     assert "exchange_programs" in (
         payloads["tool_list_student_exchange_guides"]["inputSchema"]["properties"]["topic"][
+            "description"
+        ]
+    )
+    assert "네덜란드" in (
+        payloads["tool_search_student_exchange_partners"]["inputSchema"]["properties"]["query"][
+            "description"
+        ]
+    )
+    assert "EUROPE" in (
+        payloads["tool_search_student_exchange_partners"]["inputSchema"]["properties"]["query"][
             "description"
         ]
     )

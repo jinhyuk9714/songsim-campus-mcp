@@ -86,6 +86,7 @@ def render_admin_sync_page(
         {"title": "seasonal_semester_guides", "fields": []},
         {"title": "academic_milestone_guides", "fields": []},
         {"title": "student_exchange_guides", "fields": []},
+        {"title": "student_exchange_partners", "fields": []},
         {"title": "phone_book_entries", "fields": []},
         {"title": "dormitory_guides", "fields": []},
         {"title": "leave_of_absence_guides", "fields": []},
@@ -488,6 +489,10 @@ def render_landing_page(
             <li>
               <code>/student-exchange-guides</code> domestic credit exchange, partner
               universities, exchange student, and exchange program guides
+            </li>
+            <li>
+              <code>/student-exchange-partners</code> overseas partner university
+              directory search by country, continent, or university name
             </li>
             <li><code>/phone-book</code> campus-wide department contacts and phone numbers</li>
             <li>

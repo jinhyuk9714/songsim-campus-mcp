@@ -1,0 +1,51 @@
+{
+  "authentication": false,
+  "authorization": false,
+  "errorMsgCode": null,
+  "errorMsgTitle": null,
+  "errorTrace": null,
+  "redirectUrl": null,
+  "success": false,
+  "list": [
+    {
+      "agrtSchCd": "00004",
+      "schNm": "National Central University",
+      "counNmKor": "대만",
+      "counNmEng": "TAIWAN, PROVINCE OF CHINA",
+      "conti": "ASIA",
+      "loca": "Taoyuan",
+      "concDt": "2008-07-23",
+      "homePageAddr": "www.ncu.edu.tw"
+    },
+    {
+      "agrtSchCd": "00122",
+      "schNm": "Utrecht University",
+      "counNmKor": "네덜란드",
+      "counNmEng": "NETHERLANDS",
+      "conti": "EUROPE",
+      "loca": null,
+      "concDt": null,
+      "homePageAddr": null
+    },
+    {
+      "agrtSchCd": "00173",
+      "schNm": "Massey University",
+      "counNmKor": "뉴질랜드",
+      "counNmEng": "NEW ZEALAND",
+      "conti": "OCEANIA",
+      "loca": "New Zealand",
+      "concDt": null,
+      "homePageAddr": "https://www.massey.ac.nz/"
+    },
+    {
+      "agrtSchCd": "00198",
+      "schNm": "The American College of Greece",
+      "counNmKor": "그리스",
+      "counNmEng": "GREECE",
+      "conti": "EUROPE",
+      "loca": "Athens, Greece",
+      "concDt": null,
+      "homePageAddr": null
+    }
+  ]
+}

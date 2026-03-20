@@ -66,6 +66,7 @@ from .services import (
     search_phone_book_entries,
     search_places,
     search_restaurants,
+    search_student_exchange_partners,
     set_profile_interests,
     set_profile_notice_preferences,
     set_profile_timetable,
@@ -451,6 +452,34 @@ def register_shared_tools(
             if public_readonly:
                 return [serialize_public_student_exchange_guide(item) for item in guides]
             return [item.model_dump() for item in guides]
+
+    @mcp.tool(
+        description=(
+            (
+                "해외협정대학 검색을 읽을 때 사용합니다. 국가/대륙/대학명으로 "
+                "교환대학 목록을 current snapshot에서 찾습니다. 예: 네덜란드, "
+                "Utrecht, EUROPE, 대만."
+            )
+            if public_readonly
+            else "해외협정대학 current snapshot을 검색합니다."
+        ),
+        meta=tool_meta,
+    )
+    def tool_search_student_exchange_partners(
+        query: Annotated[
+            str | None,
+            Field(
+                description=(
+                    "대학명, 국가명, 대륙명 검색어. 예: 네덜란드, Utrecht, "
+                    "EUROPE, 대만"
+                )
+            ),
+        ] = None,
+        limit: Annotated[int, Field(description="최대 결과 수. 기본값은 20입니다.")] = 20,
+    ):
+        with connection_factory() as conn:
+            partners = search_student_exchange_partners(conn, query=query, limit=limit)
+            return [item.model_dump() for item in partners]
 
     @mcp.tool(
         description=(

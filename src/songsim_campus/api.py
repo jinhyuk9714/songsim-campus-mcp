@@ -65,6 +65,7 @@ from .schemas import (
     ScholarshipGuide,
     SeasonalSemesterGuide,
     StudentExchangeGuide,
+    StudentExchangePartner,
     TransportGuide,
     WifiGuide,
 )
@@ -112,6 +113,7 @@ from .services import (
     search_phone_book_entries,
     search_places,
     search_restaurants,
+    search_student_exchange_partners,
     set_automation_leader,
     set_profile_interests,
     set_profile_notice_preferences,
@@ -499,6 +501,17 @@ def create_app() -> FastAPI:
                 return list_student_exchange_guides(conn, topic=topic, limit=limit)
             except InvalidRequestError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/student-exchange-partners", response_model=list[StudentExchangePartner])
+    def student_exchange_partners(
+        query: str | None = Query(
+            default=None,
+            description="국가, 대륙, 대학명 검색어. 예: 네덜란드, Utrecht, EUROPE, 대만",
+        ),
+        limit: int = Query(default=20, ge=1, le=50),
+    ) -> list[StudentExchangePartner]:
+        with connection() as conn:
+            return search_student_exchange_partners(conn, query=query, limit=limit)
 
     @app.get("/phone-book", response_model=list[PhoneBookEntry])
     def phone_book(

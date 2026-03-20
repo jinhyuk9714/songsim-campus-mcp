@@ -12,6 +12,7 @@
 - `dormitory_guides`가 공개 HTTP와 MCP 양쪽에서 보이는지 확인
 - `affiliated_notices`가 공개 HTTP와 MCP 양쪽에서 보이는지 확인
 - `student_exchange_guides`가 공개 HTTP와 MCP 양쪽에서 보이는지 확인
+- `student_exchange_partners`가 공개 HTTP와 MCP 양쪽에서 보이는지 확인
 - `notices`의 `academic` 최신 3건이 공개 HTTP와 MCP 양쪽에서 보이는지 확인
 - nearby restaurants의 대표 alias origin과 strict `open_now` 경로가 공개 HTTP/MCP에서 유지되는지 확인
 - 대표 `courses` watchlist query가 500/timeout 없이 처리되는지 확인
@@ -218,6 +219,27 @@ curl -fsS "$PUBLIC_HTTP_URL/student-exchange-guides?topic=exchange_student&limit
   | jq '.[0] | {topic, title, source_tag}'
 ```
 
+## 9.5 Student exchange partners HTTP smoke
+
+```bash
+curl -fsS "$PUBLIC_HTTP_URL/student-exchange-partners?query=%EB%84%A4%EB%8D%9C%EB%9E%80%EB%93%9C&limit=2"
+curl -fsS "$PUBLIC_HTTP_URL/student-exchange-partners?query=University&limit=2"
+```
+
+기대값:
+
+- HTTP `200`
+- JSON array
+- 첫 결과 또는 상위 결과 안에 `"university_name":"Utrecht University"` 또는 `"country_ko":"네덜란드"`
+- `"source_tag":"cuk_student_exchange_partners"`가 보임
+
+`jq` 예시:
+
+```bash
+curl -fsS "$PUBLIC_HTTP_URL/student-exchange-partners?query=%EB%84%A4%EB%8D%9C%EB%9E%80%EB%93%9C&limit=2" \
+  | jq '.[0] | {partner_code, university_name, country_ko, continent, source_tag}'
+```
+
 ## 10. Dormitory guides HTTP smoke
 
 ```bash
@@ -240,7 +262,28 @@ curl -fsS "$PUBLIC_HTTP_URL/dormitory-guides?topic=latest_notices&limit=2" \
   | jq '.[0] | {topic, title, source_tag}'
 ```
 
-## 11. MCP initialize + guide checks
+## 11. Student exchange partners HTTP smoke
+
+```bash
+curl -fsS "$PUBLIC_HTTP_URL/student-exchange-partners?query=%EB%84%A4%EB%8D%9C%EB%9E%80%EB%93%9C&limit=2"
+```
+
+기대값:
+
+- HTTP `200`
+- JSON array
+- 상위 결과에 `country_ko="네덜란드"` 또는 `university_name`에 관련 협정대학이 보임
+- `"source_tag":"cuk_student_exchange_partners"`가 보임
+- `homepage_url` 필드가 비어 있지 않은 학교가 있으면 그대로 노출
+
+`jq` 예시:
+
+```bash
+curl -fsS "$PUBLIC_HTTP_URL/student-exchange-partners?query=%EB%84%A4%EB%8D%9C%EB%9E%80%EB%93%9C&limit=2" \
+  | jq '.[0] | {university_name, country_ko, continent, homepage_url, source_tag}'
+```
+
+## 12. MCP initialize + guide checks
 
 아래 Python smoke는 live에서 검증한 payload 형태를 그대로 사용합니다.
 
@@ -483,6 +526,39 @@ with httpx.Client(timeout=20.0) as client:
     )
     print("student exchange resource", student_exchange_resource_read.status_code)
 
+    student_exchange_partners_tool_call = client.post(
+        base,
+        headers=call_headers,
+        json={
+            "jsonrpc": "2.0",
+            "id": 34,
+            "method": "tools/call",
+            "params": {
+                "name": "tool_search_student_exchange_partners",
+                "arguments": {"query": "네덜란드", "limit": 2},
+            },
+        },
+    )
+    print(
+        "tool_search_student_exchange_partners",
+        student_exchange_partners_tool_call.status_code,
+    )
+
+    student_exchange_partners_resource_read = client.post(
+        base,
+        headers=call_headers,
+        json={
+            "jsonrpc": "2.0",
+            "id": 35,
+            "method": "resources/read",
+            "params": {"uri": "songsim://student-exchange-partners"},
+        },
+    )
+    print(
+        "student exchange partners resource",
+        student_exchange_partners_resource_read.status_code,
+    )
+
     affiliated_notices_resource_read = client.post(
         base,
         headers=call_headers,
@@ -573,13 +649,14 @@ PY
 - `/seasonal-semester-guides`가 `seasonal_semester` topic과 `cuk_seasonal_semester_guides` source tag를 반환
 - `/academic-milestone-guides`가 `grade_evaluation` topic과 `cuk_academic_milestone_guides` source tag를 반환
 - `/student-exchange-guides`가 `exchange_student` 또는 `domestic_partner_universities` topic과 `cuk_student_exchange_guides` source tag를 반환
+- `/student-exchange-partners`가 `네덜란드` 같은 query에 대해 `country_ko`, `university_name`, `homepage_url`, `cuk_student_exchange_partners`를 반환
 - `/phone-book`가 `보건실` 또는 질의한 부서의 `cuk_phone_book` source tag를 반환
 - `/affiliated-notices`가 `international_studies` 또는 질의한 dorm/topic의 `cuk_affiliated_notice_boards` source tag를 반환
 - `/notices?category=academic&limit=3`가 `academic` notice와 `cuk_campus_notices` source tag를 반환
 - `/restaurants/nearby?origin=중도`가 `central-library` origin으로 nearby 결과를 반환
 - `/restaurants/nearby?origin=학생식당&open_now=true&category=cafe&limit=3`가 `200`으로 안정 응답하고, 빈 배열이어도 `open_now` strict contract와 일치
 - `/courses?query=CSE301...`가 빈 배열이어도 좋으니 `200`으로 안정 응답
-- MCP initialize가 성공하고 `tool_list_registration_guides`, `tool_list_class_guides`, `tool_list_seasonal_semester_guides`, `tool_list_academic_milestone_guides`, `tool_list_student_exchange_guides`, `tool_search_phone_book`, `tool_list_affiliated_notices`, `tool_list_dormitory_guides`, `tool_list_latest_notices`, `tool_find_nearby_restaurants`, `songsim://registration-guide`, `songsim://class-guide`, `songsim://seasonal-semester-guide`, `songsim://academic-milestone-guide`, `songsim://student-exchange-guide`, `songsim://phone-book`, `songsim://affiliated-notices`, `songsim://dormitory-guide`가 모두 노출
-- MCP registration/affiliated/nearby tool call이 에러 없이 응답
+- MCP initialize가 성공하고 `tool_list_registration_guides`, `tool_list_class_guides`, `tool_list_seasonal_semester_guides`, `tool_list_academic_milestone_guides`, `tool_list_student_exchange_guides`, `tool_search_student_exchange_partners`, `tool_search_phone_book`, `tool_list_affiliated_notices`, `tool_list_dormitory_guides`, `tool_list_latest_notices`, `tool_find_nearby_restaurants`, `songsim://registration-guide`, `songsim://class-guide`, `songsim://seasonal-semester-guide`, `songsim://academic-milestone-guide`, `songsim://student-exchange-guide`, `songsim://student-exchange-partners`, `songsim://phone-book`, `songsim://affiliated-notices`, `songsim://dormitory-guide`가 모두 노출
+- MCP registration/exchange-partner/affiliated/nearby tool call이 에러 없이 응답
 
-이 기준이 통과하면 class-guides + registration-guides + seasonal-semester-guides + academic-milestone-guides + student-exchange + phone-book + affiliated notices + dormitory + nearby restaurant 공개 smoke는 충분합니다.
+이 기준이 통과하면 class-guides + registration-guides + seasonal-semester-guides + academic-milestone-guides + student-exchange + exchange partner search + phone-book + affiliated notices + dormitory + nearby restaurant 공개 smoke는 충분합니다.

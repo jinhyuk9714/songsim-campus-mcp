@@ -24,6 +24,7 @@ from .services import (
     list_transport_guides,
     list_wifi_guides,
     search_phone_book_entries,
+    search_student_exchange_partners,
 )
 
 PLACE_CATEGORY_GUIDE = {
@@ -46,8 +47,9 @@ def public_usage_guide_text() -> str:
                 "academic status guides, registration guides, class guides, certificate guides, "
                 "seasonal semester guides, academic milestone guides, phone book entries, "
                 "leave-of-absence guides, scholarship guides, wifi guides, student exchange "
-                "guides, notices, dining menus, library seats, empty classrooms, nearby "
-                "restaurants, restaurant search, affiliated notices, transport guides."
+                "guides, student exchange partners, notices, dining menus, library seats, "
+                "empty classrooms, nearby restaurants, restaurant search, affiliated notices, "
+                "transport guides."
             ),
             "Use these public read-only tools for student information questions first.",
             "",
@@ -114,57 +116,62 @@ def public_usage_guide_text() -> str:
                 "유실물 문의 전화번호, or 기숙사 운영팀 전화번호 questions."
             ),
             (
-                "14. Use tool_list_dormitory_guides for 기숙사 안내 such as "
+                "14. Use tool_search_student_exchange_partners for 해외협정대학 검색 such as "
+                "해외협정대학 알려줘, 네덜란드 협정대학 알려줘, Utrecht University 있어?, "
+                "유럽 교류대학 알려줘, or 대만 해외협정대학 홈페이지 알려줘 questions."
+            ),
+            (
+                "15. Use tool_list_dormitory_guides for 기숙사 안내 such as "
                 "성심교정 기숙사 안내해줘, 스테파노관 정보 알려줘, "
                 "기숙사 입사안내 어디서 봐?, or 기숙사 최신 공지 알려줘 questions."
             ),
             (
-                "15. Use tool_list_registration_guides for 등록 안내 such as "
+                "16. Use tool_list_registration_guides for 등록 안내 such as "
                 "등록금 고지서 조회 방법, "
                 "등록금 납부 방법, 등록금 반환 기준, or 초과학기생 등록 questions."
             ),
             (
-                "16. Use tool_list_certificate_guides for 증명서 발급 안내 such as "
+                "17. Use tool_list_certificate_guides for 증명서 발급 안내 such as "
                 "재학증명서 발급 방법, 졸업증명서 발급 안내, or 인터넷 증명발급 questions."
             ),
             (
-                "17. Use tool_list_class_guides for 수업 안내 such as "
+                "18. Use tool_list_class_guides for 수업 안내 such as "
                 "수강신청 변경기간, 재수강 기준, 수업평가 기간, 공결 신청 방법, "
                 "or 외국어강의 의무이수 요건 questions."
             ),
             (
-                "18. Use tool_list_leave_of_absence_guides for 휴학 안내 such as 휴학 신청방법, "
+                "19. Use tool_list_leave_of_absence_guides for 휴학 안내 such as 휴학 신청방법, "
                 "군휴학, 질병휴학, 등록금 반환 기준, or 휴복학 FAQ questions."
             ),
             (
-                "19. Use tool_list_seasonal_semester_guides for 계절학기 안내 such as "
+                "20. Use tool_list_seasonal_semester_guides for 계절학기 안내 such as "
                 "계절학기 신청 시기, 신청대상, 학점 제한, or 신청절차 questions."
             ),
             (
-                "20. Use tool_list_academic_milestone_guides for 성적·졸업 안내 such as "
+                "21. Use tool_list_academic_milestone_guides for 성적·졸업 안내 such as "
                 "성적평가 방법, 성적확인, 결석이 4분의 1 넘으면 어떻게 되는지, "
                 "졸업요건, or 졸업논문 제출 절차 questions."
             ),
             (
-                "21. Use tool_list_scholarship_guides for 장학제도 baseline guidance such as "
+                "22. Use tool_list_scholarship_guides for 장학제도 baseline guidance such as "
                 "장학생 자격, 장학금 신청, 장학금 지급, or 장학제도 공식 문서 questions."
             ),
             (
-                "22. Use tool_list_wifi_guides for campus wifi guidance such as 니콜스관 "
+                "23. Use tool_list_wifi_guides for campus wifi guidance such as 니콜스관 "
                 "SSID, 중앙도서관 와이파이, or 무선랜 접속 방법 questions."
             ),
             (
-                "23. Use tool_list_affiliated_notices for affiliated department and dormitory "
+                "24. Use tool_list_affiliated_notices for affiliated department and dormitory "
                 "board notice bundles such as 국제학부 최신 공지 or 기숙사 일반공지."
             ),
-            "24. Use tool_list_latest_notices for latest notices; category is optional.",
+            "25. Use tool_list_latest_notices for latest notices; category is optional.",
             (
-                "25. Use tool_list_transport_guides for static subway or bus access "
+                "26. Use tool_list_transport_guides for static subway or bus access "
                 "guidance. You can pass query with natural-language cues like 지하철, "
                 "1호선, 역곡역, or 버스. 셔틀은 현재 지원하지 않아 빈 결과가 정상입니다."
             ),
             (
-                "26. Optional reference resources exist for notice categories and class periods "
+                "27. Optional reference resources exist for notice categories and class periods "
                 "when you need them."
             ),
             "",
@@ -191,6 +198,11 @@ def public_usage_guide_text() -> str:
             "- 트리니티 문의 전화번호 알려줘",
             "- 유실물 문의 전화번호 알려줘",
             "- 기숙사 운영팀 전화번호 알려줘",
+            "- 해외협정대학 알려줘",
+            "- 네덜란드 협정대학 알려줘",
+            "- Utrecht University 있어?",
+            "- 유럽 교류대학 알려줘",
+            "- 대만 해외협정대학 홈페이지 알려줘",
             "- 성심교정 기숙사 안내해줘",
             "- 기숙사 최신 공지 알려줘",
             "- 수강신청 변경기간 알려줘",
@@ -355,6 +367,19 @@ def register_shared_resources(mcp: Any, connection_factory: Any, docs_dir: Path)
         with connection_factory() as conn:
             return json.dumps(
                 [item.model_dump() for item in list_student_exchange_guides(conn, limit=50)],
+                ensure_ascii=False,
+                indent=2,
+            )
+
+    @mcp.resource("songsim://student-exchange-partners")
+    def student_exchange_partners_resource() -> str:
+        """Return the latest student exchange partner universities as JSON."""
+        with connection_factory() as conn:
+            return json.dumps(
+                [
+                    item.model_dump()
+                    for item in search_student_exchange_partners(conn, limit=50)
+                ],
                 ensure_ascii=False,
                 indent=2,
             )

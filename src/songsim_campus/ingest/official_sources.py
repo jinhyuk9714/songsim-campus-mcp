@@ -1509,6 +1509,67 @@ class StudentExchangeExchangeProgramsGuideSource(StudentExchangeGuideSourceBase)
         )
 
 
+class StudentExchangePartnerSource:
+    """Parser for the overseas partner university APP-backed directory."""
+
+    source_tag = "cuk_student_exchange_partners"
+    landing_url = "https://www.catholic.ac.kr/ko/support/exchange_oversea1.do"
+    list_url = "https://www.catholic.ac.kr/exchangeOverseaVue/getList.do"
+
+    def __init__(
+        self,
+        landing_url: str = "https://www.catholic.ac.kr/ko/support/exchange_oversea1.do",
+        list_url: str = "https://www.catholic.ac.kr/exchangeOverseaVue/getList.do",
+    ):
+        self.landing_url = landing_url
+        self.list_url = list_url
+
+    def fetch(self) -> str:
+        landing_response = httpx.get(self.landing_url, timeout=20, follow_redirects=True)
+        landing_response.raise_for_status()
+        self._validate_landing_page(landing_response.text)
+
+        response = httpx.get(self.list_url, timeout=20, follow_redirects=True)
+        response.raise_for_status()
+        return response.text
+
+    def parse(self, payload: str, *, fetched_at: str) -> list[dict]:
+        data = json.loads(payload)
+        rows: list[dict] = []
+        for item in data.get("list", []):
+            university_name = _clean_text(item.get("schNm"))
+            if not university_name:
+                continue
+
+            homepage_url = unescape(str(item.get("homePageAddr") or "")).strip()
+            if homepage_url and not homepage_url.startswith("http"):
+                homepage_url = f"http://{homepage_url}"
+
+            rows.append(
+                {
+                    "partner_code": _clean_text(item.get("agrtSchCd")),
+                    "university_name": university_name,
+                    "country_ko": _clean_text(item.get("counNmKor")) or None,
+                    "country_en": _clean_text(item.get("counNmEng")) or None,
+                    "continent": _clean_text(item.get("conti")) or None,
+                    "location": _clean_text(item.get("loca")) or None,
+                    "agreement_date": _clean_text(item.get("concDt")) or None,
+                    "homepage_url": homepage_url or None,
+                    "source_url": self.landing_url,
+                    "source_tag": self.source_tag,
+                    "last_synced_at": fetched_at,
+                }
+            )
+        return rows
+
+    @staticmethod
+    def _validate_landing_page(html: str) -> None:
+        if 'appKey":"exchange-oversea-vue"' not in html or 'pageKind":"APP"' not in html:
+            raise ValueError(
+                "exchange_oversea1.do no longer exposes exchange-oversea-vue APP metadata."
+            )
+
+
 class SeasonalSemesterGuideSource:
     """Parser for the 계절학기 guide page."""
 

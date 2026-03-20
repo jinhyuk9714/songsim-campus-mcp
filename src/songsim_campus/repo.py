@@ -28,6 +28,7 @@ JSON_COLUMNS = {
     "seasonal_semester_guides": {"steps_json": "steps", "links_json": "links"},
     "academic_milestone_guides": {"steps_json": "steps", "links_json": "links"},
     "student_exchange_guides": {"steps_json": "steps", "links_json": "links"},
+    "student_exchange_partners": {},
     "dormitory_guides": {"steps_json": "steps", "links_json": "links"},
     "academic_calendar": {"campuses_json": "campuses"},
     "profile_notice_preferences": {
@@ -1026,6 +1027,38 @@ def replace_student_exchange_guides(
     )
 
 
+def replace_student_exchange_partners(
+    conn: psycopg.Connection,
+    rows: list[dict[str, Any]],
+) -> None:
+    conn.execute("TRUNCATE TABLE student_exchange_partners RESTART IDENTITY CASCADE")
+    _executemany(
+        conn,
+        """
+        INSERT INTO student_exchange_partners (
+            partner_code, university_name, country_ko, country_en, continent,
+            location, agreement_date, homepage_url, source_url, source_tag, last_synced_at
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """,
+        [
+            (
+                row["partner_code"],
+                row["university_name"],
+                row.get("country_ko"),
+                row.get("country_en"),
+                row.get("continent"),
+                row.get("location"),
+                row.get("agreement_date"),
+                row.get("homepage_url"),
+                row.get("source_url"),
+                row.get("source_tag", "demo"),
+                row["last_synced_at"],
+            )
+            for row in rows
+        ],
+    )
+
+
 def replace_dormitory_guides(conn: psycopg.Connection, rows: list[dict[str, Any]]) -> None:
     conn.execute("TRUNCATE TABLE dormitory_guides RESTART IDENTITY CASCADE")
     _executemany(
@@ -1470,6 +1503,23 @@ def list_student_exchange_guides(
     return [_row_to_dict("student_exchange_guides", row) for row in rows]
 
 
+def list_student_exchange_partners(
+    conn: psycopg.Connection,
+    *,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT *
+        FROM student_exchange_partners
+        ORDER BY country_ko NULLS LAST, university_name, partner_code, id
+        LIMIT %s
+        """,
+        (limit,),
+    ).fetchall()
+    return [_row_to_dict("student_exchange_partners", row) for row in rows]
+
+
 def list_dormitory_guides(
     conn: psycopg.Connection,
     *,
@@ -1650,6 +1700,7 @@ def get_dataset_sync_state(conn: psycopg.Connection, table: str) -> dict[str, An
         "seasonal_semester_guides",
         "academic_milestone_guides",
         "student_exchange_guides",
+        "student_exchange_partners",
         "dormitory_guides",
         "phone_book_entries",
         "affiliated_notices",

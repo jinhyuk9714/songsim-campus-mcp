@@ -44,6 +44,7 @@ from .ingest.official_sources import (
     StudentExchangeDomesticPartnerUniversitiesGuideSource,
     StudentExchangeExchangeProgramsGuideSource,
     StudentExchangeExchangeStudentGuideSource,
+    StudentExchangePartnerSource,
     TransportGuideSource,
     WifiGuideSource,
 )
@@ -72,6 +73,7 @@ EvalDomain = Literal[
     "seasonal_semester_guides",
     "academic_milestone_guides",
     "student_exchange_guides",
+    "student_exchange_partners",
     "phone_book",
     "dormitory_guides",
     "out_of_scope",
@@ -354,6 +356,21 @@ def _summarize_payload(payload: Any, *, summary_kind: str) -> Any:
             }
             for item in rows[:5]
         ]
+    if summary_kind == "student_exchange_partners_top5":
+        rows = payload if isinstance(payload, list) else []
+        return [
+            {
+                "partner_code": item.get("partner_code"),
+                "university_name": item.get("university_name"),
+                "country_ko": item.get("country_ko"),
+                "country_en": item.get("country_en"),
+                "continent": item.get("continent"),
+                "location": item.get("location"),
+                "agreement_date": item.get("agreement_date"),
+                "homepage_url": item.get("homepage_url"),
+            }
+            for item in rows[:5]
+        ]
     if summary_kind == "dormitory_guides_top5":
         rows = payload if isinstance(payload, list) else []
         return [
@@ -482,6 +499,92 @@ def _search_phone_book_rows(
 
     ranked.sort(key=lambda item: (item[0], item[1], item[2]))
     return [item[3] for item in ranked[:normalized_limit]]
+
+
+def _search_student_exchange_partner_rows(
+    rows: list[dict[str, Any]],
+    *,
+    query: str | None,
+    limit: int,
+) -> list[dict[str, Any]]:
+    normalized_limit = max(1, min(limit, 50))
+    sorted_rows = sorted(
+        rows,
+        key=lambda item: (
+            item.get("country_ko") is None,
+            str(item.get("country_ko") or ""),
+            str(item.get("university_name") or ""),
+            str(item.get("partner_code") or ""),
+        ),
+    )
+    normalized_query = (query or "").strip()
+    if not normalized_query:
+        return sorted_rows[:normalized_limit]
+
+    collapsed_query = normalized_query.casefold()
+    compact_query = re.sub(r"\s+", "", normalized_query).casefold()
+    continent_query = services.STUDENT_EXCHANGE_PARTNER_CONTINENT_ALIASES.get(
+        normalized_query,
+        normalized_query,
+    )
+    collapsed_continent_query = continent_query.casefold()
+    compact_continent_query = re.sub(r"\s+", "", continent_query).casefold()
+
+    ranked: list[tuple[int, str, str, str, dict[str, Any]]] = []
+    for item in sorted_rows:
+        university_name = str(item.get("university_name") or "").casefold()
+        country_ko = str(item.get("country_ko") or "").casefold()
+        continent = str(item.get("continent") or "").casefold()
+        country_en = str(item.get("country_en") or "").casefold()
+        location = str(item.get("location") or "").casefold()
+        university_compact = re.sub(r"\s+", "", str(item.get("university_name") or "")).casefold()
+        country_ko_compact = re.sub(r"\s+", "", str(item.get("country_ko") or "")).casefold()
+        country_en_compact = re.sub(r"\s+", "", str(item.get("country_en") or "")).casefold()
+        continent_compact = re.sub(r"\s+", "", str(item.get("continent") or "")).casefold()
+        location_compact = re.sub(r"\s+", "", str(item.get("location") or "")).casefold()
+
+        rank: int | None = None
+        if university_name == collapsed_query or university_compact == compact_query:
+            rank = 0
+        elif country_ko == collapsed_query or country_ko_compact == compact_query:
+            rank = 1
+        elif (
+            continent == collapsed_query
+            or continent_compact == compact_query
+            or continent == collapsed_continent_query
+            or continent_compact == compact_continent_query
+        ):
+            rank = 2
+        elif (
+            collapsed_query in university_name
+            or compact_query in university_compact
+            or collapsed_query in country_ko
+            or compact_query in country_ko_compact
+            or collapsed_query in country_en
+            or compact_query in country_en_compact
+            or collapsed_query in continent
+            or compact_query in continent_compact
+            or collapsed_continent_query in continent
+            or compact_continent_query in continent_compact
+            or collapsed_query in location
+            or compact_query in location_compact
+        ):
+            rank = 3
+
+        if rank is None:
+            continue
+        ranked.append(
+            (
+                rank,
+                str(item.get("country_ko") or ""),
+                str(item.get("university_name") or ""),
+                str(item.get("partner_code") or ""),
+                item,
+            )
+        )
+
+    ranked.sort(key=lambda item: (item[0], item[1], item[2], item[3]))
+    return [item[4] for item in ranked[:normalized_limit]]
 
 
 def _subset_match(expected: Any, actual: Any) -> bool:
@@ -663,6 +766,13 @@ def _payload_from_db(conn: psycopg.Connection, row: EvalCorpusRow) -> Any:
         items = services.list_student_exchange_guides(
             conn,
             topic=row.api_request.params.get("topic"),
+            limit=_limit_from_row(row, 20),
+        )
+        return [item.model_dump() for item in items]
+    if path == "/student-exchange-partners":
+        items = services.search_student_exchange_partners(
+            conn,
+            query=row.api_request.params.get("query"),
             limit=_limit_from_row(row, 20),
         )
         return [item.model_dump() for item in items]
@@ -1161,6 +1271,22 @@ def _payload_from_sources(
         if topic := row.api_request.params.get("topic"):
             rows = [item for item in rows if item.get("topic") == topic]
         return rows[:limit]
+    if path == "/student-exchange-partners":
+        cache_key = "student_exchange_partners"
+        if cache_key not in source_cache:
+            source = StudentExchangePartnerSource(
+                landing_url=services.STUDENT_EXCHANGE_PARTNER_SOURCE_URL,
+                list_url=services.STUDENT_EXCHANGE_PARTNER_LIST_URL,
+            )
+            source_cache[cache_key] = source.parse(
+                source.fetch(),
+                fetched_at=captured_at,
+            )
+        return _search_student_exchange_partner_rows(
+            list(source_cache[cache_key]),
+            query=row.api_request.params.get("query"),
+            limit=limit,
+        )
     if path == "/dormitory-guides":
         cache_key = "dormitory_guides"
         if cache_key not in source_cache:
@@ -1680,6 +1806,7 @@ def render_validation_report(
         "wifi_guides",
         "leave_of_absence_guides",
         "academic_support_guides",
+        "student_exchange_partners",
     ]
     missing_result = EvalResultRow(
         id="",

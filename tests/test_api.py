@@ -277,6 +277,23 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
                 "last_synced_at": "2026-03-20T10:00:00+09:00",
             }
         ]
+    def stub_student_exchange_partners(conn, query=None, limit=20):
+        return [
+            {
+                "id": 1,
+                "partner_code": "00122",
+                "university_name": "Utrecht University",
+                "country_ko": "네덜란드",
+                "country_en": "NETHERLANDS",
+                "continent": "EUROPE",
+                "location": "Utrecht",
+                "agreement_date": None,
+                "homepage_url": "https://www.uu.nl",
+                "source_url": "https://www.catholic.ac.kr/ko/support/exchange_oversea1.do",
+                "source_tag": "cuk_student_exchange_partners",
+                "last_synced_at": "2026-03-20T10:00:00+09:00",
+            }
+        ]
     monkeypatch.setattr(services, "list_affiliated_notices", stub_affiliated_notices, raising=False)
     monkeypatch.setattr(services, "list_dormitory_guides", stub_dormitory_guides, raising=False)
     monkeypatch.setattr(
@@ -285,10 +302,20 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
         stub_student_exchange_guides,
         raising=False,
     )
+    monkeypatch.setattr(
+        services,
+        "search_student_exchange_partners",
+        stub_student_exchange_partners,
+        raising=False,
+    )
     monkeypatch.setattr("songsim_campus.api.list_dormitory_guides", stub_dormitory_guides)
     monkeypatch.setattr(
         "songsim_campus.api.list_student_exchange_guides",
         stub_student_exchange_guides,
+    )
+    monkeypatch.setattr(
+        "songsim_campus.api.search_student_exchange_partners",
+        stub_student_exchange_partners,
     )
     clear_settings_cache()
 
@@ -310,6 +337,10 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
             "/student-exchange-guides",
             params={"topic": "exchange_student"},
         )
+        student_exchange_partners = public_client.get(
+            "/student-exchange-partners",
+            params={"query": "Utrecht"},
+        )
         create_profile = public_client.post("/profiles", json={"display_name": "성심학생"})
         admin_sync = public_client.get("/admin/sync")
 
@@ -326,6 +357,7 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     assert "/seasonal-semester-guides" in landing.text
     assert "/academic-milestone-guides" in landing.text
     assert "/student-exchange-guides" in landing.text
+    assert "/student-exchange-partners" in landing.text
     assert "/phone-book" in landing.text
     assert "/affiliated-notices" in landing.text
     assert "/dormitory-guides" in landing.text
@@ -341,6 +373,8 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     assert dormitory_guides.json()[0]["title"] == "스테파노관"
     assert student_exchange_guides.status_code == 200
     assert student_exchange_guides.json()[0]["topic"] == "exchange_student"
+    assert student_exchange_partners.status_code == 200
+    assert student_exchange_partners.json()[0]["partner_code"] == "00122"
     assert create_profile.status_code == 404
     assert admin_sync.status_code == 404
     assert "/academic-support-guides" in openapi.text
@@ -350,6 +384,7 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     assert "/seasonal-semester-guides" in openapi.text
     assert "/academic-milestone-guides" in openapi.text
     assert "/student-exchange-guides" in openapi.text
+    assert "/student-exchange-partners" in openapi.text
     assert "/phone-book" in openapi.text
     assert "/affiliated-notices" in openapi.text
     assert "/dormitory-guides" in openapi.text
@@ -412,6 +447,7 @@ def test_api_page_helpers_render_expected_strings():
     assert "/seasonal-semester-guides" in landing_html
     assert "/academic-milestone-guides" in landing_html
     assert "/student-exchange-guides" in landing_html
+    assert "/student-exchange-partners" in landing_html
     assert "/phone-book" in landing_html
     assert "/affiliated-notices" in landing_html
     assert "/dormitory-guides" in landing_html

@@ -273,6 +273,21 @@ CREATE TABLE IF NOT EXISTS student_exchange_guides (
     last_synced_at TIMESTAMPTZ NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS student_exchange_partners (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    partner_code TEXT NOT NULL,
+    university_name TEXT NOT NULL,
+    country_ko TEXT,
+    country_en TEXT,
+    continent TEXT,
+    location TEXT,
+    agreement_date TEXT,
+    homepage_url TEXT,
+    source_url TEXT,
+    source_tag TEXT NOT NULL DEFAULT 'demo',
+    last_synced_at TIMESTAMPTZ NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS dormitory_guides (
     id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     topic TEXT NOT NULL,

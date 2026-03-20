@@ -229,6 +229,21 @@ class StudentExchangeGuide(BaseModel):
     last_synced_at: str
 
 
+class StudentExchangePartner(BaseModel):
+    id: int
+    partner_code: str
+    university_name: str
+    country_ko: str | None = None
+    country_en: str | None = None
+    continent: str | None = None
+    location: str | None = None
+    agreement_date: str | None = None
+    homepage_url: str | None = None
+    source_url: str | None = None
+    source_tag: str = "demo"
+    last_synced_at: str
+
+
 class DormitoryGuide(BaseModel):
     id: int
     topic: str

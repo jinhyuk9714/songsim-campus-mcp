@@ -18,6 +18,7 @@ from songsim_campus.repo import (
     replace_restaurant_cache_snapshot,
     replace_restaurants,
     replace_student_exchange_guides,
+    replace_student_exchange_partners,
     replace_transport_guides,
     update_place_opening_hours,
 )
@@ -527,6 +528,49 @@ def test_mcp_student_exchange_tool_and_resource_share_service_data(app_env):
     assert resource_payload[0]["source_tag"] == "cuk_student_exchange_guides"
 
 
+def test_mcp_student_exchange_partner_tool_and_resource_share_service_data(app_env):
+    pytest.importorskip("mcp.server.fastmcp")
+    init_db()
+    seed_demo(force=True)
+    with connection() as conn:
+        replace_student_exchange_partners(
+            conn,
+            [
+                {
+                    "partner_code": "001",
+                    "university_name": "Utrecht University",
+                    "country_ko": "네덜란드",
+                    "country_en": "Netherlands",
+                    "continent": "EUROPE",
+                    "location": "Utrecht",
+                    "agreement_date": "2024-01-01",
+                    "homepage_url": "https://www.uu.nl/",
+                    "source_url": "https://www.catholic.ac.kr/ko/support/exchange_oversea1.do",
+                    "source_tag": "cuk_student_exchange_partners",
+                    "last_synced_at": "2026-03-20T10:00:00+09:00",
+                }
+            ],
+        )
+
+    async def main():
+        mcp = build_mcp()
+        tool_result = await mcp.call_tool(
+            "tool_search_student_exchange_partners",
+            {"query": "Utrecht", "limit": 10},
+        )
+        resource_result = await mcp.read_resource("songsim://student-exchange-partners")
+        return tool_result, list(resource_result)
+
+    tool_result, resource_result = asyncio.run(main())
+
+    tool_payload = json.loads(tool_result[0].text)
+    resource_payload = json.loads(resource_result[0].content)
+
+    assert tool_payload["university_name"] == "Utrecht University"
+    assert tool_payload["partner_code"] == "001"
+    assert resource_payload[0]["source_tag"] == "cuk_student_exchange_partners"
+
+
 def test_mcp_transport_tool_accepts_query_and_mode_precedence(app_env, monkeypatch):
     pytest.importorskip('mcp.server.fastmcp')
     init_db()
@@ -920,6 +964,7 @@ def test_mcp_public_readonly_mode_registers_only_read_only_tools(app_env, monkey
         "tool_list_seasonal_semester_guides",
         "tool_list_academic_milestone_guides",
         "tool_list_student_exchange_guides",
+        "tool_search_student_exchange_partners",
         "tool_search_phone_book",
         "tool_list_dormitory_guides",
         "tool_list_certificate_guides",
@@ -947,6 +992,7 @@ def test_mcp_public_readonly_mode_registers_only_read_only_tools(app_env, monkey
     assert "songsim://seasonal-semester-guide" in resource_uris
     assert "songsim://academic-milestone-guide" in resource_uris
     assert "songsim://student-exchange-guide" in resource_uris
+    assert "songsim://student-exchange-partners" in resource_uris
     assert "songsim://phone-book" in resource_uris
     assert "songsim://affiliated-notices" in resource_uris
     assert "songsim://dormitory-guide" in resource_uris
@@ -996,6 +1042,7 @@ def test_mcp_public_readonly_mode_registers_prompts_and_extended_resources(app_e
         "songsim://seasonal-semester-guide",
         "songsim://academic-milestone-guide",
         "songsim://student-exchange-guide",
+        "songsim://student-exchange-partners",
         "songsim://phone-book",
         "songsim://affiliated-notices",
         "songsim://dormitory-guide",
@@ -1067,6 +1114,9 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
     assert "학생교류" in tools["tool_list_student_exchange_guides"]["description"]
     assert "국내 학점교류" in tools["tool_list_student_exchange_guides"]["description"]
     assert "교환학생 프로그램" in tools["tool_list_student_exchange_guides"]["description"]
+    assert "해외협정대학" in tools["tool_search_student_exchange_partners"]["description"]
+    assert "Utrecht" in tools["tool_search_student_exchange_partners"]["description"]
+    assert "EUROPE" in tools["tool_search_student_exchange_partners"]["description"]
     assert "주요전화번호" in tools["tool_search_phone_book"]["description"]
     assert "기숙사 운영팀" in tools["tool_search_phone_book"]["description"]
     assert "기숙사" in tools["tool_list_dormitory_guides"]["description"]
@@ -1354,6 +1404,7 @@ def test_mcp_public_usage_and_class_period_resources_are_readable(app_env, monke
     assert "tool_list_seasonal_semester_guides" in usage_content
     assert "tool_list_academic_milestone_guides" in usage_content
     assert "tool_list_student_exchange_guides" in usage_content
+    assert "tool_search_student_exchange_partners" in usage_content
     assert "tool_search_phone_book" in usage_content
     assert "tool_list_dormitory_guides" in usage_content
     assert "tool_list_scholarship_guides" in usage_content
@@ -1379,6 +1430,11 @@ def test_mcp_public_usage_and_class_period_resources_are_readable(app_env, monke
     assert "교류대학 현황" in usage_content
     assert "교환학생 프로그램" in usage_content
     assert "해외 교류프로그램" in usage_content
+    assert "해외협정대학 알려줘" in usage_content
+    assert "네덜란드 협정대학 알려줘" in usage_content
+    assert "Utrecht University 있어?" in usage_content
+    assert "유럽 교류대학 알려줘" in usage_content
+    assert "대만 해외협정대학 홈페이지 알려줘" in usage_content
     assert "성심교정 기숙사 안내해줘" in usage_content
     assert "기숙사 입사안내 어디서 봐?" in usage_content
     assert "기숙사 최신 공지 알려줘" in usage_content

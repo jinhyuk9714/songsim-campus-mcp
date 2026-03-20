@@ -268,6 +268,88 @@ def test_build_truth_rows_uses_database_snapshot_for_student_exchange_guides(
     ]
 
 
+def test_build_truth_rows_uses_database_snapshot_for_student_exchange_partners(
+    app_env: str,
+) -> None:
+    row = EvalCorpusRow.model_validate(
+        {
+            "id": "SEP001",
+            "domain": "student_exchange_partners",
+            "style": "normal",
+            "user_utterance": "네덜란드 교류대학 알려줘",
+            "api_request": {
+                "path": "/student-exchange-partners",
+                "params": {"query": "네덜란드", "limit": 3},
+            },
+            "expected_mcp_flow": "tool_search_student_exchange_partners",
+            "truth_mode": "set_contains",
+            "pass_rule": {"summary_kind": "student_exchange_partners_top5"},
+            "watch_policy": "none",
+            "notes": "",
+        }
+    )
+    init_db()
+    with connection() as conn:
+        repo.replace_student_exchange_partners(
+            conn,
+            [
+                {
+                    "partner_code": "00122",
+                    "university_name": "Utrecht University",
+                    "country_ko": "네덜란드",
+                    "country_en": "NETHERLANDS",
+                    "continent": "EUROPE",
+                    "location": None,
+                    "agreement_date": None,
+                    "homepage_url": "https://www.uu.nl",
+                    "source_url": "https://www.catholic.ac.kr/ko/support/exchange_oversea1.do",
+                    "source_tag": "cuk_student_exchange_partners",
+                    "last_synced_at": "2026-03-20T10:00:00+09:00",
+                },
+                {
+                    "partner_code": "00004",
+                    "university_name": "National Central University",
+                    "country_ko": "대만",
+                    "country_en": "TAIWAN, PROVINCE OF CHINA",
+                    "continent": "ASIA",
+                    "location": "Taoyuan",
+                    "agreement_date": "2008-07-23",
+                    "homepage_url": "http://www.ncu.edu.tw",
+                    "source_url": "https://www.catholic.ac.kr/ko/support/exchange_oversea1.do",
+                    "source_tag": "cuk_student_exchange_partners",
+                    "last_synced_at": "2026-03-20T10:00:00+09:00",
+                },
+            ],
+        )
+
+    truth_rows = build_truth_rows(
+        [row],
+        database_url=app_env,
+        captured_at="2026-03-20T10:10:00+09:00",
+    )
+
+    assert truth_rows == [
+        EvalTruthRow(
+            id="SEP001",
+            normalized_expected=[
+                {
+                    "partner_code": "00122",
+                    "university_name": "Utrecht University",
+                    "country_ko": "네덜란드",
+                    "country_en": "NETHERLANDS",
+                    "continent": "EUROPE",
+                    "location": None,
+                    "agreement_date": None,
+                    "homepage_url": "https://www.uu.nl",
+                }
+            ],
+            truth_source="database_snapshot",
+            captured_at="2026-03-20T10:10:00+09:00",
+            stability="stable",
+        )
+    ]
+
+
 def test_build_truth_rows_prefers_official_source_for_notices_even_with_database(
     app_env: str,
     monkeypatch: pytest.MonkeyPatch,
@@ -1496,6 +1578,56 @@ def test_render_validation_report_includes_affiliated_notices_coverage() -> None
     assert report.count("| affiliated_notices | 1 | 1 |") == 2
 
 
+def test_render_validation_report_includes_student_exchange_partners_coverage() -> None:
+    rows = [
+        EvalCorpusRow.model_validate(
+            {
+                "id": "SEP001",
+                "domain": "student_exchange_partners",
+                "style": "normal",
+                "user_utterance": "네덜란드 협정대학 알려줘",
+                "api_request": {
+                    "path": "/student-exchange-partners",
+                    "params": {"query": "네덜란드", "limit": 5},
+                },
+                "expected_mcp_flow": "tool_search_student_exchange_partners",
+                "truth_mode": "set_contains",
+                "pass_rule": {"summary_kind": "student_exchange_partners_top5"},
+                "watch_policy": "none",
+                "notes": "",
+            }
+        )
+    ]
+    results = [
+        {
+            "id": "SEP001",
+            "status": "completed",
+            "verdict": "pass",
+            "actual_summary": [
+                {
+                    "university_name": "Utrecht University",
+                    "country_ko": "네덜란드",
+                    "continent": "EUROPE",
+                    "homepage_url": "http://www.uu.nl",
+                }
+            ],
+            "comparison": "set_contains",
+            "truth_source": "database_snapshot",
+            "checked_at": "2026-03-20T10:20:00+09:00",
+        }
+    ]
+
+    report = render_validation_report(
+        rows=rows,
+        results=results,
+        checked_at="2026-03-20T10:20:00+09:00",
+        base_url="https://songsim-public-api.onrender.com",
+    )
+
+    assert "Guide-Domain Coverage" in report
+    assert report.count("| student_exchange_partners | 1 | 1 |") == 2
+
+
 def test_run_evaluation_records_http_errors_without_crashing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1536,7 +1668,7 @@ def test_default_eval_assets_match_distribution_plan() -> None:
     rows = load_eval_rows(DEFAULT_CORPUS_PATH)
     watchlist_rows = load_eval_rows(DEFAULT_WATCHLIST_PATH)
 
-    assert len(rows) == 1039
+    assert len(rows) == 1044
     assert len(watchlist_rows) == 5
 
     by_domain: dict[str, int] = {}
@@ -1562,6 +1694,7 @@ def test_default_eval_assets_match_distribution_plan() -> None:
         "seasonal_semester_guides": 4,
         "academic_milestone_guides": 5,
         "student_exchange_guides": 5,
+        "student_exchange_partners": 5,
         "dormitory_guides": 5,
         "phone_book": 5,
         "out_of_scope": 30,
@@ -1639,6 +1772,23 @@ def test_default_eval_assets_match_distribution_plan() -> None:
         "domestic_partner_universities",
         "exchange_student",
         "exchange_programs",
+    }
+
+    partner_rows = [row for row in rows if row.domain == "student_exchange_partners"]
+
+    assert len(partner_rows) == 5
+    assert {row.api_request.path for row in partner_rows} == {"/student-exchange-partners"}
+    assert {row.expected_mcp_flow for row in partner_rows} == {
+        "tool_search_student_exchange_partners"
+    }
+    assert {row.pass_rule["summary_kind"] for row in partner_rows} == {
+        "student_exchange_partners_top5"
+    }
+    assert {row.api_request.params["query"] for row in partner_rows} == {
+        "대만",
+        "Utrecht University",
+        "유럽",
+        "네덜란드",
     }
 
     phone_rows = [row for row in rows if row.domain == "phone_book"]
