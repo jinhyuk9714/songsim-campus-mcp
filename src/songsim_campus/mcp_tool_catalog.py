@@ -22,6 +22,7 @@ from .mcp_public_serializers import (
     serialize_public_restaurant_search,
     serialize_public_scholarship_guide,
     serialize_public_seasonal_semester_guide,
+    serialize_public_student_exchange_guide,
     serialize_public_transport_guide,
     serialize_public_wifi_guide,
 )
@@ -57,6 +58,7 @@ from .services import (
     list_registration_guides,
     list_scholarship_guides,
     list_seasonal_semester_guides,
+    list_student_exchange_guides,
     list_transport_guides,
     list_wifi_guides,
     search_campus_dining_menus,
@@ -417,6 +419,37 @@ def register_shared_tools(
             guides = list_academic_milestone_guides(conn, topic=topic, limit=limit)
             if public_readonly:
                 return [serialize_public_academic_milestone_guide(item) for item in guides]
+            return [item.model_dump() for item in guides]
+
+    @mcp.tool(
+        description=(
+            (
+                "학생교류 안내를 읽을 때 사용합니다. 국내 학점교류 신청대상, "
+                "학점교류 신청시기, 교류대학 현황, 교환학생 프로그램, 해외 교류프로그램 "
+                "같은 정적 안내를 current snapshot으로 돌려줍니다."
+            )
+            if public_readonly
+            else "학생교류 안내 current snapshot을 가져옵니다."
+        ),
+        meta=tool_meta,
+    )
+    def tool_list_student_exchange_guides(
+        topic: Annotated[
+            str | None,
+            Field(
+                description=(
+                    "학생교류 안내 유형 필터. "
+                    "domestic_credit_exchange, domestic_partner_universities, "
+                    "exchange_student, exchange_programs 중 하나를 사용합니다."
+                )
+            ),
+        ] = None,
+        limit: Annotated[int, Field(description="최대 결과 수. 기본값은 20입니다.")] = 20,
+    ):
+        with connection_factory() as conn:
+            guides = list_student_exchange_guides(conn, topic=topic, limit=limit)
+            if public_readonly:
+                return [serialize_public_student_exchange_guide(item) for item in guides]
             return [item.model_dump() for item in guides]
 
     @mcp.tool(

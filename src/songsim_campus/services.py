@@ -9,6 +9,7 @@ import uuid
 from copy import deepcopy
 from datetime import date, datetime, timedelta
 from functools import lru_cache
+from importlib import import_module
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Protocol
@@ -115,6 +116,7 @@ from .schemas import (
     RestaurantSearchResult,
     ScholarshipGuide,
     SeasonalSemesterGuide,
+    StudentExchangeGuide,
     SyncRun,
     TransportGuide,
     WifiGuide,
@@ -155,6 +157,18 @@ ACADEMIC_MILESTONE_GUIDE_SOURCE_URLS = {
     "grade_evaluation": "https://www.catholic.ac.kr/ko/support/grade_evaluation_system.do",
     "graduation_requirement": "https://www.catholic.ac.kr/ko/support/graduation_requirement.do",
 }
+STUDENT_EXCHANGE_GUIDE_TOPICS = {
+    "domestic_credit_exchange",
+    "domestic_partner_universities",
+    "exchange_student",
+    "exchange_programs",
+}
+STUDENT_EXCHANGE_GUIDE_SOURCE_URLS = {
+    "domestic_credit_exchange": "https://www.catholic.ac.kr/ko/support/exchange_domestic1.do",
+    "domestic_partner_universities": "https://www.catholic.ac.kr/ko/support/exchange_domestic2.do",
+    "exchange_student": "https://www.catholic.ac.kr/ko/support/exchange_oversea2.do",
+    "exchange_programs": "https://www.catholic.ac.kr/ko/support/exchange_oversea3.do",
+}
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 CAMPUS_WALK_GRAPH_PATH = DATA_DIR / "campus_walk_graph.json"
 PERSONALIZATION_RULES_PATH = DATA_DIR / "personalization_rules.json"
@@ -173,6 +187,7 @@ SYNC_DATASET_TABLES = (
     "class_guides",
     "seasonal_semester_guides",
     "academic_milestone_guides",
+    "student_exchange_guides",
     "dormitory_guides",
     "phone_book_entries",
     "scholarship_guides",
@@ -192,6 +207,7 @@ PUBLIC_READY_CORE_DATASETS = frozenset(
         "class_guides",
         "seasonal_semester_guides",
         "academic_milestone_guides",
+        "student_exchange_guides",
         "dormitory_guides",
         "phone_book_entries",
         "scholarship_guides",
@@ -233,6 +249,7 @@ ADMIN_SYNC_TARGETS = {
     "class_guides",
     "seasonal_semester_guides",
     "academic_milestone_guides",
+    "student_exchange_guides",
     "dormitory_guides",
     "phone_book_entries",
     "scholarship_guides",
@@ -2850,6 +2867,29 @@ def list_academic_milestone_guides(
     ]
 
 
+def list_student_exchange_guides(
+    conn: DBConnection,
+    *,
+    topic: str | None = None,
+    limit: int = 20,
+) -> list[StudentExchangeGuide]:
+    normalized_limit = max(1, min(limit, 50))
+    normalized_topic = topic.strip() if topic else None
+    if normalized_topic and normalized_topic not in STUDENT_EXCHANGE_GUIDE_TOPICS:
+        raise InvalidRequestError(
+            "topic must be one of domestic_credit_exchange, domestic_partner_universities, "
+            "exchange_student, exchange_programs."
+        )
+    return [
+        StudentExchangeGuide.model_validate(item)
+        for item in repo.list_student_exchange_guides(
+            conn,
+            topic=normalized_topic,
+            limit=normalized_limit,
+        )
+    ]
+
+
 def list_dormitory_guides(
     conn: DBConnection,
     *,
@@ -3088,6 +3128,8 @@ def _run_admin_sync_target(
         return {
             "academic_milestone_guides": len(refresh_academic_milestone_guides_from_source(conn))
         }
+    if target == "student_exchange_guides":
+        return {"student_exchange_guides": len(refresh_student_exchange_guides_from_source(conn))}
     if target == "dormitory_guides":
         return {"dormitory_guides": len(refresh_dormitory_guides_from_source(conn))}
     if target == "phone_book_entries":
@@ -4656,6 +4698,52 @@ def refresh_academic_milestone_guides_from_source(
     ]
 
 
+def _resolve_student_exchange_sources() -> list[Any]:
+    module = import_module(".ingest.official_sources", package=__package__)
+    resolved_sources: list[Any] = []
+    missing_sources: list[str] = []
+    for class_name, topic in [
+        ("StudentExchangeDomesticCreditExchangeGuideSource", "domestic_credit_exchange"),
+        (
+            "StudentExchangeDomesticPartnerUniversitiesGuideSource",
+            "domestic_partner_universities",
+        ),
+        ("StudentExchangeExchangeStudentGuideSource", "exchange_student"),
+        ("StudentExchangeExchangeProgramsGuideSource", "exchange_programs"),
+    ]:
+        source_cls = getattr(module, class_name, None)
+        if source_cls is None:
+            missing_sources.append(f"{class_name} ({topic})")
+            continue
+        resolved_sources.append(source_cls(STUDENT_EXCHANGE_GUIDE_SOURCE_URLS[topic]))
+    if missing_sources:
+        raise RuntimeError(
+            "student exchange guide sources are unavailable: "
+            + ", ".join(missing_sources)
+        )
+    return resolved_sources
+
+
+def refresh_student_exchange_guides_from_source(
+    conn: DBConnection,
+    *,
+    sources: list[Any] | None = None,
+    fetched_at: str | None = None,
+) -> list[StudentExchangeGuide]:
+    synced_at = fetched_at or _now_iso()
+    resolved_sources = sources or _resolve_student_exchange_sources()
+    if not resolved_sources:
+        raise RuntimeError("student exchange guide sources are unavailable.")
+    rows: list[dict[str, Any]] = []
+    for source in resolved_sources:
+        rows.extend(source.parse(source.fetch(), fetched_at=synced_at))
+    repo.replace_student_exchange_guides(conn, rows)
+    return [
+        StudentExchangeGuide.model_validate(item)
+        for item in repo.list_student_exchange_guides(conn, limit=max(len(rows), 1))
+    ]
+
+
 def refresh_dormitory_guides_from_source(
     conn: DBConnection,
     *,
@@ -4731,6 +4819,7 @@ def sync_official_snapshot(
     class_guides = refresh_class_guides_from_source(conn)
     seasonal_semester_guides = refresh_seasonal_semester_guides_from_source(conn)
     academic_milestone_guides = refresh_academic_milestone_guides_from_source(conn)
+    student_exchange_guides = refresh_student_exchange_guides_from_source(conn)
     dormitory_guides = refresh_dormitory_guides_from_source(conn)
     phone_book_entries = refresh_phone_book_entries_from_source(conn)
     scholarship_guides = refresh_scholarship_guides_from_source(conn)
@@ -4752,6 +4841,7 @@ def sync_official_snapshot(
         "class_guides": len(class_guides),
         "seasonal_semester_guides": len(seasonal_semester_guides),
         "academic_milestone_guides": len(academic_milestone_guides),
+        "student_exchange_guides": len(student_exchange_guides),
         "dormitory_guides": len(dormitory_guides),
         "phone_book_entries": len(phone_book_entries),
         "scholarship_guides": len(scholarship_guides),

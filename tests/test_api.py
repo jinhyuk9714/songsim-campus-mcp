@@ -258,9 +258,38 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
                 "last_synced_at": "2026-03-20T10:00:00+09:00",
             }
         ]
+    def stub_student_exchange_guides(conn, topic=None, limit=20):
+        return [
+            {
+                "id": 1,
+                "topic": "exchange_student",
+                "title": "상호교환 프로그램",
+                "summary": "해외 교환학생 프로그램 안내",
+                "steps": ["학기당 최대 19학점"],
+                "links": [
+                    {
+                        "label": "교환학생 프로그램 알아보기",
+                        "url": "https://oia.catholic.ac.kr/oia/admission/exchange-student.do",
+                    }
+                ],
+                "source_url": "https://www.catholic.ac.kr/ko/support/exchange_oversea2.do",
+                "source_tag": "cuk_student_exchange_guides",
+                "last_synced_at": "2026-03-20T10:00:00+09:00",
+            }
+        ]
     monkeypatch.setattr(services, "list_affiliated_notices", stub_affiliated_notices, raising=False)
     monkeypatch.setattr(services, "list_dormitory_guides", stub_dormitory_guides, raising=False)
+    monkeypatch.setattr(
+        services,
+        "list_student_exchange_guides",
+        stub_student_exchange_guides,
+        raising=False,
+    )
     monkeypatch.setattr("songsim_campus.api.list_dormitory_guides", stub_dormitory_guides)
+    monkeypatch.setattr(
+        "songsim_campus.api.list_student_exchange_guides",
+        stub_student_exchange_guides,
+    )
     clear_settings_cache()
 
     app = create_app()
@@ -277,6 +306,10 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
             "/dormitory-guides",
             params={"topic": "hall_info"},
         )
+        student_exchange_guides = public_client.get(
+            "/student-exchange-guides",
+            params={"topic": "exchange_student"},
+        )
         create_profile = public_client.post("/profiles", json={"display_name": "성심학생"})
         admin_sync = public_client.get("/admin/sync")
 
@@ -292,6 +325,7 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     assert "/class-guides" in landing.text
     assert "/seasonal-semester-guides" in landing.text
     assert "/academic-milestone-guides" in landing.text
+    assert "/student-exchange-guides" in landing.text
     assert "/phone-book" in landing.text
     assert "/affiliated-notices" in landing.text
     assert "/dormitory-guides" in landing.text
@@ -305,6 +339,8 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     assert affiliated_notices.json()[0]["topic"] == "international_studies"
     assert dormitory_guides.status_code == 200
     assert dormitory_guides.json()[0]["title"] == "스테파노관"
+    assert student_exchange_guides.status_code == 200
+    assert student_exchange_guides.json()[0]["topic"] == "exchange_student"
     assert create_profile.status_code == 404
     assert admin_sync.status_code == 404
     assert "/academic-support-guides" in openapi.text
@@ -313,6 +349,7 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     assert "/class-guides" in openapi.text
     assert "/seasonal-semester-guides" in openapi.text
     assert "/academic-milestone-guides" in openapi.text
+    assert "/student-exchange-guides" in openapi.text
     assert "/phone-book" in openapi.text
     assert "/affiliated-notices" in openapi.text
     assert "/dormitory-guides" in openapi.text
@@ -374,6 +411,7 @@ def test_api_page_helpers_render_expected_strings():
     assert "/class-guides" in landing_html
     assert "/seasonal-semester-guides" in landing_html
     assert "/academic-milestone-guides" in landing_html
+    assert "/student-exchange-guides" in landing_html
     assert "/phone-book" in landing_html
     assert "/affiliated-notices" in landing_html
     assert "/dormitory-guides" in landing_html
@@ -402,6 +440,7 @@ def test_api_page_helpers_render_expected_strings():
     assert "Automation Status" in sync_html
     assert "academic_support_guides" in sync_html
     assert "affiliated_notices" in sync_html
+    assert "student_exchange_guides" in sync_html
 
     observability_html = render_admin_observability_page(
         state={

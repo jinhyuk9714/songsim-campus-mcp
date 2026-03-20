@@ -35,6 +35,7 @@ def test_register_shared_tools_public_mode_exposes_expected_tool_names_and_metad
         "tool_list_class_guides",
         "tool_list_seasonal_semester_guides",
         "tool_list_academic_milestone_guides",
+        "tool_list_student_exchange_guides",
         "tool_search_phone_book",
         "tool_list_affiliated_notices",
         "tool_list_dormitory_guides",
@@ -66,6 +67,9 @@ def test_register_shared_tools_public_mode_exposes_expected_tool_names_and_metad
     assert "신청절차" in payloads["tool_list_seasonal_semester_guides"]["description"]
     assert "성적평가" in payloads["tool_list_academic_milestone_guides"]["description"]
     assert "졸업요건" in payloads["tool_list_academic_milestone_guides"]["description"]
+    assert "학생교류" in payloads["tool_list_student_exchange_guides"]["description"]
+    assert "국내 학점교류" in payloads["tool_list_student_exchange_guides"]["description"]
+    assert "교류대학 현황" in payloads["tool_list_student_exchange_guides"]["description"]
     assert "주요전화번호" in payloads["tool_search_phone_book"]["description"]
     assert "유실물" in payloads["tool_search_phone_book"]["description"]
     assert "국제학부" in payloads["tool_list_affiliated_notices"]["description"]
@@ -94,6 +98,16 @@ def test_register_shared_tools_public_mode_exposes_expected_tool_names_and_metad
     )
     assert "grade_evaluation" in (
         payloads["tool_list_academic_milestone_guides"]["inputSchema"]["properties"]["topic"][
+            "description"
+        ]
+    )
+    assert "domestic_credit_exchange" in (
+        payloads["tool_list_student_exchange_guides"]["inputSchema"]["properties"]["topic"][
+            "description"
+        ]
+    )
+    assert "exchange_programs" in (
+        payloads["tool_list_student_exchange_guides"]["inputSchema"]["properties"]["topic"][
             "description"
         ]
     )

@@ -207,6 +207,67 @@ def test_build_truth_rows_uses_database_snapshot_for_dormitory_guides(app_env: s
     ]
 
 
+def test_build_truth_rows_uses_database_snapshot_for_student_exchange_guides(
+    app_env: str,
+) -> None:
+    row = EvalCorpusRow.model_validate(
+        {
+            "id": "SEX001",
+            "domain": "student_exchange_guides",
+            "style": "normal",
+            "user_utterance": "교류대학 현황 알려줘",
+            "api_request": {
+                "path": "/student-exchange-guides",
+                "params": {"topic": "domestic_partner_universities", "limit": 3},
+            },
+            "expected_mcp_flow": "tool_list_student_exchange_guides",
+            "truth_mode": "set_contains",
+            "pass_rule": {"summary_kind": "student_exchange_guides_top5"},
+            "watch_policy": "none",
+            "notes": "",
+        }
+    )
+    init_db()
+    with connection() as conn:
+        repo.replace_student_exchange_guides(
+            conn,
+            [
+                {
+                    "topic": "domestic_partner_universities",
+                    "title": "교류대학 현황",
+                    "summary": "국내 교류대학 현황",
+                    "steps": ["교류대학 목록"],
+                    "links": [],
+                    "source_url": "https://www.catholic.ac.kr/ko/support/exchange_domestic2.do",
+                    "source_tag": "cuk_student_exchange_guides",
+                    "last_synced_at": "2026-03-20T10:00:00+09:00",
+                }
+            ],
+        )
+
+    truth_rows = build_truth_rows(
+        [row],
+        database_url=app_env,
+        captured_at="2026-03-20T10:10:00+09:00",
+    )
+
+    assert truth_rows == [
+        EvalTruthRow(
+            id="SEX001",
+            normalized_expected=[
+                {
+                    "topic": "domestic_partner_universities",
+                    "title": "교류대학 현황",
+                    "summary": "국내 교류대학 현황",
+                }
+            ],
+            truth_source="database_snapshot",
+            captured_at="2026-03-20T10:10:00+09:00",
+            stability="stable",
+        )
+    ]
+
+
 def test_build_truth_rows_prefers_official_source_for_notices_even_with_database(
     app_env: str,
     monkeypatch: pytest.MonkeyPatch,
@@ -1475,7 +1536,7 @@ def test_default_eval_assets_match_distribution_plan() -> None:
     rows = load_eval_rows(DEFAULT_CORPUS_PATH)
     watchlist_rows = load_eval_rows(DEFAULT_WATCHLIST_PATH)
 
-    assert len(rows) == 1034
+    assert len(rows) == 1039
     assert len(watchlist_rows) == 5
 
     by_domain: dict[str, int] = {}
@@ -1500,6 +1561,7 @@ def test_default_eval_assets_match_distribution_plan() -> None:
         "class_guides": 5,
         "seasonal_semester_guides": 4,
         "academic_milestone_guides": 5,
+        "student_exchange_guides": 5,
         "dormitory_guides": 5,
         "phone_book": 5,
         "out_of_scope": 30,
@@ -1560,6 +1622,23 @@ def test_default_eval_assets_match_distribution_plan() -> None:
     assert {row.api_request.params["topic"] for row in milestone_rows} == {
         "grade_evaluation",
         "graduation_requirement",
+    }
+
+    exchange_rows = [row for row in rows if row.domain == "student_exchange_guides"]
+
+    assert len(exchange_rows) == 5
+    assert {row.api_request.path for row in exchange_rows} == {"/student-exchange-guides"}
+    assert {row.expected_mcp_flow for row in exchange_rows} == {
+        "tool_list_student_exchange_guides"
+    }
+    assert {row.pass_rule["summary_kind"] for row in exchange_rows} == {
+        "student_exchange_guides_top5"
+    }
+    assert {row.api_request.params["topic"] for row in exchange_rows} == {
+        "domestic_credit_exchange",
+        "domestic_partner_universities",
+        "exchange_student",
+        "exchange_programs",
     }
 
     phone_rows = [row for row in rows if row.domain == "phone_book"]

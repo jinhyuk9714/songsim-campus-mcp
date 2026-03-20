@@ -85,6 +85,7 @@ def render_admin_sync_page(
         {"title": "class_guides", "fields": []},
         {"title": "seasonal_semester_guides", "fields": []},
         {"title": "academic_milestone_guides", "fields": []},
+        {"title": "student_exchange_guides", "fields": []},
         {"title": "phone_book_entries", "fields": []},
         {"title": "dormitory_guides", "fields": []},
         {"title": "leave_of_absence_guides", "fields": []},
@@ -306,6 +307,8 @@ def render_landing_page(
         "2026학년도 3월 학사일정 보여줘",
         "수업평가 기간 알려줘",
         "계절학기 신청 시기 알려줘",
+        "국내 학점교류 신청대상 알려줘",
+        "교환학생 프로그램 알려줘",
         "국제학부 최신 공지 알려줘",
         "국제학부 공결 신청 공지 있어?",
         "기숙사 일반공지 알려줘",
@@ -481,6 +484,10 @@ def render_landing_page(
             <li>
               <code>/academic-milestone-guides</code> grade evaluation, grade check,
               attendance threshold, and graduation requirement guides
+            </li>
+            <li>
+              <code>/student-exchange-guides</code> domestic credit exchange, partner
+              universities, exchange student, and exchange program guides
             </li>
             <li><code>/phone-book</code> campus-wide department contacts and phone numbers</li>
             <li>

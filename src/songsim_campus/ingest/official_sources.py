@@ -171,6 +171,8 @@ def _extract_table_steps(table) -> list[str]:
 
 
 def _extract_link_items(root, *, base_url: str) -> list[dict[str, str]]:
+    if root is None:
+        return []
     items: list[dict[str, str]] = []
     for anchor in root.select("a[href]"):
         label = _clean_text(anchor.get_text(" ", strip=True))
@@ -1403,6 +1405,110 @@ class ClassForeignLanguageRequirementGuideSource(ClassGuideSourceBase):
         super().__init__(url)
 
 
+class StudentExchangeGuideSourceBase:
+    """Shared parser for the student exchange guide family."""
+
+    source_tag = "cuk_student_exchange_guides"
+    topic = ""
+
+    def __init__(self, url: str):
+        self.url = url
+
+    def fetch(self) -> str:
+        response = httpx.get(self.url, timeout=20, follow_redirects=True)
+        response.raise_for_status()
+        return response.text
+
+
+class StudentExchangeDomesticCreditExchangeGuideSource(StudentExchangeGuideSourceBase):
+    """Parser for the 국내 학점교류 안내 page."""
+
+    topic = "domestic_credit_exchange"
+
+    def __init__(
+        self,
+        url: str = "https://www.catholic.ac.kr/ko/support/exchange_domestic1.do",
+    ):
+        super().__init__(url)
+
+    def parse(self, html: str, *, fetched_at: str) -> list[dict]:
+        return _parse_student_exchange_con_box_guides(
+            html,
+            base_url=self.url,
+            source_tag=self.source_tag,
+            topic=self.topic,
+            fetched_at=fetched_at,
+        )
+
+
+class StudentExchangeDomesticPartnerUniversitiesGuideSource(StudentExchangeGuideSourceBase):
+    """Parser for the 국내 교류대학 현황 page."""
+
+    topic = "domestic_partner_universities"
+
+    def __init__(
+        self,
+        url: str = "https://www.catholic.ac.kr/ko/support/exchange_domestic2.do",
+    ):
+        super().__init__(url)
+
+    def parse(self, html: str, *, fetched_at: str) -> list[dict]:
+        return _parse_student_exchange_domestic_partner_universities(
+            html,
+            base_url=self.url,
+            source_tag=self.source_tag,
+            topic=self.topic,
+            fetched_at=fetched_at,
+        )
+
+
+class StudentExchangeExchangeStudentGuideSource(StudentExchangeGuideSourceBase):
+    """Parser for the 해외 교환학생 page."""
+
+    topic = "exchange_student"
+
+    def __init__(
+        self,
+        url: str = "https://www.catholic.ac.kr/ko/support/exchange_oversea2.do",
+    ):
+        super().__init__(url)
+
+    def parse(self, html: str, *, fetched_at: str) -> list[dict]:
+        soup = BeautifulSoup(html, "html.parser")
+        return _parse_student_exchange_con_box_guides(
+            soup,
+            base_url=self.url,
+            source_tag=self.source_tag,
+            topic=self.topic,
+            fetched_at=fetched_at,
+            shared_links=_extract_link_items(
+                soup.select_one(".content-box .link-box"),
+                base_url=self.url,
+            ),
+        )
+
+
+class StudentExchangeExchangeProgramsGuideSource(StudentExchangeGuideSourceBase):
+    """Parser for the 해외 교류프로그램 page."""
+
+    topic = "exchange_programs"
+
+    def __init__(
+        self,
+        url: str = "https://www.catholic.ac.kr/ko/support/exchange_oversea3.do",
+    ):
+        super().__init__(url)
+
+    def parse(self, html: str, *, fetched_at: str) -> list[dict]:
+        return _parse_student_exchange_thumb_guides(
+            html,
+            base_url=self.url,
+            source_tag=self.source_tag,
+            topic=self.topic,
+            fetched_at=fetched_at,
+        )
+
+
 class SeasonalSemesterGuideSource:
     """Parser for the 계절학기 guide page."""
 
@@ -2220,6 +2326,151 @@ def _extract_seasonal_semester_direct_text(node) -> str:
         if text:
             parts.append(text)
     return _normalize_note_text(" ".join(parts))
+
+
+def _parse_student_exchange_con_box_guides(
+    html: str | BeautifulSoup,
+    *,
+    base_url: str,
+    source_tag: str,
+    topic: str,
+    fetched_at: str,
+    shared_links: list[dict[str, str]] | None = None,
+) -> list[dict]:
+    soup = html if isinstance(html, BeautifulSoup) else BeautifulSoup(html, "html.parser")
+    root = soup.select_one(".content-box") or soup
+    rows: list[dict] = []
+    shared_links = shared_links or []
+    for box in root.find_all("div", class_="con-box", recursive=False):
+        title_node = box.select_one(".h4-tit01")
+        title = _clean_text(title_node.get_text(" ", strip=True) if title_node else "")
+        if not title:
+            continue
+        steps = _extract_student_exchange_con_box_steps(box)
+        rows.append(
+            {
+                "topic": topic,
+                "title": title,
+                "summary": steps[0] if steps else title,
+                "steps": steps,
+                "links": _extract_link_items(box.select_one(".link-box"), base_url=base_url)
+                or shared_links,
+                "source_url": base_url,
+                "source_tag": source_tag,
+                "last_synced_at": fetched_at,
+            }
+        )
+    return rows
+
+
+def _extract_student_exchange_con_box_steps(box) -> list[str]:
+    steps: list[str] = []
+    for child in box.find_all(["p", "div"], recursive=False):
+        classes = set(child.get("class", []))
+        if {"h4-tit01", "h3-tit01", "h5-tit01"} & classes:
+            continue
+        if "link-box" in classes:
+            continue
+        if "table-wrap" in classes:
+            table = child.select_one("table")
+            if table is not None:
+                steps.extend(_extract_table_steps(table))
+            continue
+        if "alert-txt" in classes:
+            text = _normalize_note_text(child.get_text(" ", strip=True))
+            if text:
+                steps.append(text)
+            continue
+        text = _extract_student_exchange_direct_text(child)
+        if text:
+            steps.append(text)
+        for alert in child.select(".alert-txt"):
+            alert_text = _normalize_note_text(alert.get_text(" ", strip=True))
+            if alert_text:
+                steps.append(alert_text)
+    return _unique(steps)
+
+
+def _extract_student_exchange_direct_text(node) -> str:
+    parts: list[str] = []
+    for child in node.contents:
+        if isinstance(child, str):
+            text = _clean_text(child)
+            if text:
+                parts.append(text)
+            continue
+        classes = set(child.get("class", []))
+        if getattr(child, "name", None) in {"ul", "table"}:
+            continue
+        if {"alert-txt", "link-box", "table-wrap"} & classes:
+            continue
+        if child.find("table", recursive=False) is not None:
+            continue
+        text = _clean_text(child.get_text(" ", strip=True))
+        if text:
+            parts.append(text)
+    return _normalize_note_text(" ".join(parts))
+
+
+def _parse_student_exchange_domestic_partner_universities(
+    html: str,
+    *,
+    base_url: str,
+    source_tag: str,
+    topic: str,
+    fetched_at: str,
+) -> list[dict]:
+    soup = BeautifulSoup(html, "html.parser")
+    box = soup.select_one(".content-box .con-box") or soup.select_one(".content-box") or soup
+    title = "교류대학 현황"
+    summary_node = box.select_one(".con-tit")
+    summary = _clean_text(summary_node.get_text(" ", strip=True) if summary_node else "")
+    steps = _extract_guide_box_steps(box)
+    return [
+        {
+            "topic": topic,
+            "title": title,
+            "summary": summary or (steps[0] if steps else title),
+            "steps": steps,
+            "links": [],
+            "source_url": base_url,
+            "source_tag": source_tag,
+            "last_synced_at": fetched_at,
+        }
+    ]
+
+
+def _parse_student_exchange_thumb_guides(
+    html: str,
+    *,
+    base_url: str,
+    source_tag: str,
+    topic: str,
+    fetched_at: str,
+) -> list[dict]:
+    soup = BeautifulSoup(html, "html.parser")
+    root = soup.select_one(".content-box") or soup
+    rows: list[dict] = []
+    for thumb in root.select(".thumb-box"):
+        info_box = thumb.select_one(".info-box") or thumb
+        title_node = info_box.select_one(".h4-tit01")
+        title = _clean_text(title_node.get_text(" ", strip=True) if title_node else "")
+        if not title:
+            continue
+        steps = _extract_con_box_paragraph_steps(info_box)
+        rows.append(
+            {
+                "topic": topic,
+                "title": title,
+                "summary": steps[0] if steps else title,
+                "steps": _unique(steps),
+                "links": _extract_link_items(info_box.select_one(".link-box"), base_url=base_url),
+                "source_url": base_url,
+                "source_tag": source_tag,
+                "last_synced_at": fetched_at,
+            }
+        )
+    return rows
 
 
 class ScholarshipGuideSource:

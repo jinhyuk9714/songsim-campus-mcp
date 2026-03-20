@@ -64,6 +64,7 @@ from .schemas import (
     RestaurantSearchResult,
     ScholarshipGuide,
     SeasonalSemesterGuide,
+    StudentExchangeGuide,
     TransportGuide,
     WifiGuide,
 )
@@ -100,6 +101,7 @@ from .services import (
     list_restaurants,
     list_scholarship_guides,
     list_seasonal_semester_guides,
+    list_student_exchange_guides,
     list_transport_guides,
     list_wifi_guides,
     release_automation_leader,
@@ -484,6 +486,17 @@ def create_app() -> FastAPI:
         with connection() as conn:
             try:
                 return list_academic_milestone_guides(conn, topic=topic, limit=limit)
+            except InvalidRequestError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/student-exchange-guides", response_model=list[StudentExchangeGuide])
+    def student_exchange_guides(
+        topic: str | None = Query(default=None, description="학생교류 안내 유형 필터"),
+        limit: int = Query(default=20, ge=1, le=50),
+    ) -> list[StudentExchangeGuide]:
+        with connection() as conn:
+            try:
+                return list_student_exchange_guides(conn, topic=topic, limit=limit)
             except InvalidRequestError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
 

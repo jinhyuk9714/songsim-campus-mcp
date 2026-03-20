@@ -17,6 +17,7 @@ from songsim_campus.repo import (
     replace_places,
     replace_restaurant_cache_snapshot,
     replace_restaurants,
+    replace_student_exchange_guides,
     replace_transport_guides,
     update_place_opening_hours,
 )
@@ -481,6 +482,51 @@ def test_mcp_dormitory_tool_and_resource_share_service_data(app_env):
     assert resource_payload[0]["source_tag"] == "cuk_dormitory_guides"
 
 
+def test_mcp_student_exchange_tool_and_resource_share_service_data(app_env):
+    pytest.importorskip("mcp.server.fastmcp")
+    init_db()
+    seed_demo(force=True)
+    with connection() as conn:
+        replace_student_exchange_guides(
+            conn,
+            [
+                {
+                    "topic": "exchange_student",
+                    "title": "상호교환 프로그램",
+                    "summary": "해외 교환학생 프로그램 안내",
+                    "steps": ["학기당 최대 19학점"],
+                    "links": [
+                        {
+                            "label": "교환학생 프로그램 알아보기",
+                            "url": "https://oia.catholic.ac.kr/oia/admission/exchange-student.do",
+                        }
+                    ],
+                    "source_url": "https://www.catholic.ac.kr/ko/support/exchange_oversea2.do",
+                    "source_tag": "cuk_student_exchange_guides",
+                    "last_synced_at": "2026-03-20T10:00:00+09:00",
+                }
+            ],
+        )
+
+    async def main():
+        mcp = build_mcp()
+        tool_result = await mcp.call_tool(
+            "tool_list_student_exchange_guides",
+            {"topic": "exchange_student", "limit": 10},
+        )
+        resource_result = await mcp.read_resource("songsim://student-exchange-guide")
+        return tool_result, list(resource_result)
+
+    tool_result, resource_result = asyncio.run(main())
+
+    tool_payload = json.loads(tool_result[0].text)
+    resource_payload = json.loads(resource_result[0].content)
+
+    assert tool_payload["title"] == "상호교환 프로그램"
+    assert tool_payload["topic"] == "exchange_student"
+    assert resource_payload[0]["source_tag"] == "cuk_student_exchange_guides"
+
+
 def test_mcp_transport_tool_accepts_query_and_mode_precedence(app_env, monkeypatch):
     pytest.importorskip('mcp.server.fastmcp')
     init_db()
@@ -873,6 +919,7 @@ def test_mcp_public_readonly_mode_registers_only_read_only_tools(app_env, monkey
         "tool_list_class_guides",
         "tool_list_seasonal_semester_guides",
         "tool_list_academic_milestone_guides",
+        "tool_list_student_exchange_guides",
         "tool_search_phone_book",
         "tool_list_dormitory_guides",
         "tool_list_certificate_guides",
@@ -899,6 +946,7 @@ def test_mcp_public_readonly_mode_registers_only_read_only_tools(app_env, monkey
     assert "songsim://class-guide" in resource_uris
     assert "songsim://seasonal-semester-guide" in resource_uris
     assert "songsim://academic-milestone-guide" in resource_uris
+    assert "songsim://student-exchange-guide" in resource_uris
     assert "songsim://phone-book" in resource_uris
     assert "songsim://affiliated-notices" in resource_uris
     assert "songsim://dormitory-guide" in resource_uris
@@ -947,6 +995,7 @@ def test_mcp_public_readonly_mode_registers_prompts_and_extended_resources(app_e
         "songsim://class-guide",
         "songsim://seasonal-semester-guide",
         "songsim://academic-milestone-guide",
+        "songsim://student-exchange-guide",
         "songsim://phone-book",
         "songsim://affiliated-notices",
         "songsim://dormitory-guide",
@@ -1015,6 +1064,9 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
     assert "학점 제한" in tools["tool_list_seasonal_semester_guides"]["description"]
     assert "성적평가" in tools["tool_list_academic_milestone_guides"]["description"]
     assert "졸업요건" in tools["tool_list_academic_milestone_guides"]["description"]
+    assert "학생교류" in tools["tool_list_student_exchange_guides"]["description"]
+    assert "국내 학점교류" in tools["tool_list_student_exchange_guides"]["description"]
+    assert "교환학생 프로그램" in tools["tool_list_student_exchange_guides"]["description"]
     assert "주요전화번호" in tools["tool_search_phone_book"]["description"]
     assert "기숙사 운영팀" in tools["tool_search_phone_book"]["description"]
     assert "기숙사" in tools["tool_list_dormitory_guides"]["description"]
@@ -1099,6 +1151,16 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
     )
     assert "grade_evaluation" in (
         tools["tool_list_academic_milestone_guides"]["inputSchema"]["properties"]["topic"][
+            "description"
+        ]
+    )
+    assert "domestic_credit_exchange" in (
+        tools["tool_list_student_exchange_guides"]["inputSchema"]["properties"]["topic"][
+            "description"
+        ]
+    )
+    assert "exchange_programs" in (
+        tools["tool_list_student_exchange_guides"]["inputSchema"]["properties"]["topic"][
             "description"
         ]
     )
@@ -1291,6 +1353,7 @@ def test_mcp_public_usage_and_class_period_resources_are_readable(app_env, monke
     assert "tool_list_class_guides" in usage_content
     assert "tool_list_seasonal_semester_guides" in usage_content
     assert "tool_list_academic_milestone_guides" in usage_content
+    assert "tool_list_student_exchange_guides" in usage_content
     assert "tool_search_phone_book" in usage_content
     assert "tool_list_dormitory_guides" in usage_content
     assert "tool_list_scholarship_guides" in usage_content
@@ -1311,6 +1374,11 @@ def test_mcp_public_usage_and_class_period_resources_are_readable(app_env, monke
     assert "등록금 납부 방법" in usage_content
     assert "수업평가 기간" in usage_content
     assert "계절학기 신청 시기" in usage_content
+    assert "국내 학점교류 신청대상" in usage_content
+    assert "학점교류 신청시기" in usage_content
+    assert "교류대학 현황" in usage_content
+    assert "교환학생 프로그램" in usage_content
+    assert "해외 교류프로그램" in usage_content
     assert "성심교정 기숙사 안내해줘" in usage_content
     assert "기숙사 입사안내 어디서 봐?" in usage_content
     assert "기숙사 최신 공지 알려줘" in usage_content
