@@ -1074,6 +1074,11 @@ def search_places(
                 "name": display_name,
                 "canonical_name": canonical_name,
             }
+            if query_is_plain_generic_facility and facility_match is not None:
+                matched_facility = _matched_facility_from_row(
+                    facility_match[2]
+                ).model_dump(exclude_none=True)
+                payload["matched_facility"] = matched_facility
         preference_rank = 0 if slug in preferred_slug_set else 1
         generic_host_bias = 0
         if query_is_plain_generic_facility:

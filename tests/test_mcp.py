@@ -2058,6 +2058,60 @@ def test_mcp_public_search_places_returns_matched_facility_metadata(app_env, mon
     clear_settings_cache()
 
 
+def test_mcp_places_tool_populates_generic_facility_metadata_when_place_alias_matches(
+    monkeypatch,
+):
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                {
+                    "slug": "student-center",
+                    "name": "학생회관",
+                    "category": "facility",
+                    "aliases": ["편의점"],
+                    "description": "학생 편의시설과 복사/은행/카페가 있는 공간",
+                    "latitude": 37.48652,
+                    "longitude": 126.80216,
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                }
+            ],
+        )
+        replace_campus_facilities(
+            conn,
+            [
+                {
+                    "facility_name": "학생회관 편의점",
+                    "category": None,
+                    "phone": None,
+                    "location_text": "학생회관 1층",
+                    "hours_text": "상시 07:00~24:00",
+                    "place_slug": "student-center",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                }
+            ],
+        )
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        payload = await mcp.call_tool("tool_search_places", {"query": "편의점", "limit": 1})
+        return _tool_payloads(payload)[0]
+
+    payload = asyncio.run(main())
+
+    assert payload["slug"] == "student-center"
+    assert payload["matched_facility"]["name"] == "학생회관 편의점"
+    assert payload["matched_facility"]["location_hint"] == "학생회관 1층"
+    assert payload["matched_facility"]["opening_hours"] == "상시 07:00~24:00"
+
+    clear_settings_cache()
+
+
 def test_mcp_public_search_places_matches_student_center_composite_facility_queries(
     app_env,
     monkeypatch,

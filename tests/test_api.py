@@ -1115,6 +1115,52 @@ def test_places_endpoint_exposes_matched_facility_metadata(client):
     library_response = client.get("/places", params={"query": "중앙도서관이 어디야?", "limit": 1})
     assert library_response.json()[0].get("matched_facility") is None
 
+
+def test_places_endpoint_populates_generic_facility_metadata_when_place_alias_matches(client):
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                {
+                    "slug": "student-center",
+                    "name": "학생회관",
+                    "category": "facility",
+                    "aliases": ["편의점"],
+                    "description": "학생 편의시설과 복사/은행/카페가 있는 공간",
+                    "latitude": 37.48652,
+                    "longitude": 126.80216,
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                }
+            ],
+        )
+        replace_campus_facilities(
+            conn,
+            [
+                {
+                    "facility_name": "학생회관 편의점",
+                    "category": None,
+                    "phone": None,
+                    "location_text": "학생회관 1층",
+                    "hours_text": "상시 07:00~24:00",
+                    "place_slug": "student-center",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                }
+            ],
+        )
+
+    response = client.get("/places", params={"query": "편의점", "limit": 1})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload[0]["slug"] == "student-center"
+    assert payload[0]["matched_facility"]["name"] == "학생회관 편의점"
+    assert payload[0]["matched_facility"]["location_hint"] == "학생회관 1층"
+    assert payload[0]["matched_facility"]["opening_hours"] == "상시 07:00~24:00"
+
+
 def test_restaurants_search_endpoint_matches_brand_alias_spacing_variants(client):
     with connection() as conn:
         replace_restaurants(

@@ -887,6 +887,49 @@ def test_search_places_generic_facility_nouns_prefer_building_then_facility_then
     assert [place.slug for place in atm_places[:3]] == expected_order
 
 
+def test_search_places_generic_facility_nouns_attach_matched_facility_when_place_alias_ties(
+    app_env,
+):
+    init_db()
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                _place_row(
+                    slug="student-center",
+                    name="학생회관",
+                    category="facility",
+                    aliases=["학생센터", "편의점"],
+                    description="학생 편의시설이 많은 건물",
+                ),
+            ],
+        )
+        repo.replace_campus_facilities(
+            conn,
+            [
+                {
+                    "facility_name": "학생회관 편의점",
+                    "category": None,
+                    "phone": None,
+                    "location_text": "학생회관 1층",
+                    "hours_text": "상시 07:00~24:00",
+                    "place_slug": "student-center",
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/restaurant.do",
+                    "source_tag": "cuk_facilities",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                }
+            ],
+        )
+        places = search_places(conn, query="편의점", limit=1)
+
+    assert places
+    assert places[0].slug == "student-center"
+    assert places[0].matched_facility is not None
+    assert places[0].matched_facility.name == "학생회관 편의점"
+    assert places[0].matched_facility.location_hint == "학생회관 1층"
+    assert places[0].matched_facility.opening_hours == "상시 07:00~24:00"
+
+
 def test_refresh_campus_facilities_replaces_rows_and_maps_place_slugs(app_env):
     init_db()
     with connection() as conn:
