@@ -33,6 +33,7 @@ from songsim_campus.services import (
     list_academic_status_guides,
     list_academic_support_guides,
     list_certificate_guides,
+    list_dormitory_guides,
     list_estimated_empty_classrooms,
     list_latest_notices,
     list_leave_of_absence_guides,
@@ -46,6 +47,7 @@ from songsim_campus.services import (
     refresh_campus_facilities_from_source,
     refresh_certificate_guides_from_certificate_page,
     refresh_courses_from_subject_search,
+    refresh_dormitory_guides_from_source,
     refresh_facility_hours_from_facilities_page,
     refresh_leave_of_absence_guides_from_source,
     refresh_library_hours_from_library_page,
@@ -135,6 +137,28 @@ def _place_row(
         "opening_hours": opening_hours or {},
         "source_tag": source_tag,
         "last_synced_at": "2026-03-13T09:00:00+09:00",
+    }
+
+
+def _dormitory_guide_row(
+    *,
+    topic: str,
+    title: str,
+    summary: str,
+    steps: list[str],
+    links: list[dict[str, str]] | None = None,
+    source_url: str = "https://dorm.catholic.ac.kr/",
+    source_tag: str = "cuk_dormitory_guides",
+) -> dict:
+    return {
+        "topic": topic,
+        "title": title,
+        "summary": summary,
+        "steps": steps,
+        "links": links or [],
+        "source_url": source_url,
+        "source_tag": source_tag,
+        "last_synced_at": "2026-03-20T00:00:00+09:00",
     }
 
 
@@ -4078,6 +4102,115 @@ class FakeAcademicSupportSource:
         ]
 
 
+class FakeDormitorySongsimSource:
+    def fetch(self):
+        return "<dormitory-songsim></dormitory-songsim>"
+
+    def parse(self, html: str, *, fetched_at: str):
+        assert html == "<dormitory-songsim></dormitory-songsim>"
+        assert fetched_at == "2026-03-20T00:00:00+09:00"
+        return [
+            _dormitory_guide_row(
+                topic="hall_info",
+                title="스테파노관",
+                summary="약 1,160여 명을 수용할 수 있는 성심교정 최대 규모의 기숙사",
+                steps=[
+                    "383개(1,167명) 규모",
+                    "세탁실, 휴게실, 공용화장실, 세미나실, 짐 보관실",
+                ],
+                source_url="https://www.catholic.ac.kr/ko/campuslife/dormitory_songsim.do",
+            ),
+            _dormitory_guide_row(
+                topic="hall_info",
+                title="안드레아관",
+                summary="학생 476명 수용의 2인실 기숙사",
+                steps=[
+                    "238실(2인실), 학생 476명 수용",
+                    "무인택배실, 우편함, 공동 세탁실, 층별 휴게실",
+                ],
+                source_url="https://www.catholic.ac.kr/ko/campuslife/dormitory_songsim.do",
+            ),
+            _dormitory_guide_row(
+                topic="hall_info",
+                title="프란치스코관",
+                summary="정문에서 도보 5분 이내의 생활관",
+                steps=[
+                    "14층, 총 28세대",
+                    "각 세대 가전/가구 구비, 개별 취사",
+                ],
+                source_url="https://www.catholic.ac.kr/ko/campuslife/dormitory_songsim.do",
+            ),
+            _dormitory_guide_row(
+                topic="hall_info",
+                title="기숙사운영팀",
+                summary="성심교정 기숙사운영팀 연락처",
+                steps=[
+                    "전화: 02-2164-4660, 4661, 4663",
+                    "메일: dormitory1@catholic.ac.kr",
+                ],
+                source_url="https://www.catholic.ac.kr/ko/campuslife/dormitory_songsim.do",
+            ),
+        ]
+
+
+class FakeDormitoryHomepageSource:
+    def fetch(self):
+        return "<dormitory-home></dormitory-home>"
+
+    def parse(self, html: str, *, fetched_at: str):
+        assert html == "<dormitory-home></dormitory-home>"
+        assert fetched_at == "2026-03-20T00:00:00+09:00"
+        return [
+            _dormitory_guide_row(
+                topic="quick_links",
+                title="입사안내 / 퇴사안내 / 생활안내 / 기숙사비 / FAQ",
+                summary="입사안내",
+                steps=["입사안내", "퇴사안내", "생활안내", "기숙사비", "FAQ"],
+                links=[
+                    {"label": "입사안내", "url": "https://dorm.catholic.ac.kr/dormitory/check/freshman.do"},
+                    {"label": "퇴사안내", "url": "https://dorm.catholic.ac.kr/dormitory/check/resignation.do"},
+                ],
+            ),
+            _dormitory_guide_row(
+                topic="latest_notices",
+                title="일반공지(K관/A관)",
+                summary="K관/A관 일반공지 카드",
+                steps=["K관/A관 일반공지 카드 1", "K관/A관 일반공지 카드 2"],
+                links=[
+                    {"label": "K관/A관 일반공지 카드 1", "url": "https://dorm.catholic.ac.kr/dormitory/board/comm_notice.do?mode=view&articleNo=1"},
+                    {"label": "K관/A관 일반공지 카드 2", "url": "https://dorm.catholic.ac.kr/dormitory/board/comm_notice.do?mode=view&articleNo=2"},
+                ],
+            ),
+            _dormitory_guide_row(
+                topic="latest_notices",
+                title="입퇴사공지(K관/A관)",
+                summary="K관/A관 입퇴사공지 카드",
+                steps=["K관/A관 입퇴사공지 카드 1"],
+                links=[
+                    {"label": "K관/A관 입퇴사공지 카드 1", "url": "https://dorm.catholic.ac.kr/dormitory/board/checkin-out_notice1.do?mode=view&articleNo=3"},
+                ],
+            ),
+            _dormitory_guide_row(
+                topic="latest_notices",
+                title="일반공지(프란치스코관)",
+                summary="프란치스코관 일반공지 카드",
+                steps=["프란치스코관 일반공지 카드 1"],
+                links=[
+                    {"label": "프란치스코관 일반공지 카드 1", "url": "https://dorm.catholic.ac.kr/dormitory/board/comm_notice3.do?mode=view&articleNo=4"},
+                ],
+            ),
+            _dormitory_guide_row(
+                topic="latest_notices",
+                title="입퇴사공지(프란치스코관)",
+                summary="프란치스코관 입퇴사공지 카드",
+                steps=["프란치스코관 입퇴사공지 카드 1"],
+                links=[
+                    {"label": "프란치스코관 입퇴사공지 카드 1", "url": "https://dorm.catholic.ac.kr/dormitory/board/checkin-out_notice.do?mode=view&articleNo=5"},
+                ],
+            ),
+        ]
+
+
 class FakeAcademicStatusSource:
     def __init__(self, status: str, rows: list[dict[str, object]]):
         self.status = status
@@ -4381,6 +4514,85 @@ def test_refresh_academic_status_guides_replaces_rows_and_filters_by_status(app_
     ]
     assert dropout_guides[0].title == "자퇴 신청 방법"
     assert dropout_guides[0].source_tag == "cuk_academic_status_guides"
+
+
+def test_refresh_dormitory_guides_replaces_rows_and_filters_by_topic(app_env):
+    init_db()
+
+    with connection() as conn:
+        repo.replace_dormitory_guides(
+            conn,
+            [
+                {
+                    "topic": "hall_info",
+                    "title": "임시 기숙사",
+                    "summary": "old",
+                    "steps": ["old"],
+                    "links": [],
+                    "source_url": "https://example.com/old",
+                    "source_tag": "old",
+                    "last_synced_at": "2026-03-19T00:00:00+09:00",
+                }
+            ],
+        )
+        guides = refresh_dormitory_guides_from_source(
+            conn,
+            sources=[FakeDormitorySongsimSource(), FakeDormitoryHomepageSource()],
+            fetched_at="2026-03-20T00:00:00+09:00",
+        )
+        all_guides = list_dormitory_guides(conn, limit=20)
+        hall_guides = list_dormitory_guides(conn, topic="hall_info", limit=20)
+        quick_links = list_dormitory_guides(conn, topic="quick_links", limit=20)
+        latest_notices = list_dormitory_guides(conn, topic="latest_notices", limit=20)
+
+    assert len(guides) == 9
+    assert [guide.topic for guide in all_guides] == [
+        "hall_info",
+        "hall_info",
+        "hall_info",
+        "hall_info",
+        "quick_links",
+        "latest_notices",
+        "latest_notices",
+        "latest_notices",
+        "latest_notices",
+    ]
+    assert [guide.title for guide in hall_guides] == [
+        "스테파노관",
+        "안드레아관",
+        "프란치스코관",
+        "기숙사운영팀",
+    ]
+    assert quick_links[0].links[0]["label"] == "입사안내"
+    assert latest_notices[0].title == "일반공지(K관/A관)"
+    assert len(latest_notices) == 4
+    assert latest_notices[-1].links[0]["label"] == "프란치스코관 입퇴사공지 카드 1"
+    assert all_guides[0].source_tag == "cuk_dormitory_guides"
+    assert all_guides[0].source_url == "https://www.catholic.ac.kr/ko/campuslife/dormitory_songsim.do"
+
+
+def test_list_dormitory_guides_rejects_unknown_topic(app_env):
+    init_db()
+
+    with connection() as conn:
+        repo.replace_dormitory_guides(
+            conn,
+            [
+                {
+                    "topic": "hall_info",
+                    "title": "스테파노관",
+                    "summary": "소개",
+                    "steps": ["소개"],
+                    "links": [],
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/dormitory_songsim.do",
+                    "source_tag": "cuk_dormitory_guides",
+                    "last_synced_at": "2026-03-20T00:00:00+09:00",
+                }
+            ],
+        )
+
+    with connection() as conn, pytest.raises(InvalidRequestError, match="hall_info"):
+        list_dormitory_guides(conn, topic="invalid")
 
 
 def test_list_wifi_guides_preserves_snapshot_order_and_limit(app_env):
@@ -4732,6 +4944,10 @@ def test_sync_official_snapshot_runs_opening_hours_before_courses_and_transport(
         lambda conn: call_order.append('academic_milestone_guides') or [],
     )
     monkeypatch.setattr(
+        'songsim_campus.services.refresh_dormitory_guides_from_source',
+        lambda conn: call_order.append('dormitory_guides') or [],
+    )
+    monkeypatch.setattr(
         'songsim_campus.services.refresh_phone_book_entries_from_source',
         lambda conn: call_order.append('phone_book_entries') or [],
     )
@@ -4772,6 +4988,7 @@ def test_sync_official_snapshot_runs_opening_hours_before_courses_and_transport(
         'class_guides',
         'seasonal_semester_guides',
         'academic_milestone_guides',
+        'dormitory_guides',
         'phone_book_entries',
         'scholarship_guides',
         'academic_support_guides',
@@ -4788,6 +5005,7 @@ def test_sync_official_snapshot_runs_opening_hours_before_courses_and_transport(
     assert summary['class_guides'] == 0
     assert summary['seasonal_semester_guides'] == 0
     assert summary['academic_milestone_guides'] == 0
+    assert summary['dormitory_guides'] == 0
     assert summary['phone_book_entries'] == 0
     assert summary['scholarship_guides'] == 0
     assert summary['academic_support_guides'] == 0

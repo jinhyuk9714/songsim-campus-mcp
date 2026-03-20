@@ -296,6 +296,10 @@ def test_sync_official_snapshot_includes_registration_guides(app_env, monkeypatc
         _record(call_order, "scholarship"),
     )
     monkeypatch.setattr(
+        "songsim_campus.services.refresh_dormitory_guides_from_source",
+        _record(call_order, "dormitory_guides"),
+    )
+    monkeypatch.setattr(
         "songsim_campus.services.refresh_academic_support_guides_from_source",
         _record(call_order, "support"),
     )
@@ -314,3 +318,5 @@ def test_sync_official_snapshot_includes_registration_guides(app_env, monkeypatc
 
     assert "registration_guides" in summary
     assert "registration_guides" in call_order
+    assert "dormitory_guides" in summary
+    assert "dormitory_guides" in call_order

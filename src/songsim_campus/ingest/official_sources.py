@@ -1500,6 +1500,228 @@ class PhoneBookSource:
         )
 
 
+class DormitorySongsimGuideSource:
+    """Parser for the 성심교정 기숙사 소개 page."""
+
+    source_tag = "cuk_dormitory_guides"
+
+    def __init__(self, url: str = "https://www.catholic.ac.kr/ko/campuslife/dormitory_songsim.do"):
+        self.url = url
+
+    def fetch(self) -> str:
+        response = httpx.get(self.url, timeout=20, follow_redirects=True)
+        response.raise_for_status()
+        return response.text
+
+    def parse(self, html: str, *, fetched_at: str) -> list[dict]:
+        return _parse_dormitory_songsim_guides(
+            html,
+            base_url=self.url,
+            source_tag=self.source_tag,
+            fetched_at=fetched_at,
+        )
+
+
+class DormitoryHomepageGuideSource:
+    """Parser for the dormitory homepage quick links and notice cards."""
+
+    source_tag = "cuk_dormitory_guides"
+
+    def __init__(self, url: str = "https://dorm.catholic.ac.kr/"):
+        self.url = url
+
+    def fetch(self) -> str:
+        response = httpx.get(self.url, timeout=20, follow_redirects=True)
+        response.raise_for_status()
+        return response.text
+
+    def parse(self, html: str, *, fetched_at: str) -> list[dict]:
+        return _parse_dormitory_home_guides(
+            html,
+            base_url=self.url,
+            source_tag=self.source_tag,
+            fetched_at=fetched_at,
+        )
+
+
+def _parse_dormitory_songsim_guides(
+    html: str,
+    *,
+    base_url: str,
+    source_tag: str,
+    fetched_at: str,
+) -> list[dict]:
+    soup = BeautifulSoup(html, "html.parser")
+    rows: list[dict] = []
+
+    for box in soup.select(".box-wrap.card .border-box"):
+        title_node = box.select_one(".box-tit")
+        title = _clean_text(title_node.get_text(" ", strip=True) if title_node else "")
+        if not title:
+            continue
+        steps = _unique(
+            [
+                _clean_text(node.get_text(" ", strip=True))
+                for node in box.select(".info-box > .con-p")
+                if _clean_text(node.get_text(" ", strip=True))
+            ]
+        )
+        rows.append(
+            {
+                "topic": "hall_info",
+                "title": title,
+                "summary": steps[0] if steps else title,
+                "steps": steps,
+                "links": [],
+                "source_url": base_url,
+                "source_tag": source_tag,
+                "last_synced_at": fetched_at,
+            }
+        )
+
+    contact_box = soup.select_one(".sub-info-box .info-con-box")
+    if contact_box is not None:
+        name_node = contact_box.select_one(".name")
+        department = _clean_text(name_node.get_text(" ", strip=True) if name_node else "")
+        if department:
+            title = department.removeprefix("성심교정 ")
+            contact_steps: list[str] = []
+            contact_steps.append(f"담당부서: {department}")
+            phone_anchor = contact_box.select_one('.info-con a[href^="tel:"]')
+            if phone_anchor is not None:
+                phone_text = _clean_text(phone_anchor.get_text(" ", strip=True))
+                if phone_text:
+                    contact_steps.append(f"전화: {phone_text}")
+            mail_anchor = contact_box.select_one('.info-con a[href^="mailto:"]')
+            if mail_anchor is not None:
+                mail_text = _clean_text(mail_anchor.get_text(" ", strip=True))
+                if mail_text:
+                    contact_steps.append(f"메일: {mail_text}")
+            rows.append(
+                {
+                    "topic": "hall_info",
+                    "title": title,
+                    "summary": contact_steps[0] if contact_steps else title,
+                    "steps": contact_steps,
+                    "links": _extract_link_items(
+                        contact_box.select_one(".info-con") or contact_box,
+                        base_url=base_url,
+                    ),
+                    "source_url": base_url,
+                    "source_tag": source_tag,
+                    "last_synced_at": fetched_at,
+                }
+            )
+
+    return rows
+
+
+def _parse_dormitory_home_guides(
+    html: str,
+    *,
+    base_url: str,
+    source_tag: str,
+    fetched_at: str,
+) -> list[dict]:
+    soup = BeautifulSoup(html, "html.parser")
+    rows: list[dict] = []
+
+    quick_link_labels = [
+        "입사안내",
+        "퇴사안내",
+        "생활안내",
+        "기숙사비",
+        "FAQ",
+        "기숙사비 환불신청서",
+        "신입생 입사신청",
+    ]
+    quick_link_root = soup.select_one(".main_cont.sec1 .cont_top") or soup
+    quick_links = _dormitory_links_by_labels(
+        quick_link_root,
+        labels=quick_link_labels,
+        base_url=base_url,
+    )
+    if quick_links:
+        quick_steps = [item["label"] for item in quick_links]
+        rows.append(
+            {
+                "topic": "quick_links",
+                "title": " / ".join(quick_steps[:5]),
+                "summary": quick_steps[0],
+                "steps": quick_steps,
+                "links": quick_links,
+                "source_url": base_url,
+                "source_tag": source_tag,
+                "last_synced_at": fetched_at,
+            }
+        )
+
+    tab_title_map = {
+        _clean_text(anchor.get("href", "").lstrip("#")): _clean_text(
+            anchor.get("title") or anchor.get_text(" ", strip=True)
+        )
+        for anchor in soup.select(".title_box .tab a[href^='#']")
+    }
+    for tab in soup.select(".tab_cont"):
+        tab_id = _clean_text(tab.get("id"))
+        title = tab_title_map.get(tab_id, "")
+        if not title:
+            continue
+        card_anchors = tab.select("ul > li > a[href]")
+        titles: list[str] = []
+        links: list[dict[str, str]] = []
+        for anchor in card_anchors:
+            card_title_node = anchor.select_one(".el")
+            card_title = _clean_text(
+                card_title_node.get_text(" ", strip=True)
+                if card_title_node
+                else anchor.get_text(" ", strip=True)
+            )
+            if not card_title:
+                continue
+            titles.append(card_title)
+            links.append(
+                {
+                    "label": card_title,
+                    "url": urljoin(base_url, str(anchor.get("href") or "")),
+                }
+            )
+        if not titles:
+            continue
+        rows.append(
+            {
+                "topic": "latest_notices",
+                "title": title,
+                "summary": titles[0],
+                "steps": titles,
+                "links": links,
+                "source_url": base_url,
+                "source_tag": source_tag,
+                "last_synced_at": fetched_at,
+            }
+        )
+
+    return rows
+
+
+def _dormitory_links_by_labels(
+    root,
+    *,
+    labels: list[str],
+    base_url: str,
+) -> list[dict[str, str]]:
+    wanted = {label: None for label in labels}
+    for anchor in root.select("a[href]"):
+        label = _clean_text(anchor.get_text(" ", strip=True))
+        if label not in wanted or wanted[label] is not None:
+            continue
+        href = unescape(str(anchor.get("href") or "")).strip()
+        if not href:
+            continue
+        wanted[label] = {"label": label, "url": urljoin(base_url, href)}
+    return [item for item in (wanted[label] for label in labels) if item is not None]
+
+
 def _parse_class_guide_sections(
     html: str,
     *,

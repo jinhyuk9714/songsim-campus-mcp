@@ -44,6 +44,8 @@ from .ingest.official_sources import (
     ClassRegistrationChangeGuideSource,
     ClassRetakeGuideSource,
     CourseCatalogSource,
+    DormitoryHomepageGuideSource,
+    DormitorySongsimGuideSource,
     DropoutGuideSource,
     GradeEvaluationGuideSource,
     GraduationRequirementGuideSource,
@@ -80,6 +82,7 @@ from .schemas import (
     CertificateGuide,
     ClassGuide,
     Course,
+    DormitoryGuide,
     EmptyClassroomBuilding,
     EstimatedEmptyClassroom,
     EstimatedEmptyClassroomResponse,
@@ -127,6 +130,8 @@ WIFI_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/campuslife/wifi.do"
 ACADEMIC_CALENDAR_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/calendar2024_list.do"
 ACADEMIC_SUPPORT_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/academic_contact_information.do"
 PHONE_BOOK_SOURCE_URL = "https://www.catholic.ac.kr/ko/about/phone_book.do"
+DORMITORY_SONGSIM_SOURCE_URL = "https://www.catholic.ac.kr/ko/campuslife/dormitory_songsim.do"
+DORMITORY_HOME_SOURCE_URL = "https://dorm.catholic.ac.kr/"
 RETURN_FROM_LEAVE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/return_from_leave_of_absence.do"
 DROPOUT_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/dropout.do"
 RE_ADMISSION_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/re_admission.do"
@@ -161,6 +166,7 @@ SYNC_DATASET_TABLES = (
     "class_guides",
     "seasonal_semester_guides",
     "academic_milestone_guides",
+    "dormitory_guides",
     "phone_book_entries",
     "scholarship_guides",
     "wifi_guides",
@@ -179,6 +185,7 @@ PUBLIC_READY_CORE_DATASETS = frozenset(
         "class_guides",
         "seasonal_semester_guides",
         "academic_milestone_guides",
+        "dormitory_guides",
         "phone_book_entries",
         "scholarship_guides",
         "academic_support_guides",
@@ -216,6 +223,7 @@ ADMIN_SYNC_TARGETS = {
     "class_guides",
     "seasonal_semester_guides",
     "academic_milestone_guides",
+    "dormitory_guides",
     "phone_book_entries",
     "scholarship_guides",
     "academic_support_guides",
@@ -308,6 +316,7 @@ CLASS_GUIDE_TOPICS = {
 }
 SEASONAL_SEMESTER_GUIDE_TOPICS = {"seasonal_semester"}
 ACADEMIC_MILESTONE_GUIDE_TOPICS = {"grade_evaluation", "graduation_requirement"}
+DORMITORY_GUIDE_TOPICS = {"hall_info", "quick_links", "latest_notices"}
 CLASS_GUIDE_SOURCE_URLS = {
     "registration_change": "https://www.catholic.ac.kr/ko/support/register_for_class.do",
     "retake": "https://www.catholic.ac.kr/ko/support/re-register_for_class.do",
@@ -2798,6 +2807,26 @@ def list_academic_milestone_guides(
     ]
 
 
+def list_dormitory_guides(
+    conn: DBConnection,
+    *,
+    topic: str | None = None,
+    limit: int = 20,
+) -> list[DormitoryGuide]:
+    normalized_limit = max(1, min(limit, 50))
+    normalized_topic = topic.strip() if topic else None
+    if normalized_topic and normalized_topic not in DORMITORY_GUIDE_TOPICS:
+        raise InvalidRequestError("topic must be one of hall_info, quick_links, latest_notices.")
+    return [
+        DormitoryGuide.model_validate(item)
+        for item in repo.list_dormitory_guides(
+            conn,
+            topic=normalized_topic,
+            limit=normalized_limit,
+        )
+    ]
+
+
 def search_phone_book_entries(
     conn: DBConnection,
     *,
@@ -3010,6 +3039,8 @@ def _run_admin_sync_target(
         return {
             "academic_milestone_guides": len(refresh_academic_milestone_guides_from_source(conn))
         }
+    if target == "dormitory_guides":
+        return {"dormitory_guides": len(refresh_dormitory_guides_from_source(conn))}
     if target == "phone_book_entries":
         return {"phone_book_entries": len(refresh_phone_book_entries_from_source(conn))}
     if target == "scholarship_guides":
@@ -4509,6 +4540,28 @@ def refresh_academic_milestone_guides_from_source(
     ]
 
 
+def refresh_dormitory_guides_from_source(
+    conn: DBConnection,
+    *,
+    sources: list[Any] | None = None,
+    fetched_at: str | None = None,
+) -> list[DormitoryGuide]:
+    synced_at = fetched_at or _now_iso()
+    resolved_sources = sources or [
+        DormitorySongsimGuideSource(DORMITORY_SONGSIM_SOURCE_URL),
+        DormitoryHomepageGuideSource(DORMITORY_HOME_SOURCE_URL),
+    ]
+    rows: list[dict[str, Any]] = []
+    for source in resolved_sources:
+        html = source.fetch()
+        rows.extend(source.parse(html, fetched_at=synced_at))
+    repo.replace_dormitory_guides(conn, rows)
+    return [
+        DormitoryGuide.model_validate(item)
+        for item in repo.list_dormitory_guides(conn, limit=max(len(rows), 1))
+    ]
+
+
 def refresh_phone_book_entries_from_source(
     conn: DBConnection,
     *,
@@ -4561,6 +4614,7 @@ def sync_official_snapshot(
     class_guides = refresh_class_guides_from_source(conn)
     seasonal_semester_guides = refresh_seasonal_semester_guides_from_source(conn)
     academic_milestone_guides = refresh_academic_milestone_guides_from_source(conn)
+    dormitory_guides = refresh_dormitory_guides_from_source(conn)
     phone_book_entries = refresh_phone_book_entries_from_source(conn)
     scholarship_guides = refresh_scholarship_guides_from_source(conn)
     academic_support_guides = refresh_academic_support_guides_from_source(conn)
@@ -4580,6 +4634,7 @@ def sync_official_snapshot(
         "class_guides": len(class_guides),
         "seasonal_semester_guides": len(seasonal_semester_guides),
         "academic_milestone_guides": len(academic_milestone_guides),
+        "dormitory_guides": len(dormitory_guides),
         "phone_book_entries": len(phone_book_entries),
         "scholarship_guides": len(scholarship_guides),
         "academic_support_guides": len(academic_support_guides),

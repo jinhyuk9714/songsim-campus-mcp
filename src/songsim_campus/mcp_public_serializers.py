@@ -10,6 +10,7 @@ from .schemas import (
     CertificateGuide,
     ClassGuide,
     Course,
+    DormitoryGuide,
     LeaveOfAbsenceGuide,
     McpCoordinates,
     McpNearbyRestaurantResult,
@@ -249,6 +250,12 @@ def serialize_public_seasonal_semester_guide(
 def serialize_public_academic_milestone_guide(
     guide: AcademicMilestoneGuide,
 ) -> dict[str, object]:
+    payload = guide.model_dump()
+    payload["guide_summary"] = guide.summary or (guide.steps[0] if guide.steps else "")
+    return payload
+
+
+def serialize_public_dormitory_guide(guide: DormitoryGuide) -> dict[str, object]:
     payload = guide.model_dump()
     payload["guide_summary"] = guide.summary or (guide.steps[0] if guide.steps else "")
     return payload
