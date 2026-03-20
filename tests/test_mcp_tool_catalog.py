@@ -81,6 +81,10 @@ def test_register_shared_tools_public_mode_exposes_expected_tool_names_and_metad
     assert "유실물" in payloads["tool_search_phone_book"]["description"]
     assert "보건실" in payloads["tool_list_campus_life_support_guides"]["description"]
     assert "주차요금" in payloads["tool_list_campus_life_support_guides"]["description"]
+    assert "학생상담" in payloads["tool_list_campus_life_support_guides"]["description"]
+    assert "장애학생지원센터" in payloads["tool_list_campus_life_support_guides"]["description"]
+    assert "예비군" in payloads["tool_list_campus_life_support_guides"]["description"]
+    assert "부속병원" in payloads["tool_list_campus_life_support_guides"]["description"]
     assert "SPSS" in payloads["tool_search_pc_software"]["description"]
     assert "Visual Studio" in payloads["tool_search_pc_software"]["description"]
     assert "국제학부" in payloads["tool_list_affiliated_notices"]["description"]
@@ -141,6 +145,26 @@ def test_register_shared_tools_public_mode_exposes_expected_tool_names_and_metad
         ]
     )
     assert "parking" in (
+        payloads["tool_list_campus_life_support_guides"]["inputSchema"]["properties"]["topic"][
+            "description"
+        ]
+    )
+    assert "student_counseling" in (
+        payloads["tool_list_campus_life_support_guides"]["inputSchema"]["properties"]["topic"][
+            "description"
+        ]
+    )
+    assert "disability_support" in (
+        payloads["tool_list_campus_life_support_guides"]["inputSchema"]["properties"]["topic"][
+            "description"
+        ]
+    )
+    assert "student_reservist" in (
+        payloads["tool_list_campus_life_support_guides"]["inputSchema"]["properties"]["topic"][
+            "description"
+        ]
+    )
+    assert "hospital_use" in (
         payloads["tool_list_campus_life_support_guides"]["inputSchema"]["properties"]["topic"][
             "description"
         ]

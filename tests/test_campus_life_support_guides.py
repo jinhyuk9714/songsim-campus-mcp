@@ -9,9 +9,13 @@ import pytest
 from songsim_campus import services
 from songsim_campus.db import connection, init_db
 from songsim_campus.ingest.campus_life_support_guides import (
+    DisabilitySupportGuideSource,
     HealthCenterGuideSource,
+    HospitalUseGuideSource,
     LostFoundGuideSource,
     ParkingGuideSource,
+    StudentCounselingGuideSource,
+    StudentReservistGuideSource,
 )
 from songsim_campus.mcp_server import build_mcp
 from songsim_campus.services import (
@@ -53,16 +57,32 @@ def test_campus_life_support_source_defaults() -> None:
     health = HealthCenterGuideSource()
     lost_found = LostFoundGuideSource()
     parking = ParkingGuideSource()
+    student_counseling = StudentCounselingGuideSource()
+    disability_support = DisabilitySupportGuideSource()
+    student_reservist = StudentReservistGuideSource()
+    hospital_use = HospitalUseGuideSource()
 
     assert health.topic == "health_center"
     assert lost_found.topic == "lost_found"
     assert parking.topic == "parking"
+    assert student_counseling.topic == "student_counseling"
+    assert disability_support.topic == "disability_support"
+    assert student_reservist.topic == "student_reservist"
+    assert hospital_use.topic == "hospital_use"
     assert health.source_tag == "cuk_campus_life_support_guides"
     assert lost_found.source_tag == "cuk_campus_life_support_guides"
     assert parking.source_tag == "cuk_campus_life_support_guides"
+    assert student_counseling.source_tag == "cuk_campus_life_support_guides"
+    assert disability_support.source_tag == "cuk_campus_life_support_guides"
+    assert student_reservist.source_tag == "cuk_campus_life_support_guides"
+    assert hospital_use.source_tag == "cuk_campus_life_support_guides"
     assert health.url.endswith("/campuslife/health.do")
     assert lost_found.url.endswith("/campuslife/find.do")
     assert parking.url.endswith("/about/location_songsim.do")
+    assert student_counseling.url.endswith("/campuslife/counsel.do")
+    assert disability_support.url.endswith("/campuslife/disability_service.do")
+    assert student_reservist.url.endswith("/campuslife/student_reservist.do")
+    assert hospital_use.url.endswith("/campuslife/hospital1.do")
 
 
 def test_health_center_guide_parser_extracts_expected_core_details() -> None:
@@ -124,6 +144,150 @@ def test_parking_guide_parser_extracts_expected_core_details() -> None:
     assert any("할인권" in step for step in row["steps"])
     assert any("일반차량" in step for step in row["steps"])
     assert any("주차관리실(K102호 / K관 1층 안내데스크 옆)" in step for step in row["steps"])
+
+
+def test_student_counseling_guide_parser_extracts_expected_core_details() -> None:
+    rows = StudentCounselingGuideSource().parse(
+        _fixture("counsel.do.html"),
+        fetched_at="2026-03-20T00:00:00+09:00",
+    )
+
+    assert [row["title"] for row in rows] == [
+        "학생생활상담소",
+        "인권센터(성폭력상담소)",
+        "일반대학원 대학원상담실",
+    ]
+    first, second, third = rows
+    assert first["topic"] == "student_counseling"
+    assert first["summary"].startswith("학생생활상담소는 본교 학생들이 대학생활에 보다 잘 적응")
+    assert any("위치 : 니콜스관 N121호" in step for step in first["steps"])
+    assert any("전화번호 : 02-2164-4640" in step for step in first["steps"])
+    assert first["links"] == [
+        {
+            "label": "홈페이지 바로가기",
+            "url": "https://counseling.catholic.ac.kr/counseling/index.do",
+        }
+    ]
+    assert second["summary"].startswith(
+        "인권센터(성폭력상담소)는 모든 구성원(학생·교직원·교원)의 인권침해"
+    )
+    assert any("위치 : 니콜스관 N118호" in step for step in second["steps"])
+    assert any("이메일 : humanrights@catholic.ac.kr" in step for step in second["steps"])
+    assert second["links"] == [
+        {
+            "label": "홈페이지 바로가기",
+            "url": "https://humanrights.catholic.ac.kr/humanrights/index.do",
+        }
+    ]
+    assert third["summary"].startswith(
+        "대학원상담실은 일반대학원 심리학 전공 수련 기관으로써"
+    )
+    assert any("위치 : 니콜스관 N314호" in step for step in third["steps"])
+    assert any("이용시간 : 10:00 ~ 17:00" in step for step in third["steps"])
+    assert third["links"] == [
+        {
+            "label": "홈페이지 바로가기",
+            "url": "https://www.catholic.ac.kr/ko/psychology/graduate/graduate-school.do",
+        }
+    ]
+
+
+def test_disability_support_guide_parser_extracts_expected_core_details() -> None:
+    rows = DisabilitySupportGuideSource().parse(
+        _fixture("disability_service.do.html"),
+        fetched_at="2026-03-20T00:00:00+09:00",
+    )
+
+    assert [row["title"] for row in rows] == ["장애학생지원센터"]
+    row = rows[0]
+    assert row["topic"] == "disability_support"
+    assert row["summary"].startswith("장애학생지원센터에서는 장애학생이 학내에서 원만하게 학습")
+    assert any("학습지원 선수강신청제도" in step for step in row["steps"])
+    assert any("도우미지원" in step for step in row["steps"])
+    assert any("장애학생 도우미" in step for step in row["steps"])
+    assert any("유관부서 및 동아리 안내" in step for step in row["steps"])
+    assert any("위치 : 니콜스관 N109호" in step for step in row["steps"])
+    assert any("장애인식개선 가이드 북" in step for step in row["steps"])
+    assert row["links"] == [
+        {
+            "label": "장애인식개선 가이드 북",
+            "url": "https://www.catholic.ac.kr/_res/cuk/ko/etc/disability_guidebook.pdf",
+        },
+        {
+            "label": "캠퍼스배리어프리 온라인 가이드북",
+            "url": "https://sites.google.com/view/cukcampable/홈",
+        },
+    ]
+
+
+def test_student_reservist_guide_parser_extracts_expected_core_details() -> None:
+    rows = StudentReservistGuideSource().parse(
+        _fixture("student_reservist.do.html"),
+        fetched_at="2026-03-20T00:00:00+09:00",
+    )
+
+    assert [row["title"] for row in rows] == ["직장예비군 가톨릭대학교 대대"]
+    row = rows[0]
+    assert row["topic"] == "student_reservist"
+    assert row["summary"].startswith("직장예비군 가톨릭대학교 대대")
+    assert any("예비군 민원상담실 전화번호" in step for step in row["steps"])
+    assert any("신고시기 및 방법" in step for step in row["steps"])
+    assert any("훈련안내" in step for step in row["steps"])
+    assert any("부천 예비군훈련장" in step for step in row["steps"])
+    assert row["links"] == [
+        {
+            "label": "예비군대대 홈페이지 바로가기",
+            "url": "https://yebigun.catholic.ac.kr/yebigun/index.do",
+        }
+    ]
+
+
+def test_hospital_use_guide_parser_extracts_expected_core_details() -> None:
+    rows = HospitalUseGuideSource().parse(
+        _fixture("hospital1.do.html"),
+        fetched_at="2026-03-20T00:00:00+09:00",
+    )
+
+    assert [row["title"] for row in rows] == ["부속병원이용"]
+    row = rows[0]
+    assert row["topic"] == "hospital_use"
+    assert row["summary"].startswith("가톨릭중앙의료원 CATHOLIC MEDICAL CENTER")
+    assert any("주소 : 서울시 서초구 반포대로 222" in step for step in row["steps"])
+    assert any("전화번호 : 1588-1511" in step for step in row["steps"])
+    assert row["links"] == [
+        {
+            "label": "서울성모병원",
+            "url": "https://www.catholic.ac.kr/ko/campuslife/hospital2.do",
+        },
+        {
+            "label": "여의도성모병원",
+            "url": "https://www.catholic.ac.kr/ko/campuslife/hospital3.do",
+        },
+        {
+            "label": "의정부성모병원",
+            "url": "https://www.catholic.ac.kr/ko/campuslife/hospital4.do",
+        },
+        {
+            "label": "부천성모병원",
+            "url": "https://www.catholic.ac.kr/ko/campuslife/hospital5.do",
+        },
+        {
+            "label": "은평성모병원",
+            "url": "https://www.catholic.ac.kr/ko/campuslife/hospital6.do",
+        },
+        {
+            "label": "인천성모병원",
+            "url": "https://www.catholic.ac.kr/ko/campuslife/hospital7.do",
+        },
+        {
+            "label": "성빈센트병원",
+            "url": "https://www.catholic.ac.kr/ko/campuslife/hospital8.do",
+        },
+        {
+            "label": "대전성모병원",
+            "url": "https://www.catholic.ac.kr/ko/campuslife/hospital9.do",
+        },
+    ]
 
 
 def test_campus_life_support_guides_refresh_replace_and_list(app_env) -> None:

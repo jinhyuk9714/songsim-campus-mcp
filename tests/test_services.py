@@ -34,6 +34,7 @@ from songsim_campus.services import (
     list_academic_support_guides,
     list_affiliated_notices,
     list_campus_life_notices,
+    list_campus_life_support_guides,
     list_certificate_guides,
     list_dormitory_guides,
     list_estimated_empty_classrooms,
@@ -49,6 +50,7 @@ from songsim_campus.services import (
     refresh_campus_dining_menus_from_facilities_page,
     refresh_campus_facilities_from_source,
     refresh_campus_life_notices_from_source,
+    refresh_campus_life_support_guides_from_source,
     refresh_certificate_guides_from_certificate_page,
     refresh_courses_from_subject_search,
     refresh_dormitory_guides_from_source,
@@ -5107,6 +5109,37 @@ def test_list_campus_life_notices_rejects_unknown_topic(app_env):
         list_campus_life_notices(conn, topic="invalid")
 
 
+def test_list_campus_life_support_guides_accepts_new_topics_and_rejects_unknown_topic(
+    app_env,
+    monkeypatch,
+):
+    init_db()
+
+    observed_topics: list[str | None] = []
+
+    def fake_list(conn, topic=None, limit=20):
+        observed_topics.append(topic)
+        return []
+
+    monkeypatch.setattr(services_module.repo, "list_campus_life_support_guides", fake_list)
+
+    with connection() as conn:
+        assert list_campus_life_support_guides(conn, topic="student_counseling", limit=1) == []
+        assert list_campus_life_support_guides(conn, topic="disability_support", limit=1) == []
+        assert list_campus_life_support_guides(conn, topic="student_reservist", limit=1) == []
+        assert list_campus_life_support_guides(conn, topic="hospital_use", limit=1) == []
+
+        with pytest.raises(InvalidRequestError, match="student_counseling"):
+            list_campus_life_support_guides(conn, topic="invalid", limit=1)
+
+    assert observed_topics == [
+        "student_counseling",
+        "disability_support",
+        "student_reservist",
+        "hospital_use",
+    ]
+
+
 def test_list_dormitory_guides_rejects_unknown_topic(app_env):
     init_db()
 
@@ -5159,6 +5192,100 @@ def test_list_wifi_guides_preserves_snapshot_order_and_limit(app_env):
         guides = list_wifi_guides(conn, limit=1)
 
     assert [item.building_name for item in guides] == ["니콜스관"]
+
+
+def test_refresh_campus_life_support_guides_uses_all_default_sources(app_env, monkeypatch):
+    init_db()
+
+    class FakeGuideSource:
+        def __init__(self, topic: str, url: str):
+            self.topic = topic
+            self.url = url
+
+        def fetch(self):
+            return "<guide />"
+
+        def parse(self, html: str, *, fetched_at: str):
+            assert html == "<guide />"
+            return [
+                {
+                    "topic": self.topic,
+                    "title": f"{self.topic} title",
+                    "summary": f"{self.topic} summary",
+                    "steps": [f"{self.topic} step"],
+                    "links": [],
+                    "source_url": self.url,
+                    "source_tag": "cuk_campus_life_support_guides",
+                    "last_synced_at": fetched_at,
+                }
+            ]
+
+    monkeypatch.setattr(
+        services_module,
+        "HealthCenterGuideSource",
+        lambda url: FakeGuideSource("health_center", url),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        services_module,
+        "LostFoundGuideSource",
+        lambda url: FakeGuideSource("lost_found", url),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        services_module,
+        "ParkingGuideSource",
+        lambda url: FakeGuideSource("parking", url),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        services_module,
+        "StudentCounselingGuideSource",
+        lambda url: FakeGuideSource("student_counseling", url),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        services_module,
+        "DisabilitySupportGuideSource",
+        lambda url: FakeGuideSource("disability_support", url),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        services_module,
+        "StudentReservistGuideSource",
+        lambda url: FakeGuideSource("student_reservist", url),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        services_module,
+        "HospitalUseGuideSource",
+        lambda url: FakeGuideSource("hospital_use", url),
+        raising=False,
+    )
+
+    with connection() as conn:
+        guides = refresh_campus_life_support_guides_from_source(conn)
+
+    assert len(guides) == 7
+    assert {item.topic for item in guides} == {
+        "health_center",
+        "lost_found",
+        "parking",
+        "student_counseling",
+        "disability_support",
+        "student_reservist",
+        "hospital_use",
+    }
+    assert {item.title for item in guides} == {
+        "health_center title",
+        "lost_found title",
+        "parking title",
+        "student_counseling title",
+        "disability_support title",
+        "student_reservist title",
+        "hospital_use title",
+    }
+    assert services_module.PUBLIC_READY_DATASET_POLICIES["campus_life_support_guides"] == "core"
 
 
 def test_list_scholarship_guides_preserves_snapshot_order_and_limit(app_env):
@@ -5573,6 +5700,7 @@ def test_sync_official_snapshot_runs_opening_hours_before_courses_and_transport(
     assert summary['academic_milestone_guides'] == 0
     assert summary['affiliated_notices'] == 0
     assert summary['campus_life_notices'] == 0
+    assert summary['campus_life_support_guides'] == 0
     assert summary['dormitory_guides'] == 0
     assert summary['phone_book_entries'] == 0
     assert summary['scholarship_guides'] == 0

@@ -40,6 +40,10 @@ def test_public_usage_guide_text_contains_current_anchor_phrases():
     assert "교환학생 프로그램" in content
     assert "보건실 전화번호" in content
     assert "학점교류 담당 전화번호" in content
+    assert "학생상담 어디서 받아?" in content
+    assert "장애학생지원센터 뭐 해줘?" in content
+    assert "예비군 신고 시기 알려줘" in content
+    assert "부속병원 이용 안내해줘" in content
     assert "기숙사 최신 공지" in content
     assert "행사안내" in content
     assert "교내 행사 공지" in content

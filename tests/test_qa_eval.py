@@ -1911,7 +1911,7 @@ def test_default_eval_assets_match_distribution_plan() -> None:
     rows = load_eval_rows(DEFAULT_CORPUS_PATH)
     watchlist_rows = load_eval_rows(DEFAULT_WATCHLIST_PATH)
 
-    assert len(rows) == 1054
+    assert len(rows) == 1058
     assert len(watchlist_rows) == 5
 
     by_domain: dict[str, int] = {}
@@ -1941,7 +1941,7 @@ def test_default_eval_assets_match_distribution_plan() -> None:
         "student_exchange_partners": 5,
         "dormitory_guides": 5,
         "phone_book": 5,
-        "campus_life_support_guides": 3,
+        "campus_life_support_guides": 7,
         "pc_software_entries": 3,
         "out_of_scope": 30,
     }
@@ -2077,4 +2077,26 @@ def test_default_eval_assets_match_distribution_plan() -> None:
     assert {row.api_request.params["topic"] for row in campus_life_notice_rows} == {
         "outside_agencies",
         "events",
+    }
+
+    campus_life_support_rows = [row for row in rows if row.domain == "campus_life_support_guides"]
+
+    assert len(campus_life_support_rows) == 7
+    assert {row.api_request.path for row in campus_life_support_rows} == {
+        "/campus-life-support-guides"
+    }
+    assert {row.expected_mcp_flow for row in campus_life_support_rows} == {
+        "tool_list_campus_life_support_guides"
+    }
+    assert {row.pass_rule["summary_kind"] for row in campus_life_support_rows} == {
+        "campus_life_support_guides_top5"
+    }
+    assert {row.api_request.params["topic"] for row in campus_life_support_rows} == {
+        "health_center",
+        "lost_found",
+        "parking",
+        "student_counseling",
+        "disability_support",
+        "student_reservist",
+        "hospital_use",
     }

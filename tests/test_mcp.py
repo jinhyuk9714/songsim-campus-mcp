@@ -1132,6 +1132,10 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
     assert "기숙사 운영팀" in tools["tool_search_phone_book"]["description"]
     assert "보건실" in tools["tool_list_campus_life_support_guides"]["description"]
     assert "주차요금" in tools["tool_list_campus_life_support_guides"]["description"]
+    assert "학생상담" in tools["tool_list_campus_life_support_guides"]["description"]
+    assert "장애학생지원센터" in tools["tool_list_campus_life_support_guides"]["description"]
+    assert "예비군" in tools["tool_list_campus_life_support_guides"]["description"]
+    assert "부속병원" in tools["tool_list_campus_life_support_guides"]["description"]
     assert "SPSS" in tools["tool_search_pc_software"]["description"]
     assert "Visual Studio" in tools["tool_search_pc_software"]["description"]
     assert "기숙사" in tools["tool_list_dormitory_guides"]["description"]
@@ -1234,6 +1238,26 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
     )
     assert "유실물" in (
         tools["tool_search_phone_book"]["inputSchema"]["properties"]["query"]["description"]
+    )
+    assert "student_counseling" in (
+        tools["tool_list_campus_life_support_guides"]["inputSchema"]["properties"]["topic"][
+            "description"
+        ]
+    )
+    assert "disability_support" in (
+        tools["tool_list_campus_life_support_guides"]["inputSchema"]["properties"]["topic"][
+            "description"
+        ]
+    )
+    assert "student_reservist" in (
+        tools["tool_list_campus_life_support_guides"]["inputSchema"]["properties"]["topic"][
+            "description"
+        ]
+    )
+    assert "hospital_use" in (
+        tools["tool_list_campus_life_support_guides"]["inputSchema"]["properties"]["topic"][
+            "description"
+        ]
     )
     assert "최대 결과 수" in (
         tools["tool_list_academic_support_guides"]["inputSchema"]["properties"]["limit"]["description"]
@@ -1437,6 +1461,10 @@ def test_mcp_public_usage_and_class_period_resources_are_readable(app_env, monke
     assert "매머드커피" in usage_content
     assert "학점교류 담당 전화번호" in usage_content
     assert "보건실 위치와 운영시간" in usage_content
+    assert "학생상담 어디서 받아?" in usage_content
+    assert "장애학생지원센터 뭐 해줘?" in usage_content
+    assert "예비군 신고 시기 알려줘" in usage_content
+    assert "부속병원 이용 안내해줘" in usage_content
     assert "SPSS 설치된 컴퓨터실" in usage_content
     assert "휴복학 문의" in usage_content
     assert "복학 신청 방법" in usage_content

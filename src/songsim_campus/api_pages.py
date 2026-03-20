@@ -320,6 +320,10 @@ def render_landing_page(
         "프란치스코관 입퇴사공지 알려줘",
         "등록금 납부 방법 알려줘",
         "행사안내 알려줘",
+        "학생상담 어디서 받아?",
+        "장애학생지원센터 뭐 해줘?",
+        "예비군 신고 시기 알려줘",
+        "부속병원 이용 안내해줘",
         "보건실 위치와 운영시간 알려줘",
         "유실물 찾는 방법 알려줘",
         "성심교정 주차요금 알려줘",
@@ -507,8 +511,9 @@ def render_landing_page(
             </li>
             <li><code>/phone-book</code> campus-wide department contacts and phone numbers</li>
             <li>
-              <code>/campus-life-support-guides</code> health center, lost-found,
-              and Songsim parking guides
+              <code>/campus-life-support-guides</code> health center, counseling,
+              disability, reservist, hospital use, lost-found, and Songsim parking
+              guides
             </li>
             <li>
               <code>/campus-life-notices</code> outside-agency and event campus-life

@@ -27,6 +27,7 @@ from . import (
     restaurant_search_runtime,
 )
 from .db import DBConnection, connection, get_connection
+from .ingest import campus_life_support_guides as campus_life_support_guides_ingest
 from .ingest.campus_life_support_guides import (
     HealthCenterGuideSource,
     LostFoundGuideSource,
@@ -162,6 +163,10 @@ DORMITORY_HOME_SOURCE_URL = "https://dorm.catholic.ac.kr/"
 HEALTH_CENTER_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/campuslife/health.do"
 LOST_FOUND_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/campuslife/find.do"
 CAMPUS_PARKING_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/about/location_songsim.do"
+STUDENT_COUNSELING_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/campuslife/counsel.do"
+DISABILITY_SUPPORT_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/campuslife/disability_service.do"
+STUDENT_RESERVIST_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/campuslife/student_reservist.do"
+HOSPITAL_USE_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/campuslife/hospital1.do"
 RETURN_FROM_LEAVE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/return_from_leave_of_absence.do"
 DROPOUT_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/dropout.do"
 RE_ADMISSION_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/re_admission.do"
@@ -206,7 +211,31 @@ CAMPUS_LIFE_SUPPORT_GUIDE_TOPICS = {
     "health_center",
     "lost_found",
     "parking",
+    "student_counseling",
+    "disability_support",
+    "student_reservist",
+    "hospital_use",
 }
+StudentCounselingGuideSource = getattr(
+    campus_life_support_guides_ingest,
+    "StudentCounselingGuideSource",
+    None,
+)
+DisabilitySupportGuideSource = getattr(
+    campus_life_support_guides_ingest,
+    "DisabilitySupportGuideSource",
+    None,
+)
+StudentReservistGuideSource = getattr(
+    campus_life_support_guides_ingest,
+    "StudentReservistGuideSource",
+    None,
+)
+HospitalUseGuideSource = getattr(
+    campus_life_support_guides_ingest,
+    "HospitalUseGuideSource",
+    None,
+)
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 CAMPUS_WALK_GRAPH_PATH = DATA_DIR / "campus_walk_graph.json"
 PERSONALIZATION_RULES_PATH = DATA_DIR / "personalization_rules.json"
@@ -3148,7 +3177,10 @@ def list_campus_life_support_guides(
     normalized_limit = max(1, min(limit, 50))
     normalized_topic = topic.strip() if topic else None
     if normalized_topic and normalized_topic not in CAMPUS_LIFE_SUPPORT_GUIDE_TOPICS:
-        raise InvalidRequestError("topic must be one of health_center, lost_found, parking.")
+        raise InvalidRequestError(
+            "topic must be one of health_center, lost_found, parking, "
+            "student_counseling, disability_support, student_reservist, hospital_use."
+        )
     return [
         CampusLifeSupportGuide.model_validate(item)
         for item in repo.list_campus_life_support_guides(
@@ -5175,6 +5207,16 @@ def refresh_campus_life_support_guides_from_source(
         HealthCenterGuideSource(HEALTH_CENTER_GUIDE_SOURCE_URL),
         LostFoundGuideSource(LOST_FOUND_GUIDE_SOURCE_URL),
         ParkingGuideSource(CAMPUS_PARKING_GUIDE_SOURCE_URL),
+        *[
+            source_cls(url)
+            for source_cls, url in [
+                (StudentCounselingGuideSource, STUDENT_COUNSELING_GUIDE_SOURCE_URL),
+                (DisabilitySupportGuideSource, DISABILITY_SUPPORT_GUIDE_SOURCE_URL),
+                (StudentReservistGuideSource, STUDENT_RESERVIST_GUIDE_SOURCE_URL),
+                (HospitalUseGuideSource, HOSPITAL_USE_GUIDE_SOURCE_URL),
+            ]
+            if source_cls is not None
+        ],
     ]
     rows: list[dict[str, Any]] = []
     for source in resolved_sources:

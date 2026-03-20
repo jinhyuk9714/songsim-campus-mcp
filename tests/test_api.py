@@ -334,19 +334,74 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
             }
         ]
     def stub_campus_life_support_guides(conn, topic=None, limit=20):
-        return [
-            {
-                "id": 1,
-                "topic": "health_center",
-                "title": "보건실",
-                "summary": "보건실 안내",
-                "steps": ["위치: 비르투스관 1층 104호"],
-                "links": [],
-                "source_url": "https://www.catholic.ac.kr/ko/campuslife/health.do",
-                "source_tag": "cuk_campus_life_support_guides",
-                "last_synced_at": "2026-03-20T10:00:00+09:00",
-            }
-        ]
+        topics = {
+            "health_center": [
+                {
+                    "id": 1,
+                    "topic": "health_center",
+                    "title": "보건실",
+                    "summary": "보건실 안내",
+                    "steps": ["위치: 비르투스관 1층 104호"],
+                    "links": [],
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/health.do",
+                    "source_tag": "cuk_campus_life_support_guides",
+                    "last_synced_at": "2026-03-20T10:00:00+09:00",
+                }
+            ],
+            "student_counseling": [
+                {
+                    "id": 2,
+                    "topic": "student_counseling",
+                    "title": "학생생활상담소",
+                    "summary": "학생생활상담소 안내",
+                    "steps": ["학생생활상담소 소개"],
+                    "links": [],
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/counsel.do",
+                    "source_tag": "cuk_campus_life_support_guides",
+                    "last_synced_at": "2026-03-20T10:00:00+09:00",
+                }
+            ],
+            "disability_support": [
+                {
+                    "id": 3,
+                    "topic": "disability_support",
+                    "title": "장애학생지원센터",
+                    "summary": "장애학생지원센터 안내",
+                    "steps": ["학습지원"],
+                    "links": [],
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/disability_service.do",
+                    "source_tag": "cuk_campus_life_support_guides",
+                    "last_synced_at": "2026-03-20T10:00:00+09:00",
+                }
+            ],
+            "student_reservist": [
+                {
+                    "id": 4,
+                    "topic": "student_reservist",
+                    "title": "직장예비군 가톨릭대학교 대대",
+                    "summary": "직장예비군 안내",
+                    "steps": ["편성안내"],
+                    "links": [],
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/student_reservist.do",
+                    "source_tag": "cuk_campus_life_support_guides",
+                    "last_synced_at": "2026-03-20T10:00:00+09:00",
+                }
+            ],
+            "hospital_use": [
+                {
+                    "id": 5,
+                    "topic": "hospital_use",
+                    "title": "부속병원이용",
+                    "summary": "부속병원이용 안내",
+                    "steps": ["중앙의료원 소개"],
+                    "links": [],
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/hospital1.do",
+                    "source_tag": "cuk_campus_life_support_guides",
+                    "last_synced_at": "2026-03-20T10:00:00+09:00",
+                }
+            ],
+        }
+        return topics.get(topic, topics["health_center"])
     def stub_pc_software_entries(conn, query=None, limit=20):
         return [
             {
@@ -434,6 +489,22 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
             "/campus-life-support-guides",
             params={"topic": "health_center"},
         )
+        campus_life_support_counseling = public_client.get(
+            "/campus-life-support-guides",
+            params={"topic": "student_counseling"},
+        )
+        campus_life_support_disability = public_client.get(
+            "/campus-life-support-guides",
+            params={"topic": "disability_support"},
+        )
+        campus_life_support_reservist = public_client.get(
+            "/campus-life-support-guides",
+            params={"topic": "student_reservist"},
+        )
+        campus_life_support_hospital = public_client.get(
+            "/campus-life-support-guides",
+            params={"topic": "hospital_use"},
+        )
         campus_life_notices = public_client.get(
             "/campus-life-notices",
             params={"query": "외부기관공지"},
@@ -467,6 +538,10 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     assert "/campus-life-support-guides" in landing.text
     assert "/campus-life-notices" in landing.text
     assert "행사안내 알려줘" in landing.text
+    assert "학생상담 어디서 받아?" in landing.text
+    assert "장애학생지원센터 뭐 해줘?" in landing.text
+    assert "예비군 신고 시기 알려줘" in landing.text
+    assert "부속병원 이용 안내해줘" in landing.text
     assert "/pc-software" in landing.text
     assert "/affiliated-notices" in landing.text
     assert "/dormitory-guides" in landing.text
@@ -486,6 +561,14 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     assert student_exchange_partners.json()[0]["partner_code"] == "00122"
     assert campus_life_support.status_code == 200
     assert campus_life_support.json()[0]["topic"] == "health_center"
+    assert campus_life_support_counseling.status_code == 200
+    assert campus_life_support_counseling.json()[0]["topic"] == "student_counseling"
+    assert campus_life_support_disability.status_code == 200
+    assert campus_life_support_disability.json()[0]["topic"] == "disability_support"
+    assert campus_life_support_reservist.status_code == 200
+    assert campus_life_support_reservist.json()[0]["topic"] == "student_reservist"
+    assert campus_life_support_hospital.status_code == 200
+    assert campus_life_support_hospital.json()[0]["topic"] == "hospital_use"
     assert campus_life_notices.status_code == 200
     assert campus_life_notices.json()[0]["topic"] == "outside_agencies"
     assert campus_life_events.status_code == 200

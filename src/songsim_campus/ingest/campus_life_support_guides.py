@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from html import unescape
-from urllib.parse import urljoin
+from urllib.parse import unquote, urljoin
 
 import httpx
 from bs4 import BeautifulSoup
@@ -66,7 +66,7 @@ def _extract_links(root, *, base_url: str) -> list[dict[str, str]]:
     items: list[dict[str, str]] = []
     for anchor in root.select("a[href]"):
         label = _clean_text(anchor.get_text(" ", strip=True))
-        href = unescape(str(anchor.get("href") or "")).strip()
+        href = unquote(unescape(str(anchor.get("href") or "")).strip())
         if not label or not href or href.startswith("javascript:"):
             continue
         items.append({"label": label, "url": urljoin(base_url, href)})
@@ -137,6 +137,19 @@ def _find_con_box_by_h4_title(root, title: str):
     return None
 
 
+def _extract_hospital_links(root, *, base_url: str) -> list[dict[str, str]]:
+    items: list[dict[str, str]] = []
+    for anchor in root.select("a[href]"):
+        label = _clean_text(anchor.get_text(" ", strip=True))
+        href = unquote(unescape(str(anchor.get("href") or "")).strip())
+        if not label or not href:
+            continue
+        if not re.search(r"/hospital[2-9]\.do$", href):
+            continue
+        items.append({"label": label, "url": urljoin(base_url, href)})
+    return _dedupe_link_items(items)
+
+
 class CampusLifeSupportGuideSourceBase:
     source_tag = "cuk_campus_life_support_guides"
     topic = ""
@@ -148,6 +161,171 @@ class CampusLifeSupportGuideSourceBase:
         response = httpx.get(self.url, timeout=20, follow_redirects=True)
         response.raise_for_status()
         return response.text
+
+
+class StudentCounselingGuideSource(CampusLifeSupportGuideSourceBase):
+    topic = "student_counseling"
+
+    def __init__(self, url: str = "https://www.catholic.ac.kr/ko/campuslife/counsel.do"):
+        super().__init__(url)
+
+    def parse(self, html: str, *, fetched_at: str) -> list[dict]:
+        soup = BeautifulSoup(html, "html.parser")
+        root = soup.select_one(".content-box") or soup
+        rows: list[dict] = []
+        for thumb in root.select(".thumb-box"):
+            title_node = thumb.select_one(".box-tit")
+            title = _clean_text(title_node.get_text(" ", strip=True) if title_node else "")
+            if not title:
+                continue
+            steps = _extract_section_steps(thumb, title=title, extra_skip={"홈페이지 바로가기"})
+            rows.append(
+                {
+                    "topic": self.topic,
+                    "title": title,
+                    "summary": steps[0] if steps else title,
+                    "steps": steps,
+                    "links": _extract_links(thumb, base_url=self.url),
+                    "source_url": self.url,
+                    "source_tag": self.source_tag,
+                    "last_synced_at": fetched_at,
+                }
+            )
+        return rows
+
+
+class DisabilitySupportGuideSource(CampusLifeSupportGuideSourceBase):
+    topic = "disability_support"
+
+    def __init__(self, url: str = "https://www.catholic.ac.kr/ko/campuslife/disability_service.do"):
+        super().__init__(url)
+
+    def parse(self, html: str, *, fetched_at: str) -> list[dict]:
+        soup = BeautifulSoup(html, "html.parser")
+        root = soup.select_one(".content-box") or soup
+        rows: list[dict] = []
+        title = "장애학생지원센터"
+        steps: list[str] = []
+        links: list[dict[str, str]] = []
+        for index, box in enumerate(root.find_all("div", class_="con-box", recursive=False)):
+            section_title_node = box.select_one(".h4-tit01") or box.select_one(".box-tit")
+            section_title = _clean_text(
+                section_title_node.get_text(" ", strip=True) if section_title_node else ""
+            )
+            if not section_title:
+                continue
+            if index == 0:
+                title = section_title
+                links = _extract_links(box, base_url=self.url)
+            elif section_title != title:
+                steps.append(section_title)
+            steps.extend(
+                _extract_section_steps(
+                    box,
+                    title=section_title,
+                    extra_skip={"홈페이지 바로가기"},
+                )
+            )
+        steps = _unique(steps)
+        summary = next(
+            (step for step in steps if step.startswith("장애학생지원센터에서는")),
+            steps[0] if steps else title,
+        )
+        rows.append(
+            {
+                "topic": self.topic,
+                "title": title,
+                "summary": summary,
+                "steps": steps,
+                "links": links,
+                "source_url": self.url,
+                "source_tag": self.source_tag,
+                "last_synced_at": fetched_at,
+            }
+        )
+        return rows
+
+
+class StudentReservistGuideSource(CampusLifeSupportGuideSourceBase):
+    topic = "student_reservist"
+
+    def __init__(self, url: str = "https://www.catholic.ac.kr/ko/campuslife/student_reservist.do"):
+        super().__init__(url)
+
+    def parse(self, html: str, *, fetched_at: str) -> list[dict]:
+        soup = BeautifulSoup(html, "html.parser")
+        root = soup.select_one(".content-box") or soup
+        rows: list[dict] = []
+        title = "직장예비군 가톨릭대학교 대대"
+        steps: list[str] = []
+        links: list[dict[str, str]] = []
+        for index, box in enumerate(root.find_all("div", class_="con-box", recursive=False)):
+            section_title_node = box.select_one(".h4-tit01") or box.select_one(".box-tit")
+            section_title = _clean_text(
+                section_title_node.get_text(" ", strip=True) if section_title_node else ""
+            )
+            if not section_title:
+                continue
+            if index == 0:
+                title = section_title
+                links = _extract_links(box, base_url=self.url)
+            elif section_title != title:
+                steps.append(section_title)
+            steps.extend(
+                _extract_section_steps(
+                    box,
+                    title=section_title,
+                    extra_skip={"예비군대대 홈페이지 바로가기", "홈페이지 바로가기"},
+                )
+            )
+        steps = _unique(steps)
+        rows.append(
+            {
+                "topic": self.topic,
+                "title": "직장예비군 가톨릭대학교 대대",
+                "summary": title,
+                "steps": steps,
+                "links": links,
+                "source_url": self.url,
+                "source_tag": self.source_tag,
+                "last_synced_at": fetched_at,
+            }
+        )
+        return rows
+
+
+class HospitalUseGuideSource(CampusLifeSupportGuideSourceBase):
+    topic = "hospital_use"
+
+    def __init__(self, url: str = "https://www.catholic.ac.kr/ko/campuslife/hospital1.do"):
+        super().__init__(url)
+
+    def parse(self, html: str, *, fetched_at: str) -> list[dict]:
+        soup = BeautifulSoup(html, "html.parser")
+        root = soup.select_one(".content-box") or soup
+        thumb = root.select_one(".thumb-box") or root
+        steps = _extract_section_steps(
+            thumb,
+            title="가톨릭중앙의료원",
+            extra_skip={"병원아이콘", "홈페이지 바로가기"},
+        )
+        steps = [
+            step.replace("병원아이콘 ", "", 1) if step.startswith("병원아이콘 ") else step
+            for step in steps
+        ]
+        rows = [
+            {
+                "topic": self.topic,
+                "title": "부속병원이용",
+                "summary": steps[0] if steps else "부속병원이용",
+                "steps": steps,
+                "links": _extract_hospital_links(root, base_url=self.url),
+                "source_url": self.url,
+                "source_tag": self.source_tag,
+                "last_synced_at": fetched_at,
+            }
+        ]
+        return rows
 
 
 class HealthCenterGuideSource(CampusLifeSupportGuideSourceBase):
