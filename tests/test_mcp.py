@@ -27,6 +27,7 @@ from songsim_campus.services import (
     refresh_academic_calendar_from_source,
     refresh_academic_status_guides_from_source,
     refresh_academic_support_guides_from_source,
+    refresh_affiliated_notices_from_sources,
     refresh_certificate_guides_from_certificate_page,
     refresh_leave_of_absence_guides_from_source,
     refresh_scholarship_guides_from_source,
@@ -2767,50 +2768,94 @@ def test_mcp_public_affiliated_notices_return_topic_and_summary_preview(
 ):
     pytest.importorskip('mcp.server.fastmcp')
     init_db()
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
 
-    class FakeAffiliatedNotice:
-        def __init__(self, payload: dict[str, object]):
-            self._payload = payload
+    class DuplicateAffiliatedNoticeSource:
+        topic = "international_studies"
+        source_tag = "cuk_affiliated_notice_boards"
 
-        def model_dump(self):
-            return dict(self._payload)
+        def fetch_list(self, offset: int = 0, limit: int = 10):
+            return "<list></list>"
 
-    monkeypatch.setattr(
-        "songsim_campus.services.list_affiliated_notices",
-        lambda conn, topic=None, query=None, limit=20: [
-            FakeAffiliatedNotice(
+        def parse_list(self, _html: str):
+            return [
                 {
-                    "id": 1,
-                    "topic": "international_studies",
+                    "topic": self.topic,
+                    "article_no": "100",
                     "title": "국제학부 공지",
                     "published_at": "2026-03-20",
                     "summary": "국제학부 학사 공지 " * 20,
-                    "source_url": "https://is.catholic.ac.kr/is/community/notice.do?mode=view&articleNo=1",
-                    "source_tag": "cuk_affiliated_notice_boards",
-                    "last_synced_at": "2026-03-20T10:00:00+09:00",
-                }
-            )
-        ],
-        raising=False,
-    )
-    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
-    clear_settings_cache()
+                    "source_url": "https://is.catholic.ac.kr/is/community/notice.do?mode=view&articleNo=100",
+                    "source_tag": self.source_tag,
+                },
+                {
+                    "topic": self.topic,
+                    "article_no": "100",
+                    "title": "국제학부 공지",
+                    "published_at": "2026-03-20",
+                    "summary": "중복 공지",
+                    "source_url": "https://is.catholic.ac.kr/is/community/notice.do?mode=view&articleNo=100",
+                    "source_tag": self.source_tag,
+                },
+                {
+                    "topic": self.topic,
+                    "article_no": "101",
+                    "title": "국제학부 공결 신청 안내",
+                    "published_at": "2026-03-19",
+                    "summary": "국제학부 공결 신청 안내 " * 20,
+                    "source_url": "https://is.catholic.ac.kr/is/community/notice.do?mode=view&articleNo=101",
+                    "source_tag": self.source_tag,
+                },
+            ]
+
+        def fetch_detail(self, article_no: str, offset: int = 0, limit: int = 10):
+            return article_no
+
+        def parse_detail(
+            self,
+            article_no: str,
+            *,
+            default_title: str = "",
+            default_category: str = "",
+            default_summary: str = "",
+            default_published_at: str = "",
+            default_source_url: str | None = None,
+        ):
+            return {
+                "topic": self.topic,
+                "title": default_title,
+                "published_at": default_published_at,
+                "summary": default_summary,
+                "source_url": default_source_url,
+                "source_tag": self.source_tag,
+            }
+
+    with connection() as conn:
+        refresh_affiliated_notices_from_sources(
+            conn,
+            sources=[DuplicateAffiliatedNoticeSource()],
+            fetched_at="2026-03-20T10:00:00+09:00",
+        )
 
     async def main():
         mcp = build_mcp()
         result = await mcp.call_tool(
             "tool_list_affiliated_notices",
-            {"topic": "international_studies", "query": "공지", "limit": 1},
+            {"topic": "international_studies", "limit": 5},
         )
-        return _tool_payloads(result)[0]
+        return _tool_payloads(result)
 
     payload = asyncio.run(main())
 
-    assert payload["topic"] == "international_studies"
-    assert payload["title"] == "국제학부 공지"
-    assert payload["source_tag"] == "cuk_affiliated_notice_boards"
-    assert len(payload["summary"]) <= 160
-    assert payload["summary"].endswith("...")
+    assert len(payload) == 2
+    titles = [item["title"] for item in payload]
+    assert titles == ["국제학부 공지", "국제학부 공결 신청 안내"]
+    assert len(titles) == len(set(titles)) == 2
+    assert payload[0]["topic"] == "international_studies"
+    assert payload[0]["source_tag"] == "cuk_affiliated_notice_boards"
+    assert len(payload[0]["summary"]) <= 160
+    assert payload[0]["summary"].endswith("...")
 
     clear_settings_cache()
 

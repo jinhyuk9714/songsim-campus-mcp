@@ -4542,6 +4542,18 @@ def refresh_affiliated_notices_from_sources(
         DormFrancisCheckinOutAffiliatedNoticeBoardSource(),
     ]
     rows: list[dict[str, Any]] = []
+    seen_article_nos: set[tuple[str, str]] = set()
+    seen_source_urls: set[tuple[str, str]] = set()
+    seen_title_published: set[tuple[str, str, str]] = set()
+
+    def _normalized_affiliated_notice_text(value: Any | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = _normalize_optional_text(str(value))
+        if cleaned is None:
+            return None
+        return _collapse_whitespace(cleaned)
+
     for source in resolved_sources:
         board_topic = getattr(source, "topic", None) or getattr(source, "board_topic", None)
         if not board_topic:
@@ -4574,13 +4586,38 @@ def refresh_affiliated_notices_from_sources(
                 published_at = detail.get("published_at") or item.get("published_at")
                 if not title or not published_at:
                     continue
+                topic = _normalize_optional_text(
+                    detail.get("topic") or item.get("topic") or board_topic
+                )
+                if topic is None:
+                    topic = board_topic
+                article_no_key = _normalized_affiliated_notice_text(article_no)
+                if article_no_key is not None:
+                    dedupe_key = (topic, article_no_key)
+                    if dedupe_key in seen_article_nos:
+                        continue
+                    seen_article_nos.add(dedupe_key)
+                source_url = detail.get("source_url") or item.get("source_url")
+                source_url_key = _normalized_affiliated_notice_text(source_url)
+                if source_url_key is not None:
+                    dedupe_key = (topic, source_url_key)
+                    if dedupe_key in seen_source_urls:
+                        continue
+                    seen_source_urls.add(dedupe_key)
+                normalized_title = _normalized_affiliated_notice_text(title)
+                normalized_published_at = _normalized_affiliated_notice_text(published_at)
+                if normalized_title is not None and normalized_published_at is not None:
+                    dedupe_key = (topic, normalized_title, normalized_published_at)
+                    if dedupe_key in seen_title_published:
+                        continue
+                    seen_title_published.add(dedupe_key)
                 rows.append(
                     {
-                        "topic": detail.get("topic") or item.get("topic") or board_topic,
+                        "topic": topic,
                         "title": title,
                         "published_at": published_at,
                         "summary": detail.get("summary") or item.get("summary") or "",
-                        "source_url": detail.get("source_url") or item.get("source_url"),
+                        "source_url": source_url,
                         "source_tag": detail.get("source_tag")
                         or getattr(source, "source_tag", "cuk_affiliated_notice_boards"),
                         "last_synced_at": synced_at,

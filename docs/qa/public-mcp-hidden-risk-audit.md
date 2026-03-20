@@ -79,5 +79,6 @@
 ## 보조 메모
 
 - `classrooms timeout`, `transport mode mismatch`, `generic facility noun -> []`, `generic facility noun -> dormitory`, `스타벅스 주차장 노이즈`, `정문/K관` residual noise는 더 이상 현재 운영 baseline의 핵심 리스크가 아니다.
+- `affiliated notices`의 pinned/latest duplicate는 이번 slice 이후 resolved로 본다.
 - 현재 남아 있는 눈에 띄는 리스크는 `course source-gap watchlist` 쪽이다.
 - `course`는 release gate가 아니라 watchlist라는 현재 정책을 유지한다. `데이터베이스`, `CSE301`, `김가톨`, `데이타베이스`, `CSE 420`는 계속 source-backed 여부 중심으로만 추적한다.

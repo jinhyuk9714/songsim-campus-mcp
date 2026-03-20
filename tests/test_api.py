@@ -15,7 +15,7 @@ from songsim_campus.api_pages import (
     render_admin_sync_page,
     render_landing_page,
 )
-from songsim_campus.db import connection
+from songsim_campus.db import connection, init_db
 from songsim_campus.repo import (
     replace_campus_facilities,
     replace_courses,
@@ -29,6 +29,7 @@ from songsim_campus.services import (
     refresh_academic_calendar_from_source,
     refresh_academic_status_guides_from_source,
     refresh_academic_support_guides_from_source,
+    refresh_affiliated_notices_from_sources,
     refresh_campus_dining_menus_from_facilities_page,
     refresh_certificate_guides_from_certificate_page,
     refresh_facility_hours_from_facilities_page,
@@ -390,6 +391,93 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     assert "/dormitory-guides" in openapi.text
     assert "/profiles" not in openapi.text
     assert "/admin/sync" not in openapi.text
+
+
+def test_public_readonly_affiliated_notices_deduplicate_titles(app_env, monkeypatch):
+    init_db()
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    class DuplicateAffiliatedNoticeSource:
+        topic = "international_studies"
+        source_tag = "cuk_affiliated_notice_boards"
+
+        def fetch_list(self, offset: int = 0, limit: int = 10):
+            return "<list></list>"
+
+        def parse_list(self, _html: str):
+            return [
+                {
+                    "topic": self.topic,
+                    "article_no": "100",
+                    "title": "국제학부 공지",
+                    "published_at": "2026-03-20",
+                    "summary": "국제학부 학사 공지",
+                    "source_url": "https://is.catholic.ac.kr/is/community/notice.do?mode=view&articleNo=100",
+                    "source_tag": self.source_tag,
+                },
+                {
+                    "topic": self.topic,
+                    "article_no": "100",
+                    "title": "국제학부 공지",
+                    "published_at": "2026-03-20",
+                    "summary": "중복 공지",
+                    "source_url": "https://is.catholic.ac.kr/is/community/notice.do?mode=view&articleNo=100",
+                    "source_tag": self.source_tag,
+                },
+                {
+                    "topic": self.topic,
+                    "article_no": "101",
+                    "title": "국제학부 공결 신청 안내",
+                    "published_at": "2026-03-19",
+                    "summary": "국제학부 공결 신청 안내",
+                    "source_url": "https://is.catholic.ac.kr/is/community/notice.do?mode=view&articleNo=101",
+                    "source_tag": self.source_tag,
+                },
+            ]
+
+        def fetch_detail(self, article_no: str, offset: int = 0, limit: int = 10):
+            return article_no
+
+        def parse_detail(
+            self,
+            article_no: str,
+            *,
+            default_title: str = "",
+            default_category: str = "",
+            default_summary: str = "",
+            default_published_at: str = "",
+            default_source_url: str | None = None,
+        ):
+            return {
+                "topic": self.topic,
+                "title": default_title,
+                "published_at": default_published_at,
+                "summary": default_summary,
+                "source_url": default_source_url,
+                "source_tag": self.source_tag,
+            }
+
+    with connection() as conn:
+        refresh_affiliated_notices_from_sources(
+            conn,
+            sources=[DuplicateAffiliatedNoticeSource()],
+            fetched_at="2026-03-20T10:00:00+09:00",
+        )
+
+    app = create_app()
+    with TestClient(app) as public_client:
+        response = public_client.get(
+            "/affiliated-notices",
+            params={"topic": "international_studies", "limit": 5},
+        )
+
+    clear_settings_cache()
+
+    assert response.status_code == 200
+    titles = [item["title"] for item in response.json()]
+    assert titles == ["국제학부 공지", "국제학부 공결 신청 안내"]
+    assert len(titles) == len(set(titles)) == 2
 
 
 def test_api_docs_helper_preserves_filtered_openapi_shape(app_env, monkeypatch):

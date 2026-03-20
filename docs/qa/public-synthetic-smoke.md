@@ -138,6 +138,26 @@ curl -fsS "$PUBLIC_HTTP_URL/affiliated-notices?topic=international_studies&limit
   | jq '.[0] | {topic, title, published_at, source_tag}'
 ```
 
+### 5.5.1 Unique latest international_studies notices
+
+```bash
+curl -fsS "$PUBLIC_HTTP_URL/affiliated-notices?topic=international_studies&limit=5"
+```
+
+기대값:
+
+- HTTP `200`
+- JSON array
+- 최신 `international_studies` 결과의 `title` 값이 중복되지 않아야 한다
+- `"source_tag":"cuk_affiliated_notice_boards"`가 보임
+
+`jq` 예시:
+
+```bash
+curl -fsS "$PUBLIC_HTTP_URL/affiliated-notices?topic=international_studies&limit=5" \
+  | jq 'map(.title) as $titles | ($titles | length) == ($titles | unique | length)'
+```
+
 ## 6. Seasonal semester guides HTTP smoke
 
 ```bash

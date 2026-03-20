@@ -587,6 +587,52 @@ def _search_student_exchange_partner_rows(
     return [item[4] for item in ranked[:normalized_limit]]
 
 
+def _dedupe_topic_local_first_seen_rows(
+    rows: list[dict[str, Any]],
+    *,
+    topic_key: str = "topic",
+    article_no_key: str = "article_no",
+    source_url_key: str = "source_url",
+    title_key: str = "title",
+    published_at_key: str = "published_at",
+) -> list[dict[str, Any]]:
+    seen_article_nos: set[tuple[str, str]] = set()
+    seen_source_urls: set[tuple[str, str]] = set()
+    seen_title_published: set[tuple[str, str, str]] = set()
+    deduped: list[dict[str, Any]] = []
+    for item in rows:
+        topic = str(item.get(topic_key) or "").strip()
+        if not topic:
+            deduped.append(item)
+            continue
+        normalized_topic = topic.casefold()
+        article_no = str(item.get(article_no_key) or "").strip()
+        if article_no:
+            article_no_pair = (normalized_topic, re.sub(r"\s+", "", article_no).casefold())
+            if article_no_pair in seen_article_nos:
+                continue
+            seen_article_nos.add(article_no_pair)
+        source_url = str(item.get(source_url_key) or "").strip()
+        if source_url:
+            source_url_pair = (normalized_topic, re.sub(r"\s+", "", source_url).casefold())
+            if source_url_pair in seen_source_urls:
+                continue
+            seen_source_urls.add(source_url_pair)
+        title = str(item.get(title_key) or "").strip()
+        published_at = str(item.get(published_at_key) or "").strip()
+        if title and published_at:
+            title_published_triplet = (
+                normalized_topic,
+                re.sub(r"\s+", "", title).casefold(),
+                re.sub(r"\s+", "", published_at).casefold(),
+            )
+            if title_published_triplet in seen_title_published:
+                continue
+            seen_title_published.add(title_published_triplet)
+        deduped.append(item)
+    return deduped
+
+
 def _subset_match(expected: Any, actual: Any) -> bool:
     if isinstance(expected, list) and isinstance(actual, list):
         for expected_item in expected:
@@ -1416,7 +1462,8 @@ def _payload_from_sources(
         )
         return rows[:limit]
     if path == "/affiliated-notices":
-        cache_key = "affiliated_notices"
+        topic_filter = str(row.api_request.params.get("topic") or "").strip() or "all_topics"
+        cache_key = f"affiliated_notices:{topic_filter}"
         if cache_key not in source_cache:
             board_specs = [
                 (
@@ -1442,6 +1489,8 @@ def _payload_from_sources(
             ]
             rows: list[dict[str, Any]] = []
             for topic, url in board_specs:
+                if topic_filter != "all_topics" and topic_filter != topic:
+                    continue
                 source = NoticeSource(url)
                 list_html = source.fetch_list(limit=50)
                 for item in source.parse_list(list_html):
@@ -1454,10 +1503,8 @@ def _payload_from_sources(
                         default_title=item.get("title", ""),
                         default_category=item.get("board_category", ""),
                     )
-                    if topic_filter := row.api_request.params.get("topic"):
-                        if topic_filter != topic:
-                            continue
                     payload = {
+                        "article_no": article_no,
                         "topic": topic,
                         "title": detail.get("title") or item.get("title") or "",
                         "published_at": detail.get("published_at") or item.get("published_at"),
@@ -1466,12 +1513,8 @@ def _payload_from_sources(
                         "source_tag": "cuk_affiliated_notice_boards",
                         "last_synced_at": captured_at,
                     }
-                    query_filter = str(row.api_request.params.get("query") or "").strip()
-                    if query_filter:
-                        haystack = f"{payload['title']} {payload['summary']}".casefold()
-                        if query_filter.casefold() not in haystack:
-                            continue
                     rows.append(payload)
+            rows = _dedupe_topic_local_first_seen_rows(rows)
             rows.sort(
                 key=lambda item: (
                     str(item.get("published_at") or ""),

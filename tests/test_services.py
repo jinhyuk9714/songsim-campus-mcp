@@ -4245,10 +4245,12 @@ class FakeAffiliatedNoticeSource:
         items: list[dict[str, object]],
         *,
         source_tag: str = "cuk_affiliated_notice_boards",
+        detail_failures: set[str] | None = None,
     ):
         self.topic = topic
         self.items = items
         self.source_tag = source_tag
+        self.detail_failures = detail_failures or set()
 
     def fetch_list(self, *, offset: int = 0, limit: int = 10):
         assert limit == 10
@@ -4260,6 +4262,8 @@ class FakeAffiliatedNoticeSource:
 
     def fetch_detail(self, article_no: str, *, offset: int = 0, limit: int = 10):
         assert limit == 10
+        if article_no in self.detail_failures:
+            raise httpx.HTTPError("detail fetch failed")
         return f"<detail article_no={article_no} offset={offset}>"
 
     def parse_detail(
@@ -4280,6 +4284,118 @@ class FakeAffiliatedNoticeSource:
             "source_url": default_source_url,
             "source_tag": self.source_tag,
         }
+
+
+def test_refresh_affiliated_notices_dedupes_within_topic_and_preserves_cross_topic_duplicates(
+    app_env,
+):
+    init_db()
+
+    with connection() as conn:
+        notices = refresh_affiliated_notices_from_sources(
+            conn,
+            sources=[
+                FakeAffiliatedNoticeSource(
+                    "international_studies",
+                    [
+                        {
+                            "article_no": "1",
+                            "title": "국제학부 공지 A",
+                            "published_at": "2026-03-21",
+                            "summary": "article number winner",
+                            "source_url": "https://is.catholic.ac.kr/is/community/notice.do?articleNo=1",
+                        },
+                        {
+                            "article_no": "1",
+                            "title": "국제학부 공지 A duplicate",
+                            "published_at": "2026-03-22",
+                            "summary": "article number duplicate",
+                            "source_url": "https://is.catholic.ac.kr/is/community/notice.do?articleNo=1-dup",
+                        },
+                    ],
+                ),
+                FakeAffiliatedNoticeSource(
+                    "international_studies",
+                    [
+                        {
+                            "article_no": "2",
+                            "title": "국제학부 공지 B",
+                            "published_at": "2026-03-20",
+                            "summary": "source url winner",
+                            "source_url": "https://is.catholic.ac.kr/is/community/notice.do?articleNo=shared",
+                        },
+                        {
+                            "article_no": "3",
+                            "title": "국제학부 공지 C",
+                            "published_at": "2026-03-19",
+                            "summary": "source url duplicate",
+                            "source_url": "https://is.catholic.ac.kr/is/community/notice.do?articleNo=shared",
+                        },
+                    ],
+                ),
+                FakeAffiliatedNoticeSource(
+                    "international_studies",
+                    [
+                        {
+                            "article_no": "4",
+                            "title": "국제학부 공지 D",
+                            "published_at": "2026-03-18",
+                            "summary": "title/published_at winner",
+                            "source_url": "https://is.catholic.ac.kr/is/community/notice.do?articleNo=4",
+                        },
+                        {
+                            "article_no": "5",
+                            "title": "국제학부 공지 D",
+                            "published_at": "2026-03-18",
+                            "summary": "title/published_at duplicate",
+                            "source_url": "https://is.catholic.ac.kr/is/community/notice.do?articleNo=5",
+                        },
+                        {
+                            "article_no": "6",
+                            "title": "국제학부 fallback 공지",
+                            "published_at": "2026-03-17",
+                            "summary": "fallback summary",
+                            "source_url": "https://is.catholic.ac.kr/is/community/notice.do?articleNo=6",
+                        },
+                    ],
+                    detail_failures={"6"},
+                ),
+                FakeAffiliatedNoticeSource(
+                    "dorm_k_a_general",
+                    [
+                        {
+                            "article_no": "1",
+                            "title": "국제학부 공지 A",
+                            "published_at": "2026-03-21",
+                            "summary": "cross-topic duplicate",
+                            "source_url": "https://is.catholic.ac.kr/is/community/notice.do?articleNo=1",
+                        }
+                    ],
+                ),
+            ],
+            fetched_at="2026-03-20T00:00:00+09:00",
+        )
+        all_notices = list_affiliated_notices(conn, limit=20)
+
+    assert len(notices) == 5
+    assert len(all_notices) == 5
+    assert [item.topic for item in all_notices].count("international_studies") == 4
+    assert [item.topic for item in all_notices].count("dorm_k_a_general") == 1
+    titles = [item.title for item in all_notices]
+    assert titles.count("국제학부 공지 A") == 2
+    assert "국제학부 공지 A duplicate" not in titles
+    assert "국제학부 공지 C" not in titles
+    assert "국제학부 공지 D duplicate" not in titles
+    assert any(
+        item.title == "국제학부 fallback 공지" and item.summary == "fallback summary"
+        for item in all_notices
+    )
+    assert any(
+        item.topic == "dorm_k_a_general"
+        and item.title == "국제학부 공지 A"
+        and item.source_url == "https://is.catholic.ac.kr/is/community/notice.do?articleNo=1"
+        for item in all_notices
+    )
 
 
 class FakeAcademicStatusSource:

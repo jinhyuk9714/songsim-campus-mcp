@@ -1578,6 +1578,151 @@ def test_render_validation_report_includes_affiliated_notices_coverage() -> None
     assert report.count("| affiliated_notices | 1 | 1 |") == 2
 
 
+def test_build_truth_rows_dedupes_affiliated_notices_by_topic_first_seen(app_env, monkeypatch):
+    row_international = EvalCorpusRow.model_validate(
+        {
+            "id": "AN101",
+            "domain": "affiliated_notices",
+            "style": "normal",
+            "user_utterance": "국제학부 최신 공지 알려줘",
+            "api_request": {
+                "path": "/affiliated-notices",
+                "params": {"topic": "international_studies", "limit": 5},
+            },
+            "expected_mcp_flow": "tool_list_affiliated_notices",
+            "truth_mode": "set_contains",
+            "pass_rule": {"summary_kind": "affiliated_notices_top5"},
+            "watch_policy": "none",
+            "notes": "",
+        }
+    )
+    row_dorm = EvalCorpusRow.model_validate(
+        {
+            "id": "AN102",
+            "domain": "affiliated_notices",
+            "style": "normal",
+            "user_utterance": "기숙사 일반공지 알려줘",
+            "api_request": {
+                "path": "/affiliated-notices",
+                "params": {"topic": "dorm_k_a_general", "limit": 5},
+            },
+            "expected_mcp_flow": "tool_list_affiliated_notices",
+            "truth_mode": "set_contains",
+            "pass_rule": {"summary_kind": "affiliated_notices_top5"},
+            "watch_policy": "none",
+            "notes": "",
+        }
+    )
+
+    class FakeNoticeSource:
+        def __init__(self, url: str):
+            self.url = url
+
+        def fetch_list(self, offset: int = 0, limit: int = 10):
+            return self.url
+
+        def parse_list(self, _html: str):
+            rows_by_url = {
+                "https://is.catholic.ac.kr/is/community/notice.do": [
+                    {
+                        "article_no": "1",
+                        "title": "중복 공지",
+                        "published_at": "2026-03-19",
+                        "summary": "",
+                        "source_url": f"{self.url}?articleNo=1",
+                        "board_category": "",
+                    },
+                    {
+                        "article_no": "1",
+                        "title": "중복 공지",
+                        "published_at": "2026-03-19",
+                        "summary": "",
+                        "source_url": f"{self.url}?articleNo=1",
+                        "board_category": "",
+                    },
+                ],
+                "https://dorm.catholic.ac.kr/dormitory/board/comm_notice.do": [
+                    {
+                        "article_no": "10",
+                        "title": "중복 공지",
+                        "published_at": "2026-03-17",
+                        "summary": "",
+                        "source_url": f"{self.url}?articleNo=10",
+                        "board_category": "",
+                    },
+                ],
+                "https://dorm.catholic.ac.kr/dormitory/board/checkin-out_notice1.do": [],
+                "https://dorm.catholic.ac.kr/dormitory/board/comm_notice3.do": [],
+                "https://dorm.catholic.ac.kr/dormitory/board/checkin-out_notice.do": [],
+            }
+            return rows_by_url[self.url]
+
+        def fetch_detail(self, article_no: str, offset: int = 0, limit: int = 10):
+            return article_no
+
+        def parse_detail(
+            self,
+            article_no: str,
+            *,
+            default_title: str = "",
+            default_category: str = "",
+        ):
+            detail_by_url = {
+                "https://is.catholic.ac.kr/is/community/notice.do": {
+                    "1": {
+                        "title": default_title,
+                        "published_at": "2026-03-19",
+                        "summary": "국제학부 첫 번째 공지",
+                    },
+                },
+                "https://dorm.catholic.ac.kr/dormitory/board/comm_notice.do": {
+                    "10": {
+                        "title": default_title,
+                        "published_at": "2026-03-17",
+                        "summary": "기숙사 첫 번째 공지",
+                    },
+                },
+            }
+            return detail_by_url[self.url][article_no]
+
+    monkeypatch.setattr(qa_eval, "NoticeSource", FakeNoticeSource)
+
+    truth_rows = build_truth_rows(
+        [row_international, row_dorm],
+        database_url=None,
+        captured_at="2026-03-20T10:10:00+09:00",
+    )
+
+    assert truth_rows == [
+        EvalTruthRow(
+            id="AN101",
+            normalized_expected=[
+                {
+                    "topic": "international_studies",
+                    "title": "중복 공지",
+                    "published_at": "2026-03-19",
+                }
+            ],
+            truth_source="official_source",
+            captured_at="2026-03-20T10:10:00+09:00",
+            stability="stable",
+        ),
+        EvalTruthRow(
+            id="AN102",
+            normalized_expected=[
+                {
+                    "topic": "dorm_k_a_general",
+                    "title": "중복 공지",
+                    "published_at": "2026-03-17",
+                }
+            ],
+            truth_source="official_source",
+            captured_at="2026-03-20T10:10:00+09:00",
+            stability="stable",
+        ),
+    ]
+
+
 def test_render_validation_report_includes_student_exchange_partners_coverage() -> None:
     rows = [
         EvalCorpusRow.model_validate(
