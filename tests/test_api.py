@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
+from songsim_campus import api as api_module
 from songsim_campus import services
 from songsim_campus.api import create_app
 from songsim_campus.api_docs import build_filtered_openapi
@@ -46,6 +47,10 @@ def test_healthz(client):
     response = client.get('/healthz')
     assert response.status_code == 200
     assert response.json() == {'ok': True}
+
+
+def test_campus_life_notices_api_uses_services_wiring():
+    assert api_module.list_campus_life_notices.__module__ == "songsim_campus.services"
 
 
 def test_readyz_reports_database_and_table_status(client):
