@@ -21,6 +21,7 @@ from .api_pages import (
     render_privacy_page,
 )
 from .db import connection, get_connection, init_db
+from .ingest.official_sources import CampusLifeOutsideAgenciesNoticeBoardSource
 from .schemas import (
     AcademicCalendarEvent,
     AcademicMilestoneGuide,
@@ -28,6 +29,7 @@ from .schemas import (
     AcademicSupportGuide,
     AffiliatedNotice,
     CampusDiningMenu,
+    CampusLifeNotice,
     CampusLifeSupportGuide,
     CertificateGuide,
     ClassGuide,
@@ -149,6 +151,71 @@ GPT_RESTAURANT_CATEGORY_DISPLAY = {
     "chinese": "중식",
     "cafe": "카페",
 }
+
+
+def list_campus_life_notices(
+    conn,
+    *,
+    topic: str | None = None,
+    query: str | None = None,
+    limit: int = 20,
+) -> list[CampusLifeNotice]:
+    del conn
+    if topic is not None and topic != "outside_agencies":
+        return []
+
+    source = CampusLifeOutsideAgenciesNoticeBoardSource()
+    fetched_at = datetime.now().astimezone().isoformat(timespec="seconds")
+    list_html = source.fetch_list(limit=max(limit, 50))
+    rows: list[CampusLifeNotice] = []
+    seen_article_nos: set[str] = set()
+    for item in source.parse_list(list_html):
+        article_no = str(item.get("article_no") or "").strip()
+        if not article_no or article_no in seen_article_nos:
+            continue
+        seen_article_nos.add(article_no)
+        try:
+            detail_html = source.fetch_detail(article_no, limit=max(limit, 50))
+            detail = source.parse_detail(
+                detail_html,
+                default_title=str(item.get("title") or ""),
+                default_published_at=str(item.get("published_at") or ""),
+                default_source_url=item.get("source_url"),
+            )
+        except Exception:
+            detail = {
+                "topic": source.topic,
+                "title": str(item.get("title") or ""),
+                "published_at": str(item.get("published_at") or ""),
+                "summary": "",
+                "source_url": item.get("source_url"),
+                "source_tag": source.source_tag,
+            }
+        rows.append(
+            CampusLifeNotice(
+                id=int(article_no) if article_no.isdigit() else 0,
+                topic=str(detail.get("topic") or source.topic),
+                title=str(detail.get("title") or item.get("title") or ""),
+                published_at=str(detail.get("published_at") or item.get("published_at") or ""),
+                summary=str(detail.get("summary") or ""),
+                source_url=detail.get("source_url") or item.get("source_url"),
+                source_tag=str(detail.get("source_tag") or source.source_tag),
+                last_synced_at=fetched_at,
+            )
+        )
+
+    query_text = " ".join(str(query or "").split()).casefold()
+    if query_text:
+        matched_rows = [
+            item
+            for item in rows
+            if query_text in f"{item.title} {item.summary}".casefold()
+        ]
+        if matched_rows:
+            rows = matched_rows
+
+    rows.sort(key=lambda item: (item.published_at, item.id), reverse=True)
+    return rows[:limit]
 
 
 @asynccontextmanager
@@ -876,6 +943,15 @@ def create_app() -> FastAPI:
 
         with connection() as conn:
             return _services.list_affiliated_notices(conn, topic=topic, query=query, limit=limit)
+
+    @app.get("/campus-life-notices", response_model=list[CampusLifeNotice])
+    def campus_life_notices(
+        topic: str | None = Query(default=None, description="공지 번들 유형 필터"),
+        query: str | None = Query(default=None, description="공지 제목 또는 요약 검색어"),
+        limit: int = Query(default=20, ge=1, le=50),
+    ) -> list[CampusLifeNotice]:
+        with connection() as conn:
+            return list_campus_life_notices(conn, topic=topic, query=query, limit=limit)
 
     @app.get("/transport", response_model=list[TransportGuide])
     def transport(

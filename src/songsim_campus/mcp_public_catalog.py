@@ -13,6 +13,7 @@ from .services import (
     list_academic_milestone_guides,
     list_academic_status_guides,
     list_academic_support_guides,
+    list_campus_life_notices,
     list_campus_life_support_guides,
     list_certificate_guides,
     list_class_guides,
@@ -48,10 +49,11 @@ def public_usage_guide_text() -> str:
                 "Available: places, courses, academic calendar, academic support guides, "
                 "academic status guides, registration guides, class guides, certificate guides, "
                 "seasonal semester guides, academic milestone guides, phone book entries, "
-                "campus life support guides, pc software entries, leave-of-absence guides, "
-                "scholarship guides, wifi guides, student exchange guides, student exchange "
-                "partners, notices, dining menus, library seats, empty classrooms, nearby "
-                "restaurants, restaurant search, affiliated notices, transport guides."
+                "campus life support guides, campus life notices, pc software entries, "
+                "leave-of-absence guides, scholarship guides, wifi guides, student exchange "
+                "guides, student exchange partners, notices, dining menus, library seats, "
+                "empty classrooms, nearby restaurants, restaurant search, affiliated notices, "
+                "transport guides."
             ),
             "Use these public read-only tools for student information questions first.",
             "",
@@ -173,17 +175,21 @@ def public_usage_guide_text() -> str:
                 "SSID, 중앙도서관 와이파이, or 무선랜 접속 방법 questions."
             ),
             (
-                "26. Use tool_list_affiliated_notices for affiliated department and dormitory "
+                "26. Use tool_list_campus_life_notices for outside-agency notice bundles such "
+                "as 외부기관공지, 대외 프로그램 공지, or 외부기관 장학/모집 공지."
+            ),
+            (
+                "27. Use tool_list_affiliated_notices for affiliated department and dormitory "
                 "board notice bundles such as 국제학부 최신 공지 or 기숙사 일반공지."
             ),
-            "27. Use tool_list_latest_notices for latest notices; category is optional.",
+            "28. Use tool_list_latest_notices for latest notices; category is optional.",
             (
-                "28. Use tool_list_transport_guides for static subway or bus access "
+                "29. Use tool_list_transport_guides for static subway or bus access "
                 "guidance. You can pass query with natural-language cues like 지하철, "
                 "1호선, 역곡역, or 버스. 셔틀은 현재 지원하지 않아 빈 결과가 정상입니다."
             ),
             (
-                "29. Optional reference resources exist for notice categories and class periods "
+                "30. Optional reference resources exist for notice categories and class periods "
                 "when you need them."
             ),
             "",
@@ -205,6 +211,9 @@ def public_usage_guide_text() -> str:
             "- 기숙사 일반공지 알려줘",
             "- 프란치스코관 입퇴사공지 알려줘",
             "- 기숙사 OT 공지 알려줘",
+            "- 외부기관공지 알려줘",
+            "- 대외 프로그램 공지 있어?",
+            "- 외부기관 장학 공지 있어?",
             "- 보건실 전화번호 알려줘",
             "- 보건실 위치와 운영시간 알려줘",
             "- 유실물 찾는 방법 알려줘",
@@ -440,6 +449,16 @@ def register_shared_resources(mcp: Any, connection_factory: Any, docs_dir: Path)
         with connection_factory() as conn:
             return json.dumps(
                 [item.model_dump() for item in _services.list_affiliated_notices(conn, limit=50)],
+                ensure_ascii=False,
+                indent=2,
+            )
+
+    @mcp.resource("songsim://campus-life-notices")
+    def campus_life_notices_resource() -> str:
+        """Return campus-life outside-agency notices as JSON."""
+        with connection_factory() as conn:
+            return json.dumps(
+                [item.model_dump() for item in list_campus_life_notices(conn, limit=50)],
                 ensure_ascii=False,
                 indent=2,
             )

@@ -26,6 +26,7 @@ from .ingest.official_sources import (
     AcademicCalendarSource,
     AcademicSupportGuideSource,
     CampusFacilitiesSource,
+    CampusLifeOutsideAgenciesNoticeBoardSource,
     CampusMapSource,
     CertificateGuideSource,
     ClassCourseCancellationGuideSource,
@@ -70,6 +71,7 @@ EvalDomain = Literal[
     "courses",
     "notices",
     "affiliated_notices",
+    "campus_life_notices",
     "restaurants",
     "transport",
     "classrooms",
@@ -284,6 +286,16 @@ def _summarize_payload(payload: Any, *, summary_kind: str) -> Any:
             for item in rows[:5]
         ]
     if summary_kind == "affiliated_notices_top5":
+        rows = payload if isinstance(payload, list) else []
+        return [
+            {
+                "topic": item.get("topic"),
+                "title": item.get("title"),
+                "published_at": item.get("published_at"),
+            }
+            for item in rows[:5]
+        ]
+    if summary_kind == "campus_life_notices_top5":
         rows = payload if isinstance(payload, list) else []
         return [
             {
@@ -765,6 +777,16 @@ def _payload_from_db(conn: psycopg.Connection, row: EvalCorpusRow) -> Any:
         return [
             item.model_dump()
             for item in services.list_affiliated_notices(
+                conn,
+                topic=params.get("topic"),
+                query=params.get("query"),
+                limit=_limit_from_row(row, 20),
+            )
+        ]
+    if path == "/campus-life-notices":
+        return [
+            item.model_dump()
+            for item in services.list_campus_life_notices(
                 conn,
                 topic=params.get("topic"),
                 query=params.get("query"),
@@ -1434,6 +1456,62 @@ def _payload_from_sources(
             query=row.api_request.params.get("query"),
             limit=limit,
         )
+    if path == "/campus-life-notices":
+        topic_filter = str(row.api_request.params.get("topic") or "").strip() or "all_topics"
+        cache_key = f"campus_life_notices:{topic_filter}"
+        if cache_key not in source_cache:
+            source = CampusLifeOutsideAgenciesNoticeBoardSource()
+            rows: list[dict[str, Any]] = []
+            for item in source.parse_list(source.fetch_list(limit=50)):
+                article_no = str(item.get("article_no") or "").strip()
+                if not article_no:
+                    continue
+                detail = source.parse_detail(
+                    source.fetch_detail(article_no, limit=50),
+                    default_title=item.get("title", ""),
+                    default_category="외부기관공지",
+                    default_summary=item.get("summary", ""),
+                    default_published_at=item.get("published_at", ""),
+                    default_source_url=item.get("source_url"),
+                )
+                rows.append(
+                    {
+                        "topic": detail.get("topic") or item.get("topic") or "outside_agencies",
+                        "title": detail.get("title") or item.get("title") or "",
+                        "published_at": detail.get("published_at") or item.get("published_at"),
+                        "summary": detail.get("summary") or item.get("summary") or "",
+                        "source_url": detail.get("source_url") or item.get("source_url"),
+                        "source_tag": detail.get("source_tag") or source.source_tag,
+                        "last_synced_at": captured_at,
+                    }
+                )
+            rows = _dedupe_topic_local_first_seen_rows(rows)
+            rows.sort(
+                key=lambda item: (
+                    str(item.get("published_at") or ""),
+                    str(item.get("title") or ""),
+                ),
+                reverse=True,
+            )
+            source_cache[cache_key] = rows
+        rows = list(source_cache[cache_key])
+        topic = row.api_request.params.get("topic")
+        if topic:
+            rows = [item for item in rows if item.get("topic") == topic]
+        query = str(row.api_request.params.get("query") or "").strip()
+        if query:
+            lowered = query.casefold()
+            title_hits = [
+                item for item in rows if lowered in str(item.get("title") or "").casefold()
+            ]
+            summary_hits = [
+                item
+                for item in rows
+                if item not in title_hits
+                and lowered in str(item.get("summary") or "").casefold()
+            ]
+            rows = title_hits + summary_hits
+        return rows[:limit]
     if path == "/academic-calendar":
         start_date, end_date = _current_academic_year_bounds()
         cache_key = f"academic_calendar:{start_date}:{end_date}"
@@ -1598,12 +1676,14 @@ def _payload_from_sources(
             rows = [item for item in rows if item.get("topic") == topic]
         query = str(row.api_request.params.get("query") or "").strip()
         if query:
-            lowered = query.casefold()
-            rows = [
+            lowered = " ".join(query.split()).casefold()
+            matched_rows = [
                 item
                 for item in rows
                 if lowered in f"{item.get('title', '')} {item.get('summary', '')}".casefold()
             ]
+            if matched_rows:
+                rows = matched_rows
         return rows[:limit]
     return None
 
@@ -1907,6 +1987,7 @@ def render_validation_report(
     guide_domains = [
         "academic_calendar",
         "affiliated_notices",
+        "campus_life_notices",
         "certificate_guides",
         "dormitory_guides",
         "campus_life_support_guides",

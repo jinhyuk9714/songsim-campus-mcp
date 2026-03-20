@@ -3080,3 +3080,16 @@ class DormFrancisCheckinOutAffiliatedNoticeBoardSource(AffiliatedNoticeBoardSour
         url: str = "https://dorm.catholic.ac.kr/dormitory/board/checkin-out_notice.do",
     ):
         super().__init__(url)
+
+
+class CampusLifeOutsideAgenciesNoticeBoardSource(AffiliatedNoticeBoardSourceBase):
+    """Parser for the 외부기관공지 board on the campus life site."""
+
+    source_tag = "cuk_campus_life_notices"
+    topic = "outside_agencies"
+
+    def __init__(
+        self,
+        url: str = "https://www.catholic.ac.kr/ko/campuslife/notice_outside.do",
+    ):
+        super().__init__(url)

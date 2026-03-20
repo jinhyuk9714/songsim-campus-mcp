@@ -8,6 +8,7 @@ from .mcp_public_serializers import (
     serialize_public_academic_milestone_guide,
     serialize_public_academic_status_guide,
     serialize_public_academic_support_guide,
+    serialize_public_campus_life_notice,
     serialize_public_campus_life_support_guide,
     serialize_public_certificate_guide,
     serialize_public_class_guide,
@@ -50,6 +51,7 @@ from .services import (
     list_academic_milestone_guides,
     list_academic_status_guides,
     list_academic_support_guides,
+    list_campus_life_notices,
     list_campus_life_support_guides,
     list_certificate_guides,
     list_class_guides,
@@ -991,6 +993,37 @@ def register_shared_tools(
             notices = _services.list_affiliated_notices(conn, topic=topic, query=query, limit=limit)
             if public_readonly:
                 return [serialize_public_affiliated_notice(item) for item in notices]
+            return [item.model_dump() for item in notices]
+
+    @mcp.tool(
+        description=(
+            (
+                "대학생활 외부기관공지 번들(campus life notices)을 읽을 때 사용합니다. "
+                "외부기관공지 board를 topic/query로 좁혀서 장학, 모집, 프로그램 같은 "
+                "대외 공지를 current snapshot 기준으로 찾습니다."
+            )
+            if public_readonly
+            else "대학생활 외부기관공지 current snapshot을 가져옵니다."
+        ),
+        meta=tool_meta,
+    )
+    def tool_list_campus_life_notices(
+        topic: Annotated[
+            str | None,
+            Field(description="공지 번들 topic 필터. 현재 outside_agencies만 사용합니다."),
+        ] = None,
+        query: Annotated[
+            str | None,
+            Field(
+                description="제목 또는 요약 검색어. 예: 외부기관공지, 장학, 모집, 프로그램",
+            ),
+        ] = None,
+        limit: Annotated[int, Field(description="최대 결과 수. 기본값은 20입니다.")] = 20,
+    ):
+        with connection_factory() as conn:
+            notices = list_campus_life_notices(conn, topic=topic, query=query, limit=limit)
+            if public_readonly:
+                return [serialize_public_campus_life_notice(item) for item in notices]
             return [item.model_dump() for item in notices]
 
     @mcp.tool(

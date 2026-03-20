@@ -137,6 +137,17 @@ CREATE TABLE IF NOT EXISTS affiliated_notices (
     last_synced_at TIMESTAMPTZ NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS campus_life_notices (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    topic TEXT NOT NULL,
+    title TEXT NOT NULL,
+    published_at DATE NOT NULL,
+    summary TEXT NOT NULL DEFAULT '',
+    source_url TEXT,
+    source_tag TEXT NOT NULL DEFAULT 'demo',
+    last_synced_at TIMESTAMPTZ NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS transport_guides (
     id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     mode TEXT NOT NULL,
@@ -444,6 +455,10 @@ ON restaurant_hours_cache(fetched_at DESC);
 CREATE INDEX IF NOT EXISTS idx_library_seat_status_cache_last_synced_at
 ON library_seat_status_cache(last_synced_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notices_published_at ON notices(published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_campus_life_notices_topic
+ON campus_life_notices(topic);
+CREATE INDEX IF NOT EXISTS idx_campus_life_notices_title
+ON campus_life_notices(title);
 CREATE INDEX IF NOT EXISTS idx_transport_guides_mode ON transport_guides(mode);
 CREATE INDEX IF NOT EXISTS idx_certificate_guides_title ON certificate_guides(title);
 CREATE INDEX IF NOT EXISTS idx_leave_of_absence_guides_title ON leave_of_absence_guides(title);

@@ -23,6 +23,7 @@ def test_public_usage_guide_text_contains_current_anchor_phrases():
     assert "tool_list_student_exchange_guides" in content
     assert "tool_search_phone_book" in content
     assert "tool_list_dormitory_guides" in content
+    assert "tool_list_campus_life_notices" in content
     assert "tool_list_leave_of_absence_guides" in content
     assert "tool_list_scholarship_guides" in content
     assert "tool_list_wifi_guides" in content
@@ -118,6 +119,7 @@ def test_register_shared_resources_exposes_expected_resource_uris(tmp_path):
         "songsim://student-exchange-partners",
         "songsim://phone-book",
         "songsim://campus-life-support-guide",
+        "songsim://campus-life-notices",
         "songsim://pc-software",
         "songsim://affiliated-notices",
         "songsim://dormitory-guide",

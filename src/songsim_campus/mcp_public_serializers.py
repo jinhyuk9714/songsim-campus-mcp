@@ -8,6 +8,7 @@ from .schemas import (
     AcademicStatusGuide,
     AcademicSupportGuide,
     CampusDiningMenu,
+    CampusLifeNotice,
     CampusLifeSupportGuide,
     CertificateGuide,
     ClassGuide,
@@ -115,6 +116,13 @@ def serialize_public_notice(notice: Notice) -> dict[str, object]:
 
 def serialize_public_affiliated_notice(notice: Any) -> dict[str, object]:
     payload = notice.model_dump()
+    if payload.get("summary"):
+        payload["summary"] = truncate_preview(str(payload["summary"]), limit=160)
+    return payload
+
+
+def serialize_public_campus_life_notice(notice: CampusLifeNotice | Any) -> dict[str, object]:
+    payload = notice.model_dump() if hasattr(notice, "model_dump") else dict(notice)
     if payload.get("summary"):
         payload["summary"] = truncate_preview(str(payload["summary"]), limit=160)
     return payload

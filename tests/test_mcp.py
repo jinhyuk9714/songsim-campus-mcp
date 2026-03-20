@@ -22,6 +22,7 @@ from songsim_campus.repo import (
     replace_transport_guides,
     update_place_opening_hours,
 )
+from songsim_campus.schemas import CampusLifeNotice
 from songsim_campus.seed import seed_demo
 from songsim_campus.services import (
     refresh_academic_calendar_from_source,
@@ -968,6 +969,7 @@ def test_mcp_public_readonly_mode_registers_only_read_only_tools(app_env, monkey
         "tool_search_student_exchange_partners",
         "tool_search_phone_book",
         "tool_list_campus_life_support_guides",
+        "tool_list_campus_life_notices",
         "tool_search_pc_software",
         "tool_list_dormitory_guides",
         "tool_list_certificate_guides",
@@ -998,6 +1000,7 @@ def test_mcp_public_readonly_mode_registers_only_read_only_tools(app_env, monkey
     assert "songsim://student-exchange-partners" in resource_uris
     assert "songsim://phone-book" in resource_uris
     assert "songsim://campus-life-support-guide" in resource_uris
+    assert "songsim://campus-life-notices" in resource_uris
     assert "songsim://pc-software" in resource_uris
     assert "songsim://affiliated-notices" in resource_uris
     assert "songsim://dormitory-guide" in resource_uris
@@ -1050,6 +1053,7 @@ def test_mcp_public_readonly_mode_registers_prompts_and_extended_resources(app_e
         "songsim://student-exchange-partners",
         "songsim://phone-book",
         "songsim://campus-life-support-guide",
+        "songsim://campus-life-notices",
         "songsim://pc-software",
         "songsim://affiliated-notices",
         "songsim://dormitory-guide",
@@ -2924,6 +2928,53 @@ def test_mcp_public_affiliated_notices_return_topic_and_summary_preview(
     assert payload[0]["source_tag"] == "cuk_affiliated_notice_boards"
     assert len(payload[0]["summary"]) <= 160
     assert payload[0]["summary"].endswith("...")
+
+    clear_settings_cache()
+
+
+def test_mcp_public_campus_life_notices_return_outside_agency_topic(
+    app_env,
+    monkeypatch,
+):
+    pytest.importorskip('mcp.server.fastmcp')
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    stub = lambda conn=None, topic=None, query=None, limit=20: [  # noqa: E731
+        CampusLifeNotice(
+            id=269665,
+            topic="outside_agencies",
+            title="[인천병무지청] 2026년 4월 각 군 모집일정 안내",
+            published_at="2026-03-20",
+            summary=(
+                "접수기간: 2026.3.27.(금) 14시 ~ 2026.4.2.(목) 14시 "
+                "지원방법: 병무청 누리집"
+            ),
+            source_url="https://www.catholic.ac.kr/ko/campuslife/notice_outside.do?mode=view&articleNo=269665&article.offset=0&articleLimit=10",
+            source_tag="cuk_campus_life_notices",
+            last_synced_at="2026-03-20T10:00:00+09:00",
+        )
+    ]
+    monkeypatch.setattr("songsim_campus.mcp_public_catalog.list_campus_life_notices", stub)
+    monkeypatch.setattr("songsim_campus.mcp_tool_catalog.list_campus_life_notices", stub)
+
+    async def main():
+        mcp = build_mcp()
+        resource = await mcp.read_resource("songsim://campus-life-notices")
+        result = await mcp.call_tool(
+            "tool_list_campus_life_notices",
+            {"query": "외부기관공지", "limit": 5},
+        )
+        return list(resource), _tool_payloads(result)
+
+    resource_payload, tool_payload = asyncio.run(main())
+    resource_payload = json.loads(resource_payload[0].content)
+
+    assert resource_payload[0]["topic"] == "outside_agencies"
+    assert resource_payload[0]["source_tag"] == "cuk_campus_life_notices"
+    assert tool_payload[0]["topic"] == "outside_agencies"
+    assert tool_payload[0]["source_tag"] == "cuk_campus_life_notices"
+    assert tool_payload[0]["title"] == "[인천병무지청] 2026년 4월 각 군 모집일정 안내"
 
     clear_settings_cache()
 

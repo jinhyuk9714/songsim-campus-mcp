@@ -25,6 +25,7 @@ from songsim_campus.repo import (
     replace_transport_guides,
     update_place_opening_hours,
 )
+from songsim_campus.schemas import CampusLifeNotice
 from songsim_campus.services import (
     refresh_academic_calendar_from_source,
     refresh_academic_status_guides_from_source,
@@ -245,6 +246,22 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
                 "last_synced_at": "2026-03-20T10:00:00+09:00",
             }
         ]
+    def stub_campus_life_notices(conn, topic=None, query=None, limit=20):
+        return [
+            CampusLifeNotice(
+                id=269665,
+                topic="outside_agencies",
+                title="[인천병무지청] 2026년 4월 각 군 모집일정 안내",
+                published_at="2026-03-20",
+                summary=(
+                    "접수기간: 2026.3.27.(금) 14시 ~ 2026.4.2.(목) 14시 "
+                    "지원방법: 병무청 누리집"
+                ),
+                source_url="https://www.catholic.ac.kr/ko/campuslife/notice_outside.do?mode=view&articleNo=269665&article.offset=0&articleLimit=10",
+                source_tag="cuk_campus_life_notices",
+                last_synced_at="2026-03-20T10:00:00+09:00",
+            )
+        ]
     def stub_dormitory_guides(conn, topic=None, limit=20):
         return [
             {
@@ -361,6 +378,10 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
         stub_campus_life_support_guides,
     )
     monkeypatch.setattr(
+        "songsim_campus.api.list_campus_life_notices",
+        stub_campus_life_notices,
+    )
+    monkeypatch.setattr(
         "songsim_campus.api.search_pc_software_entries",
         stub_pc_software_entries,
     )
@@ -392,6 +413,10 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
             "/campus-life-support-guides",
             params={"topic": "health_center"},
         )
+        campus_life_notices = public_client.get(
+            "/campus-life-notices",
+            params={"query": "외부기관공지"},
+        )
         pc_software = public_client.get(
             "/pc-software",
             params={"query": "SPSS"},
@@ -415,6 +440,7 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     assert "/student-exchange-partners" in landing.text
     assert "/phone-book" in landing.text
     assert "/campus-life-support-guides" in landing.text
+    assert "/campus-life-notices" in landing.text
     assert "/pc-software" in landing.text
     assert "/affiliated-notices" in landing.text
     assert "/dormitory-guides" in landing.text
@@ -434,6 +460,8 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     assert student_exchange_partners.json()[0]["partner_code"] == "00122"
     assert campus_life_support.status_code == 200
     assert campus_life_support.json()[0]["topic"] == "health_center"
+    assert campus_life_notices.status_code == 200
+    assert campus_life_notices.json()[0]["topic"] == "outside_agencies"
     assert pc_software.status_code == 200
     assert pc_software.json()[0]["room"] == "마리아관 1실습실 (M307)"
     assert create_profile.status_code == 404
@@ -448,6 +476,7 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     assert "/student-exchange-partners" in openapi.text
     assert "/phone-book" in openapi.text
     assert "/campus-life-support-guides" in openapi.text
+    assert "/campus-life-notices" in openapi.text
     assert "/pc-software" in openapi.text
     assert "/affiliated-notices" in openapi.text
     assert "/dormitory-guides" in openapi.text
@@ -600,6 +629,7 @@ def test_api_page_helpers_render_expected_strings():
     assert "/student-exchange-partners" in landing_html
     assert "/phone-book" in landing_html
     assert "/campus-life-support-guides" in landing_html
+    assert "/campus-life-notices" in landing_html
     assert "/pc-software" in landing_html
     assert "/affiliated-notices" in landing_html
     assert "/dormitory-guides" in landing_html

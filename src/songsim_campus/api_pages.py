@@ -79,6 +79,7 @@ def render_admin_sync_page(
             ],
         },
         {"title": "affiliated_notices", "fields": []},
+        {"title": "campus_life_notices", "fields": []},
         {"title": "academic_calendar", "fields": []},
         {"title": "academic_support_guides", "fields": []},
         {"title": "academic_status_guides", "fields": []},
@@ -328,6 +329,7 @@ def render_landing_page(
         "Visual Studio 설치된 실습실 있어?",
         "성심교정 기숙사 안내해줘",
         "기숙사 최신 공지 알려줘",
+        "외부기관공지 알려줘",
         "재학증명서 발급 안내 알려줘",
         "장학제도 안내 알려줘",
         "니콜스관 WIFI 안내 알려줘",
@@ -508,6 +510,10 @@ def render_landing_page(
               and Songsim parking guides
             </li>
             <li>
+              <code>/campus-life-notices</code> outside-agency campus life notices
+              and current public board entries
+            </li>
+            <li>
               <code>/pc-software</code> lab rooms and installed software search
             </li>
             <li>
@@ -517,6 +523,9 @@ def render_landing_page(
             <li>
               <code>/affiliated-notices</code> affiliated department and dormitory board
               notice bundles
+            </li>
+            <li>
+              <code>/campus-life-notices</code> outside-agency campus-life notice bundle
             </li>
             <li><code>/certificate-guides</code> certificate issuance guides</li>
             <li><code>/leave-of-absence-guides</code> leave-of-absence application guides</li>
@@ -541,7 +550,7 @@ def render_landing_page(
             <li>
               Use prompts to pick the first tool for places, courses, academic
               calendar, notices, guides, dining, library seats, classrooms,
-              restaurants, affiliated notices, or transport
+              restaurants, affiliated notices, campus-life notices, or transport
             </li>
             <li>Call tools after the prompt narrows the correct public read-only flow</li>
           </ul>

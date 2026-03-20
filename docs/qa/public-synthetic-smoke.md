@@ -10,6 +10,7 @@
 - `seasonal_semester_guides`가 공개 HTTP와 MCP 양쪽에서 보이는지 확인
 - `phone_book_entries`가 공개 HTTP와 MCP 양쪽에서 보이는지 확인
 - `campus_life_support_guides`가 공개 HTTP와 MCP 양쪽에서 보이는지 확인
+- `campus_life_notices`가 공개 HTTP와 MCP 양쪽에서 보이는지 확인
 - `pc_software_entries`가 공개 HTTP와 MCP 양쪽에서 보이는지 확인
 - `dormitory_guides`가 공개 HTTP와 MCP 양쪽에서 보이는지 확인
 - `affiliated_notices`가 공개 HTTP와 MCP 양쪽에서 보이는지 확인
@@ -158,6 +159,26 @@ curl -fsS "$PUBLIC_HTTP_URL/affiliated-notices?topic=international_studies&limit
 ```bash
 curl -fsS "$PUBLIC_HTTP_URL/affiliated-notices?topic=international_studies&limit=5" \
   | jq 'map(.title) as $titles | ($titles | length) == ($titles | unique | length)'
+```
+
+## 5.6 Campus life notices HTTP smoke
+
+```bash
+curl -fsS "$PUBLIC_HTTP_URL/campus-life-notices?query=%EC%99%B8%EB%B6%80%EA%B8%B0%EA%B4%80%EA%B3%B5%EC%A7%80&limit=3"
+```
+
+기대값:
+
+- HTTP `200`
+- JSON array
+- 첫 결과 또는 상위 결과 안에 `"topic":"outside_agencies"`
+- `"source_tag":"cuk_campus_life_notices"`가 보임
+
+`jq` 예시:
+
+```bash
+curl -fsS "$PUBLIC_HTTP_URL/campus-life-notices?query=%EC%99%B8%EB%B6%80%EA%B8%B0%EA%B4%80%EA%B3%B5%EC%A7%80&limit=3" \
+  | jq '.[0] | {topic, title, published_at, source_tag}'
 ```
 
 ## 6. Seasonal semester guides HTTP smoke
@@ -701,6 +722,7 @@ PY
 - `tool_list_student_exchange_guides 200`
 - `tool_search_student_exchange_partners 200`
 - `tool_search_phone_book 200`
+- `tool_list_campus_life_notices 200`
 - `tool_list_affiliated_notices 200`
 - `tool_list_latest_notices 200`
 - `tool_find_nearby_restaurants 200`
@@ -713,6 +735,7 @@ PY
 - `student exchange resource 200`
 - `student exchange partners resource 200`
 - `phone book resource 200`
+- `campus life notices resource 200`
 - `affiliated notices resource 200`
 - `tool_list_dormitory_guides 200`
 - `dormitory resource 200`
@@ -726,6 +749,7 @@ PY
 - `tool_list_student_exchange_guides` payload가 빈 결과가 아니고 `exchange_student` 또는 `domestic_partner_universities` 항목을 포함함
 - `tool_search_student_exchange_partners` payload가 빈 결과가 아니고 `네덜란드` 또는 `Utrecht University` 항목을 포함함
 - `tool_search_phone_book` payload가 빈 결과가 아니고 `보건실` 항목을 포함함
+- `tool_list_campus_life_notices` payload가 빈 결과가 아니고 `outside_agencies` 항목을 포함함
 - `tool_list_affiliated_notices` payload가 빈 결과가 아니고 `international_studies` 또는 dorm topic 항목을 포함함
 - `tool_list_dormitory_guides` payload가 빈 결과가 아니고 `latest_notices` 또는 `hall_info` 항목을 포함함
 - `tool_list_latest_notices` payload가 빈 결과가 아니고 academic 항목을 포함함
@@ -739,6 +763,7 @@ PY
 - `student exchange` resource 결과의 첫 항목에 `source_tag=cuk_student_exchange_guides`가 포함됨
 - `student exchange partners` resource 결과의 첫 항목에 `source_tag=cuk_student_exchange_partners`가 포함됨
 - `phone book` resource 결과의 첫 항목에 `source_tag=cuk_phone_book`가 포함됨
+- `campus life notices` resource 결과의 첫 항목에 `source_tag=cuk_campus_life_notices`가 포함됨
 - `affiliated notices` resource 결과의 첫 항목에 `source_tag=cuk_affiliated_notice_boards`가 포함됨
 - `dormitory resource` 결과의 첫 항목에 `source_tag=cuk_dormitory_guides`가 포함됨
 
@@ -759,7 +784,7 @@ PY
 - `/restaurants/nearby?origin=중도`가 `central-library` origin으로 nearby 결과를 반환
 - `/restaurants/nearby?origin=학생식당&open_now=true&category=cafe&limit=3`가 `200`으로 안정 응답하고, 빈 배열이어도 `open_now` strict contract와 일치
 - `/courses?query=CSE301...`가 빈 배열이어도 좋으니 `200`으로 안정 응답
-- MCP initialize가 성공하고 `tool_list_registration_guides`, `tool_list_class_guides`, `tool_list_seasonal_semester_guides`, `tool_list_academic_milestone_guides`, `tool_list_campus_life_support_guides`, `tool_search_pc_software`, `tool_list_student_exchange_guides`, `tool_search_student_exchange_partners`, `tool_search_phone_book`, `tool_list_affiliated_notices`, `tool_list_dormitory_guides`, `tool_list_latest_notices`, `tool_find_nearby_restaurants`, `songsim://registration-guide`, `songsim://class-guide`, `songsim://seasonal-semester-guide`, `songsim://academic-milestone-guide`, `songsim://campus-life-support-guide`, `songsim://pc-software`, `songsim://student-exchange-guide`, `songsim://student-exchange-partners`, `songsim://phone-book`, `songsim://affiliated-notices`, `songsim://dormitory-guide`가 모두 노출
+- MCP initialize가 성공하고 `tool_list_registration_guides`, `tool_list_class_guides`, `tool_list_seasonal_semester_guides`, `tool_list_academic_milestone_guides`, `tool_list_campus_life_support_guides`, `tool_list_campus_life_notices`, `tool_search_pc_software`, `tool_list_student_exchange_guides`, `tool_search_student_exchange_partners`, `tool_search_phone_book`, `tool_list_affiliated_notices`, `tool_list_dormitory_guides`, `tool_list_latest_notices`, `tool_find_nearby_restaurants`, `songsim://registration-guide`, `songsim://class-guide`, `songsim://seasonal-semester-guide`, `songsim://academic-milestone-guide`, `songsim://campus-life-support-guide`, `songsim://campus-life-notices`, `songsim://pc-software`, `songsim://student-exchange-guide`, `songsim://student-exchange-partners`, `songsim://phone-book`, `songsim://affiliated-notices`, `songsim://dormitory-guide`가 모두 노출
 - MCP registration/exchange-partner/affiliated/nearby tool call이 에러 없이 응답
 
-이 기준이 통과하면 class-guides + registration-guides + seasonal-semester-guides + academic-milestone-guides + 생활지원 core guides + PC software + student-exchange + exchange partner search + phone-book + affiliated notices + dormitory + nearby restaurant 공개 smoke는 충분합니다.
+이 기준이 통과하면 class-guides + registration-guides + seasonal-semester-guides + academic-milestone-guides + 생활지원 core guides + campus life notices + PC software + student-exchange + exchange partner search + phone-book + affiliated notices + dormitory + nearby restaurant 공개 smoke는 충분합니다.

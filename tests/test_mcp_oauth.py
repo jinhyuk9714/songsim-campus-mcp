@@ -126,6 +126,7 @@ def test_mcp_oauth_metadata_and_initialize_flow(app_env, monkeypatch):
         "tool_search_student_exchange_partners",
         "tool_search_phone_book",
         "tool_list_campus_life_support_guides",
+        "tool_list_campus_life_notices",
         "tool_search_pc_software",
         "tool_list_dormitory_guides",
         "tool_list_certificate_guides",

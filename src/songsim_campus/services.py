@@ -41,6 +41,7 @@ from .ingest.official_sources import (
     AcademicCalendarSource,
     AcademicSupportGuideSource,
     CampusFacilitiesSource,
+    CampusLifeOutsideAgenciesNoticeBoardSource,
     CampusMapSource,
     CertificateGuideSource,
     ClassCourseCancellationGuideSource,
@@ -99,6 +100,7 @@ from .schemas import (
     AutomationJobObservability,
     AutomationObservability,
     CampusDiningMenu,
+    CampusLifeNotice,
     CampusLifeSupportGuide,
     CertificateGuide,
     ClassGuide,
@@ -214,6 +216,7 @@ SYNC_DATASET_TABLES = (
     "courses",
     "notices",
     "affiliated_notices",
+    "campus_life_notices",
     "academic_calendar",
     "certificate_guides",
     "leave_of_absence_guides",
@@ -258,7 +261,7 @@ PUBLIC_READY_CORE_DATASETS = frozenset(
     }
 )
 PUBLIC_READY_BEST_EFFORT_DATASETS = frozenset(
-    {"campus_facilities", "campus_dining_menus", "affiliated_notices"}
+    {"campus_facilities", "campus_dining_menus", "affiliated_notices", "campus_life_notices"}
 )
 PUBLIC_READY_OPTIONAL_DATASETS = frozenset({"courses"})
 PUBLIC_READY_REQUIRED_DATASETS = PUBLIC_READY_CORE_DATASETS
@@ -283,6 +286,7 @@ ADMIN_SYNC_TARGETS = {
     "courses",
     "notices",
     "affiliated_notices",
+    "campus_life_notices",
     "academic_calendar",
     "leave_of_absence_guides",
     "academic_status_guides",
@@ -395,6 +399,7 @@ AFFILIATED_NOTICE_TOPICS = {
     "dorm_francis_general",
     "dorm_francis_checkin_out",
 }
+CAMPUS_LIFE_NOTICE_TOPICS = {"outside_agencies"}
 CLASS_GUIDE_SOURCE_URLS = {
     "registration_change": "https://www.catholic.ac.kr/ko/support/register_for_class.do",
     "retake": "https://www.catholic.ac.kr/ko/support/re-register_for_class.do",
@@ -2750,6 +2755,29 @@ def list_affiliated_notices(
     ]
 
 
+def list_campus_life_notices(
+    conn: DBConnection,
+    *,
+    topic: str | None = None,
+    query: str | None = None,
+    limit: int = 20,
+) -> list[CampusLifeNotice]:
+    normalized_limit = max(1, min(limit, 50))
+    normalized_topic = topic.strip() if topic else None
+    if normalized_topic and normalized_topic not in CAMPUS_LIFE_NOTICE_TOPICS:
+        raise InvalidRequestError("topic must be outside_agencies.")
+    normalized_query = query.strip() if query else None
+    return [
+        CampusLifeNotice.model_validate(item)
+        for item in repo.list_campus_life_notices(
+            conn,
+            topic=normalized_topic,
+            query=normalized_query,
+            limit=normalized_limit,
+        )
+    ]
+
+
 def list_certificate_guides(
     conn: DBConnection,
     limit: int = 20,
@@ -3298,6 +3326,10 @@ def _run_admin_sync_target(
             "affiliated_notices": len(
                 refresh_affiliated_notices_from_sources(conn)
             )
+        }
+    if target == "campus_life_notices":
+        return {
+            "campus_life_notices": len(refresh_campus_life_notices_from_source(conn))
         }
     if target == "academic_calendar":
         return {"academic_calendar": len(refresh_academic_calendar_from_source(conn))}
@@ -4706,6 +4738,90 @@ def refresh_affiliated_notices_from_sources(
     ]
 
 
+def refresh_campus_life_notices_from_source(
+    conn: DBConnection,
+    *,
+    source: Any | None = None,
+    fetched_at: str | None = None,
+) -> list[CampusLifeNotice]:
+    synced_at = fetched_at or _now_iso()
+    resolved_source = source or CampusLifeOutsideAgenciesNoticeBoardSource()
+    rows: list[dict[str, Any]] = []
+    seen_article_nos: set[str] = set()
+    seen_source_urls: set[str] = set()
+    seen_title_published: set[tuple[str, str]] = set()
+
+    def _normalized_campus_life_notice_text(value: Any | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = _normalize_optional_text(str(value))
+        if cleaned is None:
+            return None
+        return _collapse_whitespace(cleaned)
+
+    list_html = resolved_source.fetch_list(offset=0, limit=10)
+    for item in resolved_source.parse_list(list_html):
+        article_no = item.get("article_no") or item.get("id")
+        if not article_no:
+            continue
+        try:
+            detail_html = resolved_source.fetch_detail(article_no, offset=0, limit=10)
+            detail = resolved_source.parse_detail(
+                detail_html,
+                default_title=item.get("title", ""),
+                default_category=item.get("board_category", ""),
+                default_summary=item.get("summary", ""),
+                default_published_at=item.get("published_at", ""),
+                default_source_url=item.get("source_url"),
+            )
+        except httpx.HTTPError:
+            detail = {}
+        title = (detail.get("title") or item.get("title") or "").strip()
+        published_at = detail.get("published_at") or item.get("published_at")
+        if not title or not published_at:
+            continue
+        topic = _normalize_optional_text(detail.get("topic") or item.get("topic"))
+        if topic is None:
+            topic = "outside_agencies"
+        if topic not in CAMPUS_LIFE_NOTICE_TOPICS:
+            raise InvalidRequestError("topic must be outside_agencies.")
+        article_no_key = _normalized_campus_life_notice_text(article_no)
+        if article_no_key is not None:
+            if article_no_key in seen_article_nos:
+                continue
+            seen_article_nos.add(article_no_key)
+        source_url = detail.get("source_url") or item.get("source_url")
+        source_url_key = _normalized_campus_life_notice_text(source_url)
+        if source_url_key is not None:
+            if source_url_key in seen_source_urls:
+                continue
+            seen_source_urls.add(source_url_key)
+        normalized_title = _normalized_campus_life_notice_text(title)
+        normalized_published_at = _normalized_campus_life_notice_text(published_at)
+        if normalized_title is not None and normalized_published_at is not None:
+            dedupe_key = (normalized_title, normalized_published_at)
+            if dedupe_key in seen_title_published:
+                continue
+            seen_title_published.add(dedupe_key)
+        rows.append(
+            {
+                "topic": topic,
+                "title": title,
+                "published_at": published_at,
+                "summary": detail.get("summary") or item.get("summary") or "",
+                "source_url": source_url,
+                "source_tag": detail.get("source_tag")
+                or getattr(resolved_source, "source_tag", "cuk_campus_life_notices"),
+                "last_synced_at": synced_at,
+            }
+        )
+    repo.replace_campus_life_notices(conn, rows)
+    return [
+        CampusLifeNotice.model_validate(item)
+        for item in repo.list_campus_life_notices(conn, limit=max(len(rows), 1))
+    ]
+
+
 def refresh_academic_calendar_from_source(
     conn: DBConnection,
     *,
@@ -5087,6 +5203,7 @@ def sync_official_snapshot(
         pages=notice_pages or settings.official_notice_pages,
     )
     affiliated_notices = refresh_affiliated_notices_from_sources(conn)
+    campus_life_notices = refresh_campus_life_notices_from_source(conn)
     academic_calendar = refresh_academic_calendar_from_source(conn)
     certificate_guides = refresh_certificate_guides_from_certificate_page(conn)
     leave_of_absence_guides = refresh_leave_of_absence_guides_from_source(conn)
@@ -5112,6 +5229,7 @@ def sync_official_snapshot(
         "courses": len(courses),
         "notices": len(notices),
         "affiliated_notices": len(affiliated_notices),
+        "campus_life_notices": len(campus_life_notices),
         "academic_calendar": len(academic_calendar),
         "certificate_guides": len(certificate_guides),
         "leave_of_absence_guides": len(leave_of_absence_guides),

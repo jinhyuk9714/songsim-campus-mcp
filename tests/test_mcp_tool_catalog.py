@@ -39,6 +39,7 @@ def test_register_shared_tools_public_mode_exposes_expected_tool_names_and_metad
         "tool_search_student_exchange_partners",
         "tool_search_phone_book",
         "tool_list_affiliated_notices",
+        "tool_list_campus_life_notices",
         "tool_list_dormitory_guides",
         "tool_list_campus_life_support_guides",
         "tool_search_pc_software",
@@ -84,6 +85,8 @@ def test_register_shared_tools_public_mode_exposes_expected_tool_names_and_metad
     assert "Visual Studio" in payloads["tool_search_pc_software"]["description"]
     assert "국제학부" in payloads["tool_list_affiliated_notices"]["description"]
     assert "기숙사" in payloads["tool_list_affiliated_notices"]["description"]
+    assert "외부기관공지" in payloads["tool_list_campus_life_notices"]["description"]
+    assert "campus life notices" in payloads["tool_list_campus_life_notices"]["description"]
     assert "기숙사" in payloads["tool_list_dormitory_guides"]["description"]
     assert "latest_notices" in (
         payloads["tool_list_dormitory_guides"]["inputSchema"]["properties"]["topic"][
@@ -157,6 +160,11 @@ def test_register_shared_tools_public_mode_exposes_expected_tool_names_and_metad
     )
     assert "international_studies" in (
         payloads["tool_list_affiliated_notices"]["inputSchema"]["properties"]["topic"][
+            "description"
+        ]
+    )
+    assert "외부기관공지" in (
+        payloads["tool_list_campus_life_notices"]["inputSchema"]["properties"]["query"][
             "description"
         ]
     )
