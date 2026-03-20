@@ -117,6 +117,8 @@ def test_register_shared_resources_exposes_expected_resource_uris(tmp_path):
         "songsim://student-exchange-guide",
         "songsim://student-exchange-partners",
         "songsim://phone-book",
+        "songsim://campus-life-support-guide",
+        "songsim://pc-software",
         "songsim://affiliated-notices",
         "songsim://dormitory-guide",
         "songsim://academic-calendar",

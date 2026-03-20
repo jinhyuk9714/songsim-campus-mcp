@@ -295,6 +295,32 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
                 "last_synced_at": "2026-03-20T10:00:00+09:00",
             }
         ]
+    def stub_campus_life_support_guides(conn, topic=None, limit=20):
+        return [
+            {
+                "id": 1,
+                "topic": "health_center",
+                "title": "보건실",
+                "summary": "보건실 안내",
+                "steps": ["위치: 비르투스관 1층 104호"],
+                "links": [],
+                "source_url": "https://www.catholic.ac.kr/ko/campuslife/health.do",
+                "source_tag": "cuk_campus_life_support_guides",
+                "last_synced_at": "2026-03-20T10:00:00+09:00",
+            }
+        ]
+    def stub_pc_software_entries(conn, query=None, limit=20):
+        return [
+            {
+                "id": 1,
+                "room": "마리아관 1실습실 (M307)",
+                "pc_count": 51,
+                "software_list": ["SPSS 25", "포토샵 CS6"],
+                "source_url": "https://www.catholic.ac.kr/ko/campuslife/pc.do",
+                "source_tag": "cuk_pc_software",
+                "last_synced_at": "2026-03-20T10:00:00+09:00",
+            }
+        ]
     monkeypatch.setattr(services, "list_affiliated_notices", stub_affiliated_notices, raising=False)
     monkeypatch.setattr(services, "list_dormitory_guides", stub_dormitory_guides, raising=False)
     monkeypatch.setattr(
@@ -309,6 +335,18 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
         stub_student_exchange_partners,
         raising=False,
     )
+    monkeypatch.setattr(
+        services,
+        "list_campus_life_support_guides",
+        stub_campus_life_support_guides,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        services,
+        "search_pc_software_entries",
+        stub_pc_software_entries,
+        raising=False,
+    )
     monkeypatch.setattr("songsim_campus.api.list_dormitory_guides", stub_dormitory_guides)
     monkeypatch.setattr(
         "songsim_campus.api.list_student_exchange_guides",
@@ -317,6 +355,14 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     monkeypatch.setattr(
         "songsim_campus.api.search_student_exchange_partners",
         stub_student_exchange_partners,
+    )
+    monkeypatch.setattr(
+        "songsim_campus.api.list_campus_life_support_guides",
+        stub_campus_life_support_guides,
+    )
+    monkeypatch.setattr(
+        "songsim_campus.api.search_pc_software_entries",
+        stub_pc_software_entries,
     )
     clear_settings_cache()
 
@@ -342,6 +388,14 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
             "/student-exchange-partners",
             params={"query": "Utrecht"},
         )
+        campus_life_support = public_client.get(
+            "/campus-life-support-guides",
+            params={"topic": "health_center"},
+        )
+        pc_software = public_client.get(
+            "/pc-software",
+            params={"query": "SPSS"},
+        )
         create_profile = public_client.post("/profiles", json={"display_name": "성심학생"})
         admin_sync = public_client.get("/admin/sync")
 
@@ -360,6 +414,8 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     assert "/student-exchange-guides" in landing.text
     assert "/student-exchange-partners" in landing.text
     assert "/phone-book" in landing.text
+    assert "/campus-life-support-guides" in landing.text
+    assert "/pc-software" in landing.text
     assert "/affiliated-notices" in landing.text
     assert "/dormitory-guides" in landing.text
     assert "configured without OAuth" in landing.text
@@ -376,6 +432,10 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     assert student_exchange_guides.json()[0]["topic"] == "exchange_student"
     assert student_exchange_partners.status_code == 200
     assert student_exchange_partners.json()[0]["partner_code"] == "00122"
+    assert campus_life_support.status_code == 200
+    assert campus_life_support.json()[0]["topic"] == "health_center"
+    assert pc_software.status_code == 200
+    assert pc_software.json()[0]["room"] == "마리아관 1실습실 (M307)"
     assert create_profile.status_code == 404
     assert admin_sync.status_code == 404
     assert "/academic-support-guides" in openapi.text
@@ -387,6 +447,8 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     assert "/student-exchange-guides" in openapi.text
     assert "/student-exchange-partners" in openapi.text
     assert "/phone-book" in openapi.text
+    assert "/campus-life-support-guides" in openapi.text
+    assert "/pc-software" in openapi.text
     assert "/affiliated-notices" in openapi.text
     assert "/dormitory-guides" in openapi.text
     assert "/profiles" not in openapi.text
@@ -537,6 +599,8 @@ def test_api_page_helpers_render_expected_strings():
     assert "/student-exchange-guides" in landing_html
     assert "/student-exchange-partners" in landing_html
     assert "/phone-book" in landing_html
+    assert "/campus-life-support-guides" in landing_html
+    assert "/pc-software" in landing_html
     assert "/affiliated-notices" in landing_html
     assert "/dormitory-guides" in landing_html
     assert "configured without OAuth" in landing_html

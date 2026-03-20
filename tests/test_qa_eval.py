@@ -1813,7 +1813,7 @@ def test_default_eval_assets_match_distribution_plan() -> None:
     rows = load_eval_rows(DEFAULT_CORPUS_PATH)
     watchlist_rows = load_eval_rows(DEFAULT_WATCHLIST_PATH)
 
-    assert len(rows) == 1044
+    assert len(rows) == 1050
     assert len(watchlist_rows) == 5
 
     by_domain: dict[str, int] = {}
@@ -1842,6 +1842,8 @@ def test_default_eval_assets_match_distribution_plan() -> None:
         "student_exchange_partners": 5,
         "dormitory_guides": 5,
         "phone_book": 5,
+        "campus_life_support_guides": 3,
+        "pc_software_entries": 3,
         "out_of_scope": 30,
     }
 

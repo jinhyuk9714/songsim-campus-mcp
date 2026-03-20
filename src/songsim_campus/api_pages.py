@@ -90,6 +90,8 @@ def render_admin_sync_page(
         {"title": "phone_book_entries", "fields": []},
         {"title": "dormitory_guides", "fields": []},
         {"title": "leave_of_absence_guides", "fields": []},
+        {"title": "campus_life_support_guides", "fields": []},
+        {"title": "pc_software_entries", "fields": []},
         {"title": "scholarship_guides", "fields": []},
         {"title": "wifi_guides", "fields": []},
         {"title": "transport_guides", "fields": []},
@@ -316,8 +318,14 @@ def render_landing_page(
         "기숙사 OT 공지 알려줘",
         "프란치스코관 입퇴사공지 알려줘",
         "등록금 납부 방법 알려줘",
+        "보건실 위치와 운영시간 알려줘",
+        "유실물 찾는 방법 알려줘",
+        "성심교정 주차요금 알려줘",
         "보건실 전화번호 알려줘",
         "트리니티 문의 전화번호 알려줘",
+        "SPSS 설치된 컴퓨터실 어디야",
+        "포토샵 있는 PC실 알려줘",
+        "Visual Studio 설치된 실습실 있어?",
         "성심교정 기숙사 안내해줘",
         "기숙사 최신 공지 알려줘",
         "재학증명서 발급 안내 알려줘",
@@ -495,6 +503,13 @@ def render_landing_page(
               directory search by country, continent, or university name
             </li>
             <li><code>/phone-book</code> campus-wide department contacts and phone numbers</li>
+            <li>
+              <code>/campus-life-support-guides</code> health center, lost-found,
+              and Songsim parking guides
+            </li>
+            <li>
+              <code>/pc-software</code> lab rooms and installed software search
+            </li>
             <li>
               <code>/dormitory-guides</code> dormitory hall info, quick links, and latest
               notice cards

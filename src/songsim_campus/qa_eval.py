@@ -17,6 +17,11 @@ from psycopg.rows import dict_row
 from pydantic import BaseModel, Field, ValidationError
 
 from . import place_search_runtime, services
+from .ingest.campus_life_support_guides import (
+    HealthCenterGuideSource,
+    LostFoundGuideSource,
+    ParkingGuideSource,
+)
 from .ingest.official_sources import (
     AcademicCalendarSource,
     AcademicSupportGuideSource,
@@ -48,6 +53,12 @@ from .ingest.official_sources import (
     TransportGuideSource,
     WifiGuideSource,
 )
+from .ingest.pc_software import (
+    PCSoftwareSource,
+)
+from .ingest.pc_software import (
+    search_pc_software_entries as rank_pc_software_rows,
+)
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_CORPUS_PATH = ROOT_DIR / "data" / "qa" / "public_api_eval_corpus_1000.jsonl"
@@ -74,6 +85,8 @@ EvalDomain = Literal[
     "academic_milestone_guides",
     "student_exchange_guides",
     "student_exchange_partners",
+    "campus_life_support_guides",
+    "pc_software_entries",
     "phone_book",
     "dormitory_guides",
     "out_of_scope",
@@ -378,6 +391,26 @@ def _summarize_payload(payload: Any, *, summary_kind: str) -> Any:
                 "topic": item.get("topic"),
                 "title": item.get("title"),
                 "summary": item.get("summary"),
+            }
+            for item in rows[:5]
+        ]
+    if summary_kind == "campus_life_support_guides_top5":
+        rows = payload if isinstance(payload, list) else []
+        return [
+            {
+                "topic": item.get("topic"),
+                "title": item.get("title"),
+                "summary": item.get("summary"),
+            }
+            for item in rows[:5]
+        ]
+    if summary_kind == "pc_software_entries_top5":
+        rows = payload if isinstance(payload, list) else []
+        return [
+            {
+                "room": item.get("room"),
+                "pc_count": item.get("pc_count"),
+                "software_summary": ", ".join((item.get("software_list") or [])[:4]),
             }
             for item in rows[:5]
         ]
@@ -826,6 +859,20 @@ def _payload_from_db(conn: psycopg.Connection, row: EvalCorpusRow) -> Any:
         items = services.list_dormitory_guides(
             conn,
             topic=row.api_request.params.get("topic"),
+            limit=_limit_from_row(row, 20),
+        )
+        return [item.model_dump() for item in items]
+    if path == "/campus-life-support-guides":
+        items = services.list_campus_life_support_guides(
+            conn,
+            topic=row.api_request.params.get("topic"),
+            limit=_limit_from_row(row, 20),
+        )
+        return [item.model_dump() for item in items]
+    if path == "/pc-software":
+        items = services.search_pc_software_entries(
+            conn,
+            query=row.api_request.params.get("query"),
             limit=_limit_from_row(row, 20),
         )
         return [item.model_dump() for item in items]
@@ -1355,6 +1402,28 @@ def _payload_from_sources(
         if topic := row.api_request.params.get("topic"):
             rows = [item for item in rows if item.get("topic") == topic]
         return rows[:limit]
+    if path == "/campus-life-support-guides":
+        cache_key = "campus_life_support_guides"
+        if cache_key not in source_cache:
+            rows: list[dict[str, Any]] = []
+            for source in (
+                HealthCenterGuideSource(services.HEALTH_CENTER_GUIDE_SOURCE_URL),
+                LostFoundGuideSource(services.LOST_FOUND_GUIDE_SOURCE_URL),
+                ParkingGuideSource(services.CAMPUS_PARKING_GUIDE_SOURCE_URL),
+            ):
+                rows.extend(source.parse(source.fetch(), fetched_at=captured_at))
+            source_cache[cache_key] = rows
+        rows = list(source_cache[cache_key])
+        if topic := row.api_request.params.get("topic"):
+            rows = [item for item in rows if item.get("topic") == topic]
+        return rows[:limit]
+    if path == "/pc-software":
+        cache_key = "pc_software_entries"
+        if cache_key not in source_cache:
+            source = PCSoftwareSource(services.OFFICIAL_PC_SOFTWARE_URL)
+            source_cache[cache_key] = source.parse(source.fetch(), fetched_at=captured_at)
+        rows = list(source_cache[cache_key])
+        return rank_pc_software_rows(rows, query=row.api_request.params.get("query"), limit=limit)
     if path == "/phone-book":
         cache_key = "phone_book_entries"
         if cache_key not in source_cache:
@@ -1840,6 +1909,8 @@ def render_validation_report(
         "affiliated_notices",
         "certificate_guides",
         "dormitory_guides",
+        "campus_life_support_guides",
+        "pc_software_entries",
         "registration_guides",
         "class_guides",
         "seasonal_semester_guides",

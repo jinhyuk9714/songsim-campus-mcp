@@ -967,6 +967,8 @@ def test_mcp_public_readonly_mode_registers_only_read_only_tools(app_env, monkey
         "tool_list_student_exchange_guides",
         "tool_search_student_exchange_partners",
         "tool_search_phone_book",
+        "tool_list_campus_life_support_guides",
+        "tool_search_pc_software",
         "tool_list_dormitory_guides",
         "tool_list_certificate_guides",
         "tool_list_leave_of_absence_guides",
@@ -995,6 +997,8 @@ def test_mcp_public_readonly_mode_registers_only_read_only_tools(app_env, monkey
     assert "songsim://student-exchange-guide" in resource_uris
     assert "songsim://student-exchange-partners" in resource_uris
     assert "songsim://phone-book" in resource_uris
+    assert "songsim://campus-life-support-guide" in resource_uris
+    assert "songsim://pc-software" in resource_uris
     assert "songsim://affiliated-notices" in resource_uris
     assert "songsim://dormitory-guide" in resource_uris
     assert "songsim://certificate-guide" in resource_uris
@@ -1045,6 +1049,8 @@ def test_mcp_public_readonly_mode_registers_prompts_and_extended_resources(app_e
         "songsim://student-exchange-guide",
         "songsim://student-exchange-partners",
         "songsim://phone-book",
+        "songsim://campus-life-support-guide",
+        "songsim://pc-software",
         "songsim://affiliated-notices",
         "songsim://dormitory-guide",
         "songsim://certificate-guide",
@@ -1120,6 +1126,10 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
     assert "EUROPE" in tools["tool_search_student_exchange_partners"]["description"]
     assert "주요전화번호" in tools["tool_search_phone_book"]["description"]
     assert "기숙사 운영팀" in tools["tool_search_phone_book"]["description"]
+    assert "보건실" in tools["tool_list_campus_life_support_guides"]["description"]
+    assert "주차요금" in tools["tool_list_campus_life_support_guides"]["description"]
+    assert "SPSS" in tools["tool_search_pc_software"]["description"]
+    assert "Visual Studio" in tools["tool_search_pc_software"]["description"]
     assert "기숙사" in tools["tool_list_dormitory_guides"]["description"]
     assert "스테파노관" in tools["tool_list_dormitory_guides"]["description"]
     assert "장학제도" in tools["tool_list_scholarship_guides"]["description"]
@@ -1407,6 +1417,8 @@ def test_mcp_public_usage_and_class_period_resources_are_readable(app_env, monke
     assert "tool_list_student_exchange_guides" in usage_content
     assert "tool_search_student_exchange_partners" in usage_content
     assert "tool_search_phone_book" in usage_content
+    assert "tool_list_campus_life_support_guides" in usage_content
+    assert "tool_search_pc_software" in usage_content
     assert "tool_list_dormitory_guides" in usage_content
     assert "tool_list_scholarship_guides" in usage_content
     assert "tool_list_leave_of_absence_guides" in usage_content
@@ -1420,6 +1432,8 @@ def test_mcp_public_usage_and_class_period_resources_are_readable(app_env, monke
     assert "가까운 후보를 먼저" in usage_content
     assert "매머드커피" in usage_content
     assert "학점교류 담당 전화번호" in usage_content
+    assert "보건실 위치와 운영시간" in usage_content
+    assert "SPSS 설치된 컴퓨터실" in usage_content
     assert "휴복학 문의" in usage_content
     assert "복학 신청 방법" in usage_content
     assert "재입학 지원자격" in usage_content

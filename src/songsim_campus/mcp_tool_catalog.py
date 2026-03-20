@@ -8,6 +8,7 @@ from .mcp_public_serializers import (
     serialize_public_academic_milestone_guide,
     serialize_public_academic_status_guide,
     serialize_public_academic_support_guide,
+    serialize_public_campus_life_support_guide,
     serialize_public_certificate_guide,
     serialize_public_class_guide,
     serialize_public_course,
@@ -17,6 +18,7 @@ from .mcp_public_serializers import (
     serialize_public_leave_of_absence_guide,
     serialize_public_nearby_restaurant,
     serialize_public_notice,
+    serialize_public_pc_software_entry,
     serialize_public_place,
     serialize_public_registration_guide,
     serialize_public_restaurant_search,
@@ -48,6 +50,7 @@ from .services import (
     list_academic_milestone_guides,
     list_academic_status_guides,
     list_academic_support_guides,
+    list_campus_life_support_guides,
     list_certificate_guides,
     list_class_guides,
     list_dormitory_guides,
@@ -63,6 +66,7 @@ from .services import (
     list_wifi_guides,
     search_campus_dining_menus,
     search_courses,
+    search_pc_software_entries,
     search_phone_book_entries,
     search_places,
     search_restaurants,
@@ -274,6 +278,68 @@ def register_shared_tools(
     ):
         with connection_factory() as conn:
             entries = search_phone_book_entries(conn, query=query, limit=limit)
+            return [item.model_dump() for item in entries]
+
+    @mcp.tool(
+        description=(
+            (
+                "생활지원 안내를 읽을 때 사용합니다. 보건실, 유실물, 성심교정 주차요금처럼 "
+                "학생이 바로 행동에 옮길 수 있는 정적 안내를 current snapshot으로 돌려줍니다."
+            )
+            if public_readonly
+            else "학교 생활지원 안내 current snapshot을 가져옵니다."
+        ),
+        meta=tool_meta,
+    )
+    def tool_list_campus_life_support_guides(
+        topic: Annotated[
+            str | None,
+            Field(
+                description=(
+                    "생활지원 안내 유형 필터. health_center, lost_found, parking "
+                    "중 하나를 사용합니다."
+                )
+            ),
+        ] = None,
+        limit: Annotated[int, Field(description="최대 결과 수. 기본값은 20입니다.")] = 20,
+    ):
+        with connection_factory() as conn:
+            try:
+                guides = list_campus_life_support_guides(conn, topic=topic, limit=limit)
+                if public_readonly:
+                    return [serialize_public_campus_life_support_guide(item) for item in guides]
+                return [item.model_dump() for item in guides]
+            except InvalidRequestError as exc:
+                if public_readonly:
+                    return serialize_public_error(exc)
+                return {"error": str(exc)}
+
+    @mcp.tool(
+        description=(
+            (
+                "PC실과 설치 소프트웨어를 검색할 때 사용합니다. SPSS, 포토샵, "
+                "Visual Studio, 마리아관 같은 query로 실습실과 소프트웨어 목록을 찾습니다."
+            )
+            if public_readonly
+            else "학교 PC실 / 설치 소프트웨어 current snapshot을 검색합니다."
+        ),
+        meta=tool_meta,
+    )
+    def tool_search_pc_software(
+        query: Annotated[
+            str | None,
+            Field(
+                description=(
+                    "소프트웨어 또는 실습실 검색어. 예: SPSS, Photoshop, Visual Studio, 마리아관"
+                )
+            ),
+        ] = None,
+        limit: Annotated[int, Field(description="최대 결과 수. 기본값은 20입니다.")] = 20,
+    ):
+        with connection_factory() as conn:
+            entries = search_pc_software_entries(conn, query=query, limit=limit)
+            if public_readonly:
+                return [serialize_public_pc_software_entry(item) for item in entries]
             return [item.model_dump() for item in entries]
 
     @mcp.tool(

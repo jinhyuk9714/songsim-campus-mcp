@@ -18,6 +18,7 @@
 - 수업 안내
 - 계절학기
 - 기숙사
+- 생활지원 core guides
 - 학과/기관 공지 통합
 - 학적변동 안내
 - 증명서 발급 안내
@@ -29,6 +30,7 @@
 - 교시표
 - 중앙도서관 열람실 좌석
 - 공식 학식 메뉴
+- PC software support
 - 주변 식당/브랜드 식당 검색
 - 시간표 기반 예상 빈 강의실
 
@@ -42,7 +44,7 @@
 | 입학ㆍ교육 | `https://www.catholic.ac.kr/ko/academics/edu_undergraduate1.do` | 간접적으로만 가능. 교육 관련 질문 중 `개설과목 조회` 수준만 직접 가능 | 부분지원 | [docs/source_registry.md](../source_registry.md) 의 `cuk_subject_search`; [docs/connect-codex.md](../connect-codex.md); [src/songsim_campus/api.py](../../src/songsim_campus/api.py) 의 `/courses`, `/periods`; [src/songsim_campus/mcp_server.py](../../src/songsim_campus/mcp_server.py) 의 `tool_search_courses`, `tool_get_class_periods` | `대학 입학`, `대학원 입학`, `외국인 입학`, `평생교육`, `대학/대학원 소개`는 현재 전용 source/tool이 없음 | `adm_general_graduate.do`, `adm_foreigner.do`, `edu_undergraduate*.do`, `edu_graduate*.do` 정적 안내 파서 |
 | 연구ㆍ산학 | `https://www.catholic.ac.kr/ko/research/result.do` | 직접 질의 불가 | 비지원 | [docs/source_registry.md](../source_registry.md) 에 연구/산학 source 없음; [src/songsim_campus/api.py](../../src/songsim_campus/api.py) 와 [src/songsim_campus/mcp_server.py](../../src/songsim_campus/mcp_server.py) 에 대응 엔드포인트/도구 없음 | `연구성과`, `산학협력단`, `연구기관`, `국책사업단`은 현재 커버리지 밖 | `result.do`, `cukrnd.do`, `institute.do`, `national_rnd.do` 목록/상세 파서 |
 | 학사지원 | `https://www.catholic.ac.kr/ko/support/calendar2024_list.do` | 부분적으로 가능. `학사일정`, `업무안내`, `학적변동(복학/자퇴/재입학)`, `등록 안내`, `수업 안내`, `계절학기`, `성적·졸업 안내`, `증명발급`, `장학제도`, `휴학 안내`, `개설과목`, `교시표`, `학사 관련 공지`, `학과/기관 공지 통합`, `학생교류 static v1`, `학생교류 파트너 검색`, `예상 빈 강의실`은 직접 질의 가능 | 부분지원 | [docs/source_registry.md](../source_registry.md) 의 `cuk_academic_calendar`, `cuk_academic_support_guides`, `cuk_academic_status_guides`, `cuk_registration_guides`, `cuk_class_guides`, `cuk_seasonal_semester_guides`, `cuk_academic_milestone_guides`, `cuk_student_exchange_guides`, `cuk_student_exchange_partners`, `cuk_certificate_guides`, `cuk_leave_of_absence_guides`, `cuk_scholarship_guides`, `cuk_subject_search`, `cuk_campus_notices`, `cuk_affiliated_notice_boards`; [docs/connect-codex.md](../connect-codex.md); [src/songsim_campus/api.py](../../src/songsim_campus/api.py) 의 `/academic-calendar`, `/academic-support-guides`, `/academic-status-guides`, `/registration-guides`, `/class-guides`, `/seasonal-semester-guides`, `/academic-milestone-guides`, `/student-exchange-guides`, `/student-exchange-partners`, `/certificate-guides`, `/leave-of-absence-guides`, `/scholarship-guides`, `/courses`, `/periods`, `/notices`, `/affiliated-notices`, `/classrooms/empty`; [src/songsim_campus/mcp_server.py](../../src/songsim_campus/mcp_server.py) 의 `tool_list_academic_calendar`, `tool_list_academic_support_guides`, `tool_list_academic_status_guides`, `tool_list_registration_guides`, `tool_list_class_guides`, `tool_list_seasonal_semester_guides`, `tool_list_academic_milestone_guides`, `tool_list_student_exchange_guides`, `tool_search_student_exchange_partners`, `tool_list_certificate_guides`, `tool_list_leave_of_absence_guides`, `tool_list_scholarship_guides`, `tool_search_courses`, `tool_get_class_periods`, `tool_list_latest_notices`, `tool_list_affiliated_notices`, `tool_list_estimated_empty_classrooms` | 학생교류의 remaining gap은 추가 정적 안내/세부 확장입니다 | `exchange_*` 추가 정적 파서 또는 notice/partner expansion |
-| 대학생활 | `https://www.catholic.ac.kr/ko/campuslife/notice.do` | 부분적으로 가능. `공지`, `학식 메뉴`, `식당/편의시설 운영시간 일부`, `도서관 좌석`, `기숙사`, `주변 식당`, `WIFI 안내`는 직접 질의 가능 | 부분지원 | [docs/source_registry.md](../source_registry.md) 의 `cuk_campus_notices`, `cuk_facilities`, `cuk_library_hours`, `cuk_library_seat_status`, `cuk_wifi_guides`, `cuk_dormitory_guides`, `kakao_local`, `kakao_place_detail`; [docs/connect-codex.md](../connect-codex.md); [src/songsim_campus/api.py](../../src/songsim_campus/api.py) 의 `/notices`, `/dining-menus`, `/restaurants`, `/restaurants/nearby`, `/restaurants/search`, `/library-seats`, `/dormitory-guides`, `/places`, `/wifi-guides`; [src/songsim_campus/mcp_server.py](../../src/songsim_campus/mcp_server.py) 의 `tool_list_latest_notices`, `tool_search_dining_menus`, `tool_find_nearby_restaurants`, `tool_search_restaurants`, `tool_get_library_seat_status`, `tool_list_dormitory_guides`, `tool_search_places`, `tool_list_wifi_guides` | `행사안내`, `외부기관공지`, `학생활동`, `학생지원`, `보건실`, `교내병원`, `분실물`, `안전관리`는 전용 source/tool이 없거나 일부 장소 정보만 간접 지원 | `notice_event.do`, `notice_outside.do`, 복지/지원 정적 페이지 파서 추가 |
+| 대학생활 | `https://www.catholic.ac.kr/ko/campuslife/notice.do` | 부분적으로 가능. `공지`, `학식 메뉴`, `식당/편의시설 운영시간 일부`, `도서관 좌석`, `기숙사`, `생활지원 core guides`, `PC실 / 설치 소프트웨어`, `주변 식당`, `WIFI 안내`는 직접 질의 가능 | 부분지원 | [docs/source_registry.md](../source_registry.md) 의 `cuk_campus_notices`, `cuk_facilities`, `cuk_library_hours`, `cuk_library_seat_status`, `cuk_wifi_guides`, `cuk_dormitory_guides`, `cuk_campus_life_support_guides`, `cuk_pc_software`, `kakao_local`, `kakao_place_detail`; [docs/connect-codex.md](../connect-codex.md); [src/songsim_campus/api.py](../../src/songsim_campus/api.py) 의 `/notices`, `/dining-menus`, `/restaurants`, `/restaurants/nearby`, `/restaurants/search`, `/library-seats`, `/dormitory-guides`, `/campus-life-support-guides`, `/pc-software`, `/places`, `/wifi-guides`; [src/songsim_campus/mcp_server.py](../../src/songsim_campus/mcp_server.py) 의 `tool_list_latest_notices`, `tool_search_dining_menus`, `tool_find_nearby_restaurants`, `tool_search_restaurants`, `tool_get_library_seat_status`, `tool_list_dormitory_guides`, `tool_list_campus_life_support_guides`, `tool_search_pc_software`, `tool_search_places`, `tool_list_wifi_guides` | `행사안내`, `외부기관공지`, `학생활동`, `학생지원`, `교내병원`, `안전관리`는 전용 source/tool이 없다 | `notice_event.do`, `notice_outside.do`, 복지/지원 정적 페이지 파서 추가 |
 | CUK홍보 | `https://www.catholic.ac.kr/ko/newsroom/photonews.do` | 직접 질의 불가 | 비지원 | [docs/source_registry.md](../source_registry.md) 에 뉴스룸/홍보 source 없음; [docs/connect-codex.md](../connect-codex.md) 의 공개 사용 범위에도 없음; [src/songsim_campus/api.py](../../src/songsim_campus/api.py), [src/songsim_campus/mcp_server.py](../../src/songsim_campus/mcp_server.py) 에 대응 엔드포인트/도구 없음 | `포토뉴스`, `보도자료`, `언론에서 본 가톨릭대`, `브로슈어`, `CUK Story`, `갤러리`는 현재 커버리지 밖 | `photonews.do`, `press.do`, `interview.do`, `brochure.do`, `cukstory.do`, `gallery.do` 파서 추가 |
 | 서비스이용안내 | `https://www.catholic.ac.kr/ko/service/Bidding.do` | 직접 질의 불가 | 비지원 | [docs/source_registry.md](../source_registry.md) 에 서비스/정책 source 없음; [src/songsim_campus/api.py](../../src/songsim_campus/api.py), [src/songsim_campus/mcp_server.py](../../src/songsim_campus/mcp_server.py) 에 대응 엔드포인트/도구 없음 | `입찰공고`, `채용공고`, `청탁금지법`, `영상정보처리기기 방침`, `개인정보처리방침` 등은 현재 public MCP 범위 밖 | `Bidding.do`, `Job-posting.do` 목록 파서와 `privacy.do`, `notice_cctv_regulation.do`, `anti_graft_law1.do` 정적 resource 추가 |
 | 170주년 기념사업 | `https://www.catholic.ac.kr/ko/170ani/president-message-170.do` | 직접 질의 불가 | 비지원 | [docs/source_registry.md](../source_registry.md) 에 170주년 source 없음; [src/songsim_campus/api.py](../../src/songsim_campus/api.py), [src/songsim_campus/mcp_server.py](../../src/songsim_campus/mcp_server.py) 에 대응 엔드포인트/도구 없음 | `인사말`, `연혁`, `슬로건`, `홍보영상`, `온라인박물관`, `행사일정`, `기부 안내`는 현재 커버리지 밖 | `170ani/*` 정적 파서와 170주년 리소스 컬렉션 추가 |
@@ -62,7 +64,7 @@
 홈의 `성심 Link`와 footer 기준으로도 현재 지원/미지원 경계가 분명했습니다.
 
 - 지원 축과 직접 연결되는 링크: `캠퍼스맵`, `식당메뉴안내`, `오시는길`
-- 현재 비지원 축으로 남는 링크: `주요전화번호`, `입찰공고`, `채용공고`, `청탁금지법`, `개인정보처리방침`, `영상정보처리기기 방침`
+- 현재 비지원 축으로 남는 링크: `입찰공고`, `채용공고`, `청탁금지법`, `개인정보처리방침`, `영상정보처리기기 방침`
 
 ## External / Out of Scope
 
@@ -82,11 +84,12 @@
 
 메인 사이트 대비 체감 커버리지를 빠르게 넓히려면 아래 순서가 효율적입니다.
 
-1. `학사지원`의 남은 큰 갭인 `학생교류` 정적 안내 파서
-2. `대학생활`의 `행사안내`, `외부기관공지`, 학생지원 페이지 파서
-3. `가대소개`의 주요 정적 안내 resource
-4. `CUK홍보`의 `보도자료` 또는 `포토뉴스` 목록 파서
-5. `서비스이용안내`의 `입찰공고`, `채용공고` 목록 파서
+1. `대학생활`의 `행사안내`, `외부기관공지`, 학생지원 세부 페이지 파서
+2. `생활지원`의 후속 확장: 보건실/유실물/주차 외 세부 지원 도메인과 시설 micro-location 강화
+3. `기숙사`의 홈 카드 이후 상세 board / 본문 검색 확장
+4. `가대소개`의 주요 정적 안내 resource
+5. `CUK홍보`의 `보도자료` 또는 `포토뉴스` 목록 파서
+6. `서비스이용안내`의 `입찰공고`, `채용공고` 목록 파서
 
-등록 안내, 장학제도, 학사지원 업무안내, 주요전화번호는 이제 공개 MCP/HTTP 표면에서 직접 질의할 수 있으므로 우선순위 목록에서 제외했습니다.
-남은 큰 학사지원 갭은 `학생교류` 축입니다.
+등록 안내, 장학제도, 학사지원 업무안내, 주요전화번호, 학생교류는 이제 공개 MCP/HTTP 표면에서 직접 질의할 수 있으므로 우선순위 목록에서 제외했습니다.
+학사지원의 남은 큰 갭은 `학생교류`가 아니라 APP/공지/세부 생활지원 확장입니다.

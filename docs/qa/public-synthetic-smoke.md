@@ -9,6 +9,8 @@
 - `class_guides`가 공개 HTTP와 MCP 양쪽에서 보이는지 확인
 - `seasonal_semester_guides`가 공개 HTTP와 MCP 양쪽에서 보이는지 확인
 - `phone_book_entries`가 공개 HTTP와 MCP 양쪽에서 보이는지 확인
+- `campus_life_support_guides`가 공개 HTTP와 MCP 양쪽에서 보이는지 확인
+- `pc_software_entries`가 공개 HTTP와 MCP 양쪽에서 보이는지 확인
 - `dormitory_guides`가 공개 HTTP와 MCP 양쪽에서 보이는지 확인
 - `affiliated_notices`가 공개 HTTP와 MCP 양쪽에서 보이는지 확인
 - `student_exchange_guides`가 공개 HTTP와 MCP 양쪽에서 보이는지 확인
@@ -219,7 +221,35 @@ curl -fsS "$PUBLIC_HTTP_URL/restaurants/nearby?origin=%EC%A4%91%EB%8F%84&limit=3
   | jq '.[0] | {name, origin, estimated_walk_minutes, source_tag}'
 ```
 
-## 9. Student exchange guides HTTP smoke
+## 9. Campus-life support guides HTTP smoke
+
+```bash
+curl -fsS "$PUBLIC_HTTP_URL/campus-life-support-guides?topic=health_center&limit=2"
+curl -fsS "$PUBLIC_HTTP_URL/campus-life-support-guides?topic=parking&limit=2"
+```
+
+기대값:
+
+- HTTP `200`
+- JSON array
+- 첫 결과 또는 상위 결과 안에 `"topic":"health_center"` 또는 `"topic":"parking"`
+- `"source_tag":"cuk_campus_life_support_guides"`가 보임
+
+## 10. PC software HTTP smoke
+
+```bash
+curl -fsS "$PUBLIC_HTTP_URL/pc-software?query=SPSS&limit=2"
+curl -fsS "$PUBLIC_HTTP_URL/pc-software?query=Photoshop&limit=2"
+```
+
+기대값:
+
+- HTTP `200`
+- JSON array
+- 첫 결과 또는 상위 결과 안에 `"room"`과 `"software_list"`가 보임
+- `"source_tag":"cuk_pc_software"`가 보임
+
+## 11. Student exchange guides HTTP smoke
 
 ```bash
 curl -fsS "$PUBLIC_HTTP_URL/student-exchange-guides?topic=exchange_student&limit=2"
@@ -239,7 +269,7 @@ curl -fsS "$PUBLIC_HTTP_URL/student-exchange-guides?topic=exchange_student&limit
   | jq '.[0] | {topic, title, source_tag}'
 ```
 
-## 9.5 Student exchange partners HTTP smoke
+## 12. Student exchange partners HTTP smoke
 
 ```bash
 curl -fsS "$PUBLIC_HTTP_URL/student-exchange-partners?query=%EB%84%A4%EB%8D%9C%EB%9E%80%EB%93%9C&limit=2"
@@ -260,7 +290,7 @@ curl -fsS "$PUBLIC_HTTP_URL/student-exchange-partners?query=%EB%84%A4%EB%8D%9C%E
   | jq '.[0] | {partner_code, university_name, country_ko, continent, source_tag}'
 ```
 
-## 10. Dormitory guides HTTP smoke
+## 13. Dormitory guides HTTP smoke
 
 ```bash
 curl -fsS "$PUBLIC_HTTP_URL/dormitory-guides?topic=hall_info&limit=2"
@@ -282,28 +312,7 @@ curl -fsS "$PUBLIC_HTTP_URL/dormitory-guides?topic=latest_notices&limit=2" \
   | jq '.[0] | {topic, title, source_tag}'
 ```
 
-## 11. Student exchange partners HTTP smoke
-
-```bash
-curl -fsS "$PUBLIC_HTTP_URL/student-exchange-partners?query=%EB%84%A4%EB%8D%9C%EB%9E%80%EB%93%9C&limit=2"
-```
-
-기대값:
-
-- HTTP `200`
-- JSON array
-- 상위 결과에 `country_ko="네덜란드"` 또는 `university_name`에 관련 협정대학이 보임
-- `"source_tag":"cuk_student_exchange_partners"`가 보임
-- `homepage_url` 필드가 비어 있지 않은 학교가 있으면 그대로 노출
-
-`jq` 예시:
-
-```bash
-curl -fsS "$PUBLIC_HTTP_URL/student-exchange-partners?query=%EB%84%A4%EB%8D%9C%EB%9E%80%EB%93%9C&limit=2" \
-  | jq '.[0] | {university_name, country_ko, continent, homepage_url, source_tag}'
-```
-
-## 12. MCP initialize + guide checks
+## 14. MCP initialize + guide checks
 
 아래 Python smoke는 live에서 검증한 payload 형태를 그대로 사용합니다.
 
@@ -519,12 +528,72 @@ with httpx.Client(timeout=20.0) as client:
     )
     print("phone book resource", phone_book_resource_read.status_code)
 
-    student_exchange_tool_call = client.post(
+    campus_life_support_tool_call = client.post(
+        base,
+        headers=call_headers,
+        json={
+            "jsonrpc": "2.0",
+            "id": 30,
+            "method": "tools/call",
+            "params": {
+                "name": "tool_list_campus_life_support_guides",
+                "arguments": {"topic": "health_center", "limit": 2},
+            },
+        },
+    )
+    print(
+        "tool_list_campus_life_support_guides",
+        campus_life_support_tool_call.status_code,
+    )
+
+    campus_life_support_resource_read = client.post(
         base,
         headers=call_headers,
         json={
             "jsonrpc": "2.0",
             "id": 31,
+            "method": "resources/read",
+            "params": {"uri": "songsim://campus-life-support-guide"},
+        },
+    )
+    print(
+        "campus life support resource",
+        campus_life_support_resource_read.status_code,
+    )
+
+    pc_software_tool_call = client.post(
+        base,
+        headers=call_headers,
+        json={
+            "jsonrpc": "2.0",
+            "id": 32,
+            "method": "tools/call",
+            "params": {
+                "name": "tool_search_pc_software",
+                "arguments": {"query": "SPSS", "limit": 2},
+            },
+        },
+    )
+    print("tool_search_pc_software", pc_software_tool_call.status_code)
+
+    pc_software_resource_read = client.post(
+        base,
+        headers=call_headers,
+        json={
+            "jsonrpc": "2.0",
+            "id": 33,
+            "method": "resources/read",
+            "params": {"uri": "songsim://pc-software"},
+        },
+    )
+    print("pc software resource", pc_software_resource_read.status_code)
+
+    student_exchange_tool_call = client.post(
+        base,
+        headers=call_headers,
+        json={
+            "jsonrpc": "2.0",
+            "id": 34,
             "method": "tools/call",
             "params": {
                 "name": "tool_list_student_exchange_guides",
@@ -539,7 +608,7 @@ with httpx.Client(timeout=20.0) as client:
         headers=call_headers,
         json={
             "jsonrpc": "2.0",
-            "id": 33,
+            "id": 35,
             "method": "resources/read",
             "params": {"uri": "songsim://student-exchange-guide"},
         },
@@ -551,7 +620,7 @@ with httpx.Client(timeout=20.0) as client:
         headers=call_headers,
         json={
             "jsonrpc": "2.0",
-            "id": 34,
+            "id": 36,
             "method": "tools/call",
             "params": {
                 "name": "tool_search_student_exchange_partners",
@@ -569,7 +638,7 @@ with httpx.Client(timeout=20.0) as client:
         headers=call_headers,
         json={
             "jsonrpc": "2.0",
-            "id": 35,
+            "id": 37,
             "method": "resources/read",
             "params": {"uri": "songsim://student-exchange-partners"},
         },
@@ -584,7 +653,7 @@ with httpx.Client(timeout=20.0) as client:
         headers=call_headers,
         json={
             "jsonrpc": "2.0",
-            "id": 32,
+            "id": 38,
             "method": "resources/read",
             "params": {"uri": "songsim://affiliated-notices"},
         },
@@ -596,7 +665,7 @@ with httpx.Client(timeout=20.0) as client:
         headers=call_headers,
         json={
             "jsonrpc": "2.0",
-            "id": 10,
+            "id": 39,
             "method": "tools/call",
             "params": {
                 "name": "tool_list_dormitory_guides",
@@ -611,7 +680,7 @@ with httpx.Client(timeout=20.0) as client:
         headers=call_headers,
         json={
             "jsonrpc": "2.0",
-            "id": 11,
+            "id": 40,
             "method": "resources/read",
             "params": {"uri": "songsim://dormitory-guide"},
         },
@@ -627,7 +696,10 @@ PY
 - `tool_list_class_guides 200`
 - `tool_list_seasonal_semester_guides 200`
 - `tool_list_academic_milestone_guides 200`
+- `tool_list_campus_life_support_guides 200`
+- `tool_search_pc_software 200`
 - `tool_list_student_exchange_guides 200`
+- `tool_search_student_exchange_partners 200`
 - `tool_search_phone_book 200`
 - `tool_list_affiliated_notices 200`
 - `tool_list_latest_notices 200`
@@ -636,7 +708,10 @@ PY
 - `class resource 200`
 - `seasonal semester resource 200`
 - `academic milestone resource 200`
+- `campus life support resource 200`
+- `pc software resource 200`
 - `student exchange resource 200`
+- `student exchange partners resource 200`
 - `phone book resource 200`
 - `affiliated notices resource 200`
 - `tool_list_dormitory_guides 200`
@@ -646,7 +721,10 @@ PY
 - `tool_list_class_guides` payload가 빈 결과가 아니고 `course_evaluation` 항목을 포함함
 - `tool_list_seasonal_semester_guides` payload가 빈 결과가 아니고 `seasonal_semester` 항목을 포함함
 - `tool_list_academic_milestone_guides` payload가 빈 결과가 아니고 `grade_evaluation` 항목을 포함함
+- `tool_list_campus_life_support_guides` payload가 빈 결과가 아니고 `health_center` 또는 `parking` 항목을 포함함
+- `tool_search_pc_software` payload가 빈 결과가 아니고 `SPSS` 또는 `Photoshop` 항목을 포함함
 - `tool_list_student_exchange_guides` payload가 빈 결과가 아니고 `exchange_student` 또는 `domestic_partner_universities` 항목을 포함함
+- `tool_search_student_exchange_partners` payload가 빈 결과가 아니고 `네덜란드` 또는 `Utrecht University` 항목을 포함함
 - `tool_search_phone_book` payload가 빈 결과가 아니고 `보건실` 항목을 포함함
 - `tool_list_affiliated_notices` payload가 빈 결과가 아니고 `international_studies` 또는 dorm topic 항목을 포함함
 - `tool_list_dormitory_guides` payload가 빈 결과가 아니고 `latest_notices` 또는 `hall_info` 항목을 포함함
@@ -656,7 +734,10 @@ PY
 - `class` resource 결과의 첫 항목에 `source_tag=cuk_class_guides`가 포함됨
 - `seasonal semester` resource 결과의 첫 항목에 `source_tag=cuk_seasonal_semester_guides`가 포함됨
 - `academic milestone` resource 결과의 첫 항목에 `source_tag=cuk_academic_milestone_guides`가 포함됨
+- `campus life support` resource 결과의 첫 항목에 `source_tag=cuk_campus_life_support_guides`가 포함됨
+- `pc software` resource 결과의 첫 항목에 `source_tag=cuk_pc_software`가 포함됨
 - `student exchange` resource 결과의 첫 항목에 `source_tag=cuk_student_exchange_guides`가 포함됨
+- `student exchange partners` resource 결과의 첫 항목에 `source_tag=cuk_student_exchange_partners`가 포함됨
 - `phone book` resource 결과의 첫 항목에 `source_tag=cuk_phone_book`가 포함됨
 - `affiliated notices` resource 결과의 첫 항목에 `source_tag=cuk_affiliated_notice_boards`가 포함됨
 - `dormitory resource` 결과의 첫 항목에 `source_tag=cuk_dormitory_guides`가 포함됨
@@ -668,6 +749,8 @@ PY
 - `/class-guides`가 `course_evaluation` topic과 `cuk_class_guides` source tag를 반환
 - `/seasonal-semester-guides`가 `seasonal_semester` topic과 `cuk_seasonal_semester_guides` source tag를 반환
 - `/academic-milestone-guides`가 `grade_evaluation` topic과 `cuk_academic_milestone_guides` source tag를 반환
+- `/campus-life-support-guides`가 `health_center` 또는 `parking` topic과 `cuk_campus_life_support_guides` source tag를 반환
+- `/pc-software`가 `SPSS` 또는 `Photoshop` query에 대해 `cuk_pc_software` source tag를 반환
 - `/student-exchange-guides`가 `exchange_student` 또는 `domestic_partner_universities` topic과 `cuk_student_exchange_guides` source tag를 반환
 - `/student-exchange-partners`가 `네덜란드` 같은 query에 대해 `country_ko`, `university_name`, `homepage_url`, `cuk_student_exchange_partners`를 반환
 - `/phone-book`가 `보건실` 또는 질의한 부서의 `cuk_phone_book` source tag를 반환
@@ -676,7 +759,7 @@ PY
 - `/restaurants/nearby?origin=중도`가 `central-library` origin으로 nearby 결과를 반환
 - `/restaurants/nearby?origin=학생식당&open_now=true&category=cafe&limit=3`가 `200`으로 안정 응답하고, 빈 배열이어도 `open_now` strict contract와 일치
 - `/courses?query=CSE301...`가 빈 배열이어도 좋으니 `200`으로 안정 응답
-- MCP initialize가 성공하고 `tool_list_registration_guides`, `tool_list_class_guides`, `tool_list_seasonal_semester_guides`, `tool_list_academic_milestone_guides`, `tool_list_student_exchange_guides`, `tool_search_student_exchange_partners`, `tool_search_phone_book`, `tool_list_affiliated_notices`, `tool_list_dormitory_guides`, `tool_list_latest_notices`, `tool_find_nearby_restaurants`, `songsim://registration-guide`, `songsim://class-guide`, `songsim://seasonal-semester-guide`, `songsim://academic-milestone-guide`, `songsim://student-exchange-guide`, `songsim://student-exchange-partners`, `songsim://phone-book`, `songsim://affiliated-notices`, `songsim://dormitory-guide`가 모두 노출
+- MCP initialize가 성공하고 `tool_list_registration_guides`, `tool_list_class_guides`, `tool_list_seasonal_semester_guides`, `tool_list_academic_milestone_guides`, `tool_list_campus_life_support_guides`, `tool_search_pc_software`, `tool_list_student_exchange_guides`, `tool_search_student_exchange_partners`, `tool_search_phone_book`, `tool_list_affiliated_notices`, `tool_list_dormitory_guides`, `tool_list_latest_notices`, `tool_find_nearby_restaurants`, `songsim://registration-guide`, `songsim://class-guide`, `songsim://seasonal-semester-guide`, `songsim://academic-milestone-guide`, `songsim://campus-life-support-guide`, `songsim://pc-software`, `songsim://student-exchange-guide`, `songsim://student-exchange-partners`, `songsim://phone-book`, `songsim://affiliated-notices`, `songsim://dormitory-guide`가 모두 노출
 - MCP registration/exchange-partner/affiliated/nearby tool call이 에러 없이 응답
 
-이 기준이 통과하면 class-guides + registration-guides + seasonal-semester-guides + academic-milestone-guides + student-exchange + exchange partner search + phone-book + affiliated notices + dormitory + nearby restaurant 공개 smoke는 충분합니다.
+이 기준이 통과하면 class-guides + registration-guides + seasonal-semester-guides + academic-milestone-guides + 생활지원 core guides + PC software + student-exchange + exchange partner search + phone-book + affiliated notices + dormitory + nearby restaurant 공개 smoke는 충분합니다.

@@ -28,6 +28,7 @@ from .schemas import (
     AcademicSupportGuide,
     AffiliatedNotice,
     CampusDiningMenu,
+    CampusLifeSupportGuide,
     CertificateGuide,
     ClassGuide,
     Course,
@@ -50,6 +51,7 @@ from .schemas import (
     NearbyRestaurant,
     Notice,
     NoticeCategoryInfo,
+    PCSoftwareEntry,
     Period,
     PhoneBookEntry,
     Place,
@@ -91,6 +93,7 @@ from .services import (
     list_academic_milestone_guides,
     list_academic_status_guides,
     list_academic_support_guides,
+    list_campus_life_support_guides,
     list_certificate_guides,
     list_class_guides,
     list_dormitory_guides,
@@ -110,6 +113,7 @@ from .services import (
     run_automation_tick,
     search_campus_dining_menus,
     search_courses,
+    search_pc_software_entries,
     search_phone_book_entries,
     search_places,
     search_restaurants,
@@ -520,6 +524,31 @@ def create_app() -> FastAPI:
     ) -> list[PhoneBookEntry]:
         with connection() as conn:
             return search_phone_book_entries(conn, query=query, limit=limit)
+
+    @app.get("/campus-life-support-guides", response_model=list[CampusLifeSupportGuide])
+    def campus_life_support_guides(
+        topic: str | None = Query(default=None, description="생활지원 안내 유형 필터"),
+        limit: int = Query(default=20, ge=1, le=50),
+    ) -> list[CampusLifeSupportGuide]:
+        with connection() as conn:
+            try:
+                return list_campus_life_support_guides(conn, topic=topic, limit=limit)
+            except InvalidRequestError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/pc-software", response_model=list[PCSoftwareEntry])
+    def pc_software(
+        query: str | None = Query(
+            default=None,
+            description=(
+                "소프트웨어 또는 실습실 검색어. "
+                "예: SPSS, Photoshop, Visual Studio, 마리아관"
+            ),
+        ),
+        limit: int = Query(default=20, ge=1, le=50),
+    ) -> list[PCSoftwareEntry]:
+        with connection() as conn:
+            return search_pc_software_entries(conn, query=query, limit=limit)
 
     @app.get("/dormitory-guides", response_model=list[DormitoryGuide])
     def dormitory_guides(

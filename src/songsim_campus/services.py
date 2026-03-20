@@ -27,6 +27,11 @@ from . import (
     restaurant_search_runtime,
 )
 from .db import DBConnection, connection, get_connection
+from .ingest.campus_life_support_guides import (
+    HealthCenterGuideSource,
+    LostFoundGuideSource,
+    ParkingGuideSource,
+)
 from .ingest.kakao_places import (
     KakaoLocalClient,
     KakaoPlace,
@@ -78,6 +83,13 @@ from .ingest.official_sources import (
 from .ingest.official_sources import (
     _extract_table_steps as _source_extract_table_steps,
 )
+from .ingest.pc_software import (
+    OFFICIAL_PC_SOFTWARE_URL,
+    PCSoftwareSource,
+)
+from .ingest.pc_software import (
+    search_pc_software_entries as rank_pc_software_entries,
+)
 from .schemas import (
     AcademicCalendarEvent,
     AcademicMilestoneGuide,
@@ -87,6 +99,7 @@ from .schemas import (
     AutomationJobObservability,
     AutomationObservability,
     CampusDiningMenu,
+    CampusLifeSupportGuide,
     CertificateGuide,
     ClassGuide,
     Course,
@@ -104,6 +117,7 @@ from .schemas import (
     Notice,
     NoticeCategoryInfo,
     ObservabilitySnapshot,
+    PCSoftwareEntry,
     Period,
     PhoneBookEntry,
     Place,
@@ -142,6 +156,9 @@ ACADEMIC_SUPPORT_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/acade
 PHONE_BOOK_SOURCE_URL = "https://www.catholic.ac.kr/ko/about/phone_book.do"
 DORMITORY_SONGSIM_SOURCE_URL = "https://www.catholic.ac.kr/ko/campuslife/dormitory_songsim.do"
 DORMITORY_HOME_SOURCE_URL = "https://dorm.catholic.ac.kr/"
+HEALTH_CENTER_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/campuslife/health.do"
+LOST_FOUND_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/campuslife/find.do"
+CAMPUS_PARKING_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/about/location_songsim.do"
 RETURN_FROM_LEAVE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/return_from_leave_of_absence.do"
 DROPOUT_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/dropout.do"
 RE_ADMISSION_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/re_admission.do"
@@ -182,6 +199,11 @@ STUDENT_EXCHANGE_PARTNER_CONTINENT_ALIASES = {
     "아프리카": "AFRICA",
     "중동": "MIDDLE EAST",
 }
+CAMPUS_LIFE_SUPPORT_GUIDE_TOPICS = {
+    "health_center",
+    "lost_found",
+    "parking",
+}
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 CAMPUS_WALK_GRAPH_PATH = DATA_DIR / "campus_walk_graph.json"
 PERSONALIZATION_RULES_PATH = DATA_DIR / "personalization_rules.json"
@@ -204,6 +226,8 @@ SYNC_DATASET_TABLES = (
     "student_exchange_partners",
     "dormitory_guides",
     "phone_book_entries",
+    "campus_life_support_guides",
+    "pc_software_entries",
     "scholarship_guides",
     "wifi_guides",
     "academic_support_guides",
@@ -225,6 +249,8 @@ PUBLIC_READY_CORE_DATASETS = frozenset(
         "student_exchange_partners",
         "dormitory_guides",
         "phone_book_entries",
+        "campus_life_support_guides",
+        "pc_software_entries",
         "scholarship_guides",
         "academic_support_guides",
         "wifi_guides",
@@ -268,6 +294,8 @@ ADMIN_SYNC_TARGETS = {
     "student_exchange_partners",
     "dormitory_guides",
     "phone_book_entries",
+    "campus_life_support_guides",
+    "pc_software_entries",
     "scholarship_guides",
     "academic_support_guides",
     "wifi_guides",
@@ -3072,6 +3100,48 @@ def search_phone_book_entries(
     return [item[2] for item in ranked[:normalized_limit]]
 
 
+def list_campus_life_support_guides(
+    conn: DBConnection,
+    *,
+    topic: str | None = None,
+    limit: int = 20,
+) -> list[CampusLifeSupportGuide]:
+    normalized_limit = max(1, min(limit, 50))
+    normalized_topic = topic.strip() if topic else None
+    if normalized_topic and normalized_topic not in CAMPUS_LIFE_SUPPORT_GUIDE_TOPICS:
+        raise InvalidRequestError("topic must be one of health_center, lost_found, parking.")
+    return [
+        CampusLifeSupportGuide.model_validate(item)
+        for item in repo.list_campus_life_support_guides(
+            conn,
+            topic=normalized_topic,
+            limit=normalized_limit,
+        )
+    ]
+
+
+def search_pc_software_entries(
+    conn: DBConnection,
+    *,
+    query: str | None = None,
+    limit: int = 20,
+) -> list[PCSoftwareEntry]:
+    normalized_limit = max(1, min(limit, 50))
+    rows = [
+        PCSoftwareEntry.model_validate(item)
+        for item in repo.list_pc_software_entries(
+            conn,
+            limit=max(repo.count_rows(conn, "pc_software_entries"), 1),
+        )
+    ]
+    ranked = rank_pc_software_entries(
+        [item.model_dump() for item in rows],
+        query=query,
+        limit=normalized_limit,
+    )
+    return [PCSoftwareEntry.model_validate(item) for item in ranked]
+
+
 def list_academic_calendar(
     conn: DBConnection,
     *,
@@ -3259,6 +3329,12 @@ def _run_admin_sync_target(
         return {"dormitory_guides": len(refresh_dormitory_guides_from_source(conn))}
     if target == "phone_book_entries":
         return {"phone_book_entries": len(refresh_phone_book_entries_from_source(conn))}
+    if target == "campus_life_support_guides":
+        return {
+            "campus_life_support_guides": len(refresh_campus_life_support_guides_from_source(conn))
+        }
+    if target == "pc_software_entries":
+        return {"pc_software_entries": len(refresh_pc_software_entries_from_source(conn))}
     if target == "scholarship_guides":
         return {"scholarship_guides": len(refresh_scholarship_guides_from_source(conn))}
     if target == "wifi_guides":
@@ -4944,6 +5020,44 @@ def refresh_phone_book_entries_from_source(
     ]
 
 
+def refresh_campus_life_support_guides_from_source(
+    conn: DBConnection,
+    *,
+    sources: list[Any] | None = None,
+    fetched_at: str | None = None,
+) -> list[CampusLifeSupportGuide]:
+    synced_at = fetched_at or _now_iso()
+    resolved_sources = sources or [
+        HealthCenterGuideSource(HEALTH_CENTER_GUIDE_SOURCE_URL),
+        LostFoundGuideSource(LOST_FOUND_GUIDE_SOURCE_URL),
+        ParkingGuideSource(CAMPUS_PARKING_GUIDE_SOURCE_URL),
+    ]
+    rows: list[dict[str, Any]] = []
+    for source in resolved_sources:
+        rows.extend(source.parse(source.fetch(), fetched_at=synced_at))
+    repo.replace_campus_life_support_guides(conn, rows)
+    return [
+        CampusLifeSupportGuide.model_validate(item)
+        for item in repo.list_campus_life_support_guides(conn, limit=max(len(rows), 1))
+    ]
+
+
+def refresh_pc_software_entries_from_source(
+    conn: DBConnection,
+    *,
+    source: Any | None = None,
+    fetched_at: str | None = None,
+) -> list[PCSoftwareEntry]:
+    synced_at = fetched_at or _now_iso()
+    resolved_source = source or PCSoftwareSource(OFFICIAL_PC_SOFTWARE_URL)
+    rows = resolved_source.parse(resolved_source.fetch(), fetched_at=synced_at)
+    repo.replace_pc_software_entries(conn, rows)
+    return [
+        PCSoftwareEntry.model_validate(item)
+        for item in repo.list_pc_software_entries(conn, limit=max(len(rows), 1))
+    ]
+
+
 def sync_official_snapshot(
     conn: DBConnection,
     *,
@@ -4984,6 +5098,8 @@ def sync_official_snapshot(
     student_exchange_guides = refresh_student_exchange_guides_from_source(conn)
     dormitory_guides = refresh_dormitory_guides_from_source(conn)
     phone_book_entries = refresh_phone_book_entries_from_source(conn)
+    campus_life_support_guides = refresh_campus_life_support_guides_from_source(conn)
+    pc_software_entries = refresh_pc_software_entries_from_source(conn)
     student_exchange_partners = refresh_student_exchange_partners_from_source(conn)
     scholarship_guides = refresh_scholarship_guides_from_source(conn)
     academic_support_guides = refresh_academic_support_guides_from_source(conn)
@@ -5008,6 +5124,8 @@ def sync_official_snapshot(
         "student_exchange_partners": len(student_exchange_partners),
         "dormitory_guides": len(dormitory_guides),
         "phone_book_entries": len(phone_book_entries),
+        "campus_life_support_guides": len(campus_life_support_guides),
+        "pc_software_entries": len(pc_software_entries),
         "scholarship_guides": len(scholarship_guides),
         "academic_support_guides": len(academic_support_guides),
         "wifi_guides": len(wifi_guides),

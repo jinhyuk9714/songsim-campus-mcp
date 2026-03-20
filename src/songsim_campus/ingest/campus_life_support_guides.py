@@ -128,6 +128,15 @@ def _extract_section_steps(
     return _unique(steps)
 
 
+def _find_con_box_by_h4_title(root, title: str):
+    target = _clean_text(title)
+    for section in root.find_all("div", class_="con-box", recursive=False):
+        heading = section.select_one(".h4-tit01")
+        if heading and _clean_text(heading.get_text(" ", strip=True)) == target:
+            return section
+    return None
+
+
 class CampusLifeSupportGuideSourceBase:
     source_tag = "cuk_campus_life_support_guides"
     topic = ""
@@ -231,24 +240,37 @@ class ParkingGuideSource(CampusLifeSupportGuideSourceBase):
     def parse(self, html: str, *, fetched_at: str) -> list[dict]:
         soup = BeautifulSoup(html, "html.parser")
         root = soup.select_one(".content-box") or soup
-        sections = root.find_all("div", class_="con-box", recursive=False) or [root]
+        section = _find_con_box_by_h4_title(root, "주차요금안내") or root
 
         steps: list[str] = []
-        links: list[dict[str, str]] = []
         title = "주차요금안내"
 
-        for index, section in enumerate(sections):
-            section_title_node = section.select_one(".h4-tit01") or section.select_one(".box-tit")
-            section_title = _clean_text(
-                section_title_node.get_text(" ", strip=True) if section_title_node else ""
+        section_title_node = section.select_one(".h4-tit01") or section.select_one(".box-tit")
+        section_title = _clean_text(
+            section_title_node.get_text(" ", strip=True) if section_title_node else ""
+        )
+        if section_title:
+            title = section_title
+
+        for sub_section in section.select(".con-box02"):
+            sub_title_node = (
+                sub_section.select_one(".h5-tit01")
+                or sub_section.select_one(".h6-tit01")
+                or sub_section.select_one(".box-tit")
             )
-            if index == 0 and section_title:
-                title = section_title
-            section_steps = _extract_section_steps(section, title=section_title or None)
-            if section_title and section_title != title:
-                steps.append(section_title)
+            sub_title = _clean_text(
+                sub_title_node.get_text(" ", strip=True) if sub_title_node else ""
+            )
+            section_steps = _extract_section_steps(
+                sub_section,
+                title=sub_title or None,
+            )
+            if sub_title:
+                steps.append(sub_title)
             steps.extend(section_steps)
-            links.extend(_extract_links(section, base_url=self.url))
+
+        for alert in section.select(".alert-txt"):
+            steps.append(_clean_text(alert.get_text(" ", strip=True)))
 
         steps = _unique(steps)
         summary = next(
@@ -261,7 +283,7 @@ class ParkingGuideSource(CampusLifeSupportGuideSourceBase):
                 "title": title,
                 "summary": summary,
                 "steps": steps,
-                "links": links,
+                "links": _extract_links(section, base_url=self.url),
                 "source_url": self.url,
                 "source_tag": self.source_tag,
                 "last_synced_at": fetched_at,

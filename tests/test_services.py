@@ -5280,12 +5280,28 @@ def test_sync_official_snapshot_runs_opening_hours_before_courses_and_transport(
         lambda conn: call_order.append('academic_milestone_guides') or [],
     )
     monkeypatch.setattr(
+        'songsim_campus.services.refresh_student_exchange_guides_from_source',
+        lambda conn: call_order.append('student_exchange_guides') or [],
+    )
+    monkeypatch.setattr(
+        'songsim_campus.services.refresh_campus_life_support_guides_from_source',
+        lambda conn: call_order.append('campus_life_support_guides') or [],
+    )
+    monkeypatch.setattr(
+        'songsim_campus.services.refresh_pc_software_entries_from_source',
+        lambda conn: call_order.append('pc_software_entries') or [],
+    )
+    monkeypatch.setattr(
         'songsim_campus.services.refresh_dormitory_guides_from_source',
         lambda conn: call_order.append('dormitory_guides') or [],
     )
     monkeypatch.setattr(
         'songsim_campus.services.refresh_phone_book_entries_from_source',
         lambda conn: call_order.append('phone_book_entries') or [],
+    )
+    monkeypatch.setattr(
+        'songsim_campus.services.refresh_student_exchange_partners_from_source',
+        lambda conn: call_order.append('student_exchange_partners') or [],
     )
     monkeypatch.setattr(
         'songsim_campus.services.refresh_scholarship_guides_from_source',
@@ -5325,8 +5341,12 @@ def test_sync_official_snapshot_runs_opening_hours_before_courses_and_transport(
         'class_guides',
         'seasonal_semester_guides',
         'academic_milestone_guides',
+        'student_exchange_guides',
         'dormitory_guides',
         'phone_book_entries',
+        'campus_life_support_guides',
+        'pc_software_entries',
+        'student_exchange_partners',
         'scholarship_guides',
         'academic_support_guides',
         'wifi_guides',

@@ -40,6 +40,8 @@ def test_register_shared_tools_public_mode_exposes_expected_tool_names_and_metad
         "tool_search_phone_book",
         "tool_list_affiliated_notices",
         "tool_list_dormitory_guides",
+        "tool_list_campus_life_support_guides",
+        "tool_search_pc_software",
         "tool_list_certificate_guides",
         "tool_list_leave_of_absence_guides",
         "tool_list_scholarship_guides",
@@ -76,6 +78,10 @@ def test_register_shared_tools_public_mode_exposes_expected_tool_names_and_metad
     assert "Utrecht" in payloads["tool_search_student_exchange_partners"]["description"]
     assert "주요전화번호" in payloads["tool_search_phone_book"]["description"]
     assert "유실물" in payloads["tool_search_phone_book"]["description"]
+    assert "보건실" in payloads["tool_list_campus_life_support_guides"]["description"]
+    assert "주차요금" in payloads["tool_list_campus_life_support_guides"]["description"]
+    assert "SPSS" in payloads["tool_search_pc_software"]["description"]
+    assert "Visual Studio" in payloads["tool_search_pc_software"]["description"]
     assert "국제학부" in payloads["tool_list_affiliated_notices"]["description"]
     assert "기숙사" in payloads["tool_list_affiliated_notices"]["description"]
     assert "기숙사" in payloads["tool_list_dormitory_guides"]["description"]
@@ -124,6 +130,22 @@ def test_register_shared_tools_public_mode_exposes_expected_tool_names_and_metad
         payloads["tool_search_student_exchange_partners"]["inputSchema"]["properties"]["query"][
             "description"
         ]
+    )
+    assert "health_center" in (
+        payloads["tool_list_campus_life_support_guides"]["inputSchema"]["properties"]["topic"][
+            "description"
+        ]
+    )
+    assert "parking" in (
+        payloads["tool_list_campus_life_support_guides"]["inputSchema"]["properties"]["topic"][
+            "description"
+        ]
+    )
+    assert "SPSS" in (
+        payloads["tool_search_pc_software"]["inputSchema"]["properties"]["query"]["description"]
+    )
+    assert "Visual Studio" in (
+        payloads["tool_search_pc_software"]["inputSchema"]["properties"]["query"]["description"]
     )
     assert "hall_info" in (
         payloads["tool_list_dormitory_guides"]["inputSchema"]["properties"]["topic"][

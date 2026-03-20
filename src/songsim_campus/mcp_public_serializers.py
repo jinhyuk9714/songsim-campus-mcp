@@ -8,6 +8,7 @@ from .schemas import (
     AcademicStatusGuide,
     AcademicSupportGuide,
     CampusDiningMenu,
+    CampusLifeSupportGuide,
     CertificateGuide,
     ClassGuide,
     Course,
@@ -21,6 +22,7 @@ from .schemas import (
     McpToolError,
     NearbyRestaurant,
     Notice,
+    PCSoftwareEntry,
     Place,
     RegistrationGuide,
     RestaurantSearchResult,
@@ -269,6 +271,21 @@ def serialize_public_student_exchange_guide(
 ) -> dict[str, object]:
     payload = guide.model_dump()
     payload["guide_summary"] = guide.summary or (guide.steps[0] if guide.steps else "")
+    return payload
+
+
+def serialize_public_campus_life_support_guide(
+    guide: CampusLifeSupportGuide,
+) -> dict[str, object]:
+    payload = guide.model_dump()
+    payload["guide_summary"] = guide.summary or (guide.steps[0] if guide.steps else "")
+    return payload
+
+
+def serialize_public_pc_software_entry(entry: PCSoftwareEntry) -> dict[str, object]:
+    payload = entry.model_dump()
+    software_preview = ", ".join(entry.software_list[:4])
+    payload["software_summary"] = software_preview
     return payload
 
 

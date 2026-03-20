@@ -1,18 +1,52 @@
 from __future__ import annotations
 
+import asyncio
+import json
 from pathlib import Path
 
+import pytest
+
+from songsim_campus import services
+from songsim_campus.db import connection, init_db
 from songsim_campus.ingest.campus_life_support_guides import (
     HealthCenterGuideSource,
     LostFoundGuideSource,
     ParkingGuideSource,
 )
+from songsim_campus.mcp_server import build_mcp
+from songsim_campus.services import (
+    list_campus_life_support_guides,
+    refresh_campus_life_support_guides_from_source,
+    run_admin_sync,
+    sync_official_snapshot,
+)
+from songsim_campus.settings import clear_settings_cache
 
 FIXTURES_DIR = Path(__file__).with_name("fixtures")
 
 
 def _fixture(name: str) -> str:
     return (FIXTURES_DIR / name).read_text(encoding="utf-8")
+
+
+def _guide_row(
+    *,
+    topic: str,
+    title: str,
+    summary: str,
+    steps: list[str],
+    links: list[dict[str, str]] | None = None,
+) -> dict[str, object]:
+    return {
+        "topic": topic,
+        "title": title,
+        "summary": summary,
+        "steps": steps,
+        "links": links or [],
+        "source_url": "https://www.catholic.ac.kr/ko/campuslife/health.do",
+        "source_tag": "cuk_campus_life_support_guides",
+        "last_synced_at": "2026-03-20T00:00:00+09:00",
+    }
 
 
 def test_campus_life_support_source_defaults() -> None:
@@ -90,3 +124,224 @@ def test_parking_guide_parser_extracts_expected_core_details() -> None:
     assert any("할인권" in step for step in row["steps"])
     assert any("일반차량" in step for step in row["steps"])
     assert any("주차관리실(K102호 / K관 1층 안내데스크 옆)" in step for step in row["steps"])
+
+
+def test_campus_life_support_guides_refresh_replace_and_list(app_env) -> None:
+    init_db()
+
+    class FakeGuideSource:
+        def __init__(self, row: dict[str, object]):
+            self.row = row
+
+        def fetch(self) -> str:
+            return "<guide />"
+
+        def parse(self, html: str, *, fetched_at: str):
+            assert html == "<guide />"
+            return [{**self.row, "last_synced_at": fetched_at}]
+
+    with connection() as conn:
+        refresh_campus_life_support_guides_from_source(
+            conn,
+            sources=[
+                FakeGuideSource(
+                    _guide_row(
+                        topic="health_center",
+                        title="보건실",
+                        summary="보건실은 학생과 교직원의 건강을 유지ㆍ증진합니다.",
+                        steps=["위치: 비르투스관 1층 104호"],
+                    )
+                ),
+                FakeGuideSource(
+                    _guide_row(
+                        topic="lost_found",
+                        title="유실물 찾기",
+                        summary="유실물을 취득한 자는 학생지원팀에 인계할 수 있습니다.",
+                        steps=["6개월 간 학생지원팀에 보관"],
+                    )
+                ),
+                FakeGuideSource(
+                    _guide_row(
+                        topic="parking",
+                        title="주차요금안내",
+                        summary="교직원, 학생(학부, 대학원생) 정기권 안내",
+                        steps=["일반차량: 10분당 500원"],
+                    )
+                ),
+            ],
+        )
+        all_guides = list_campus_life_support_guides(conn, limit=20)
+        parking = list_campus_life_support_guides(conn, topic="parking", limit=20)
+
+        refresh_campus_life_support_guides_from_source(
+            conn,
+            sources=[
+                FakeGuideSource(
+                    _guide_row(
+                        topic="health_center",
+                        title="보건실",
+                        summary="보건실은 학생과 교직원의 건강을 유지ㆍ증진합니다.",
+                        steps=["운영시간: 08:30 ~ 17:30"],
+                    )
+                )
+            ],
+        )
+        replaced = list_campus_life_support_guides(conn, limit=20)
+
+    assert [(item.topic, item.title) for item in all_guides] == [
+        ("health_center", "보건실"),
+        ("lost_found", "유실물 찾기"),
+        ("parking", "주차요금안내"),
+    ]
+    assert [(item.topic, item.title) for item in parking] == [("parking", "주차요금안내")]
+    assert [(item.topic, item.title) for item in replaced] == [("health_center", "보건실")]
+
+
+def test_campus_life_support_dataset_is_wired_into_sync_and_readiness(app_env, monkeypatch):
+    init_db()
+
+    assert "campus_life_support_guides" in services.SYNC_DATASET_TABLES
+    assert services.PUBLIC_READY_DATASET_POLICIES["campus_life_support_guides"] == "core"
+    assert "campus_life_support_guides" in services.PUBLIC_READY_CORE_DATASETS
+    assert "campus_life_support_guides" in services.ADMIN_SYNC_TARGETS
+
+    monkeypatch.setattr(
+        "songsim_campus.services.refresh_campus_life_support_guides_from_source",
+        lambda conn, sources=None, fetched_at=None: [],
+    )
+
+    with connection():
+        run = run_admin_sync(target="campus_life_support_guides")
+
+    assert run.status == "success"
+    assert run.summary == {"campus_life_support_guides": 0}
+
+
+def test_campus_life_support_http_and_mcp_surfaces(client, app_env, monkeypatch):
+    pytest.importorskip("mcp.server.fastmcp")
+    init_db()
+
+    class FakeGuideSource:
+        def __init__(self, row: dict[str, object]):
+            self.row = row
+
+        def fetch(self) -> str:
+            return "<guide />"
+
+        def parse(self, html: str, *, fetched_at: str):
+            assert html == "<guide />"
+            return [{**self.row, "last_synced_at": fetched_at}]
+
+    with connection() as conn:
+        refresh_campus_life_support_guides_from_source(
+            conn,
+            sources=[
+                FakeGuideSource(
+                    _guide_row(
+                        topic="health_center",
+                        title="보건실",
+                        summary="보건실은 학생과 교직원의 건강을 유지ㆍ증진합니다.",
+                        steps=["위치: 비르투스관 1층 104호", "운영시간: 08:30 ~ 17:30"],
+                    )
+                ),
+                FakeGuideSource(
+                    _guide_row(
+                        topic="parking",
+                        title="주차요금안내",
+                        summary="교직원, 학생(학부, 대학원생) 정기권 안내",
+                        steps=["일반차량: 10분당 500원"],
+                    )
+                ),
+            ],
+        )
+
+    response = client.get("/campus-life-support-guides", params={"topic": "parking", "limit": 5})
+    assert response.status_code == 200
+    http_payload = response.json()
+    assert http_payload[0]["topic"] == "parking"
+    assert http_payload[0]["source_tag"] == "cuk_campus_life_support_guides"
+
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        tools = await mcp.list_tools()
+        resources = await mcp.list_resources()
+        tool_result = await mcp.call_tool(
+            "tool_list_campus_life_support_guides",
+            {"topic": "health_center", "limit": 5},
+        )
+        resource_result = await mcp.read_resource("songsim://campus-life-support-guide")
+        return (
+            {tool.name: tool.model_dump(by_alias=True) for tool in tools},
+            {str(resource.uri) for resource in resources},
+            json.loads(tool_result[0].text),
+            json.loads(list(resource_result)[0].content),
+        )
+
+    tool_payloads, resource_uris, tool_payload, resource_payload = asyncio.run(main())
+    clear_settings_cache()
+
+    assert "tool_list_campus_life_support_guides" in tool_payloads
+    assert "songsim://campus-life-support-guide" in resource_uris
+    assert "보건실" in tool_payloads["tool_list_campus_life_support_guides"]["description"]
+    assert "parking" in (
+        tool_payloads["tool_list_campus_life_support_guides"]["inputSchema"]["properties"]["topic"][
+            "description"
+        ]
+    )
+    assert tool_payload["topic"] == "health_center"
+    assert tool_payload["guide_summary"].startswith("보건실은 학생과 교직원의 건강")
+    assert {item["topic"] for item in resource_payload} == {"health_center", "parking"}
+
+
+def test_sync_official_snapshot_includes_campus_life_support_and_pc_software(app_env, monkeypatch):
+    init_db()
+    call_order: list[str] = []
+
+    def stub(name: str):
+        def inner(*_args, **_kwargs):
+            call_order.append(name)
+            return []
+
+        return inner
+
+    stubs = {
+        "refresh_places_from_campus_map": "places",
+        "refresh_campus_facilities_from_source": "campus_facilities",
+        "refresh_library_hours_from_library_page": "library_hours",
+        "refresh_facility_hours_from_facilities_page": "facility_hours",
+        "refresh_campus_dining_menus_from_facilities_page": "dining_menus",
+        "refresh_courses_from_subject_search": "courses",
+        "refresh_notices_from_notice_board": "notices",
+        "refresh_affiliated_notices_from_sources": "affiliated_notices",
+        "refresh_academic_calendar_from_source": "academic_calendar",
+        "refresh_certificate_guides_from_certificate_page": "certificate_guides",
+        "refresh_leave_of_absence_guides_from_source": "leave_of_absence_guides",
+        "refresh_academic_status_guides_from_source": "academic_status_guides",
+        "refresh_registration_guides_from_source": "registration_guides",
+        "refresh_class_guides_from_source": "class_guides",
+        "refresh_seasonal_semester_guides_from_source": "seasonal_semester_guides",
+        "refresh_academic_milestone_guides_from_source": "academic_milestone_guides",
+        "refresh_student_exchange_guides_from_source": "student_exchange_guides",
+        "refresh_student_exchange_partners_from_source": "student_exchange_partners",
+        "refresh_dormitory_guides_from_source": "dormitory_guides",
+        "refresh_phone_book_entries_from_source": "phone_book_entries",
+        "refresh_campus_life_support_guides_from_source": "campus_life_support_guides",
+        "refresh_pc_software_entries_from_source": "pc_software_entries",
+        "refresh_scholarship_guides_from_source": "scholarship_guides",
+        "refresh_academic_support_guides_from_source": "academic_support_guides",
+        "refresh_wifi_guides_from_source": "wifi_guides",
+        "refresh_transport_guides_from_location_page": "transport_guides",
+    }
+    for attr, name in stubs.items():
+        monkeypatch.setattr(f"songsim_campus.services.{attr}", stub(name))
+
+    with connection() as conn:
+        summary = sync_official_snapshot(conn)
+
+    assert "campus_life_support_guides" in summary
+    assert "pc_software_entries" in summary
+    assert "campus_life_support_guides" in call_order
+    assert "pc_software_entries" in call_order
