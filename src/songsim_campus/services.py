@@ -44,11 +44,16 @@ from .ingest.official_sources import (
     ClassRegistrationChangeGuideSource,
     ClassRetakeGuideSource,
     CourseCatalogSource,
+    DormFrancisCheckinOutAffiliatedNoticeBoardSource,
+    DormFrancisGeneralAffiliatedNoticeBoardSource,
     DormitoryHomepageGuideSource,
     DormitorySongsimGuideSource,
+    DormKACheckinOutAffiliatedNoticeBoardSource,
+    DormKAGeneralAffiliatedNoticeBoardSource,
     DropoutGuideSource,
     GradeEvaluationGuideSource,
     GraduationRequirementGuideSource,
+    InternationalStudiesAffiliatedNoticeBoardSource,
     LeaveOfAbsenceGuideSource,
     LibraryHoursSource,
     LibrarySeatStatusSource,
@@ -76,6 +81,7 @@ from .schemas import (
     AcademicMilestoneGuide,
     AcademicStatusGuide,
     AcademicSupportGuide,
+    AffiliatedNotice,
     AutomationJobObservability,
     AutomationObservability,
     CampusDiningMenu,
@@ -158,6 +164,7 @@ SYNC_DATASET_TABLES = (
     "campus_dining_menus",
     "courses",
     "notices",
+    "affiliated_notices",
     "academic_calendar",
     "certificate_guides",
     "leave_of_absence_guides",
@@ -193,7 +200,9 @@ PUBLIC_READY_CORE_DATASETS = frozenset(
         "transport_guides",
     }
 )
-PUBLIC_READY_BEST_EFFORT_DATASETS = frozenset({"campus_facilities", "campus_dining_menus"})
+PUBLIC_READY_BEST_EFFORT_DATASETS = frozenset(
+    {"campus_facilities", "campus_dining_menus", "affiliated_notices"}
+)
 PUBLIC_READY_OPTIONAL_DATASETS = frozenset({"courses"})
 PUBLIC_READY_REQUIRED_DATASETS = PUBLIC_READY_CORE_DATASETS
 PUBLIC_READY_DATASET_POLICIES = {
@@ -216,6 +225,7 @@ ADMIN_SYNC_TARGETS = {
     "dining_menus",
     "courses",
     "notices",
+    "affiliated_notices",
     "academic_calendar",
     "leave_of_absence_guides",
     "academic_status_guides",
@@ -317,6 +327,13 @@ CLASS_GUIDE_TOPICS = {
 SEASONAL_SEMESTER_GUIDE_TOPICS = {"seasonal_semester"}
 ACADEMIC_MILESTONE_GUIDE_TOPICS = {"grade_evaluation", "graduation_requirement"}
 DORMITORY_GUIDE_TOPICS = {"hall_info", "quick_links", "latest_notices"}
+AFFILIATED_NOTICE_TOPICS = {
+    "international_studies",
+    "dorm_k_a_general",
+    "dorm_k_a_checkin_out",
+    "dorm_francis_general",
+    "dorm_francis_checkin_out",
+}
 CLASS_GUIDE_SOURCE_URLS = {
     "registration_change": "https://www.catholic.ac.kr/ko/support/register_for_class.do",
     "retake": "https://www.catholic.ac.kr/ko/support/re-register_for_class.do",
@@ -2646,6 +2663,32 @@ def list_latest_notices(
     ]
 
 
+def list_affiliated_notices(
+    conn: DBConnection,
+    *,
+    topic: str | None = None,
+    query: str | None = None,
+    limit: int = 20,
+) -> list[AffiliatedNotice]:
+    normalized_limit = max(1, min(limit, 50))
+    normalized_topic = topic.strip() if topic else None
+    if normalized_topic and normalized_topic not in AFFILIATED_NOTICE_TOPICS:
+        raise InvalidRequestError(
+            "topic must be one of international_studies, dorm_k_a_general, "
+            "dorm_k_a_checkin_out, dorm_francis_general, dorm_francis_checkin_out."
+        )
+    normalized_query = query.strip() if query else None
+    return [
+        AffiliatedNotice.model_validate(item)
+        for item in repo.list_affiliated_notices(
+            conn,
+            topic=normalized_topic,
+            query=normalized_query,
+            limit=normalized_limit,
+        )
+    ]
+
+
 def list_certificate_guides(
     conn: DBConnection,
     limit: int = 20,
@@ -3019,6 +3062,12 @@ def _run_admin_sync_target(
                     conn,
                     pages=notice_pages or settings.official_notice_pages,
                 )
+            )
+        }
+    if target == "affiliated_notices":
+        return {
+            "affiliated_notices": len(
+                refresh_affiliated_notices_from_sources(conn)
             )
         }
     if target == "academic_calendar":
@@ -4310,6 +4359,73 @@ def refresh_notices_from_notice_board(
     ]
 
 
+def refresh_affiliated_notices_from_sources(
+    conn: DBConnection,
+    *,
+    sources: list[Any] | None = None,
+    pages: int = 1,
+    fetched_at: str | None = None,
+) -> list[AffiliatedNotice]:
+    synced_at = fetched_at or _now_iso()
+    resolved_sources = list(sources) if sources is not None else [
+        InternationalStudiesAffiliatedNoticeBoardSource(),
+        DormKAGeneralAffiliatedNoticeBoardSource(),
+        DormKACheckinOutAffiliatedNoticeBoardSource(),
+        DormFrancisGeneralAffiliatedNoticeBoardSource(),
+        DormFrancisCheckinOutAffiliatedNoticeBoardSource(),
+    ]
+    rows: list[dict[str, Any]] = []
+    for source in resolved_sources:
+        board_topic = getattr(source, "topic", None) or getattr(source, "board_topic", None)
+        if not board_topic:
+            raise InvalidRequestError("affiliated notice source must define a topic.")
+        if board_topic not in AFFILIATED_NOTICE_TOPICS:
+            raise InvalidRequestError(
+                "topic must be one of international_studies, dorm_k_a_general, "
+                "dorm_k_a_checkin_out, dorm_francis_general, dorm_francis_checkin_out."
+            )
+        for page in range(max(1, pages)):
+            offset = page * 10
+            list_html = source.fetch_list(offset=offset, limit=10)
+            for item in source.parse_list(list_html):
+                article_no = item.get("article_no") or item.get("id")
+                if not article_no:
+                    continue
+                try:
+                    detail_html = source.fetch_detail(article_no, offset=offset, limit=10)
+                    detail = source.parse_detail(
+                        detail_html,
+                        default_title=item.get("title", ""),
+                        default_category=item.get("board_category", ""),
+                        default_summary=item.get("summary", ""),
+                        default_published_at=item.get("published_at", ""),
+                        default_source_url=item.get("source_url"),
+                    )
+                except httpx.HTTPError:
+                    detail = {}
+                title = (detail.get("title") or item.get("title") or "").strip()
+                published_at = detail.get("published_at") or item.get("published_at")
+                if not title or not published_at:
+                    continue
+                rows.append(
+                    {
+                        "topic": detail.get("topic") or item.get("topic") or board_topic,
+                        "title": title,
+                        "published_at": published_at,
+                        "summary": detail.get("summary") or item.get("summary") or "",
+                        "source_url": detail.get("source_url") or item.get("source_url"),
+                        "source_tag": detail.get("source_tag")
+                        or getattr(source, "source_tag", "cuk_affiliated_notice_boards"),
+                        "last_synced_at": synced_at,
+                    }
+                )
+    repo.replace_affiliated_notices(conn, rows)
+    return [
+        AffiliatedNotice.model_validate(item)
+        for item in repo.list_affiliated_notices(conn, limit=max(len(rows), 1))
+    ]
+
+
 def refresh_academic_calendar_from_source(
     conn: DBConnection,
     *,
@@ -4606,6 +4722,7 @@ def sync_official_snapshot(
         conn,
         pages=notice_pages or settings.official_notice_pages,
     )
+    affiliated_notices = refresh_affiliated_notices_from_sources(conn)
     academic_calendar = refresh_academic_calendar_from_source(conn)
     certificate_guides = refresh_certificate_guides_from_certificate_page(conn)
     leave_of_absence_guides = refresh_leave_of_absence_guides_from_source(conn)
@@ -4626,6 +4743,7 @@ def sync_official_snapshot(
         "dining_menus": len(dining_menus),
         "courses": len(courses),
         "notices": len(notices),
+        "affiliated_notices": len(affiliated_notices),
         "academic_calendar": len(academic_calendar),
         "certificate_guides": len(certificate_guides),
         "leave_of_absence_guides": len(leave_of_absence_guides),

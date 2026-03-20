@@ -126,6 +126,17 @@ CREATE TABLE IF NOT EXISTS notices (
     last_synced_at TIMESTAMPTZ NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS affiliated_notices (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    topic TEXT NOT NULL,
+    title TEXT NOT NULL,
+    published_at DATE NOT NULL,
+    summary TEXT NOT NULL DEFAULT '',
+    source_url TEXT,
+    source_tag TEXT NOT NULL DEFAULT 'demo',
+    last_synced_at TIMESTAMPTZ NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS transport_guides (
     id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     mode TEXT NOT NULL,

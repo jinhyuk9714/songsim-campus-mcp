@@ -15,6 +15,7 @@ JSON_COLUMNS = {
         "opening_hours_json": "opening_hours",
     },
     "notices": {"labels_json": "labels"},
+    "affiliated_notices": {},
     "transport_guides": {"steps_json": "steps"},
     "certificate_guides": {"steps_json": "steps"},
     "leave_of_absence_guides": {"steps_json": "steps", "links_json": "links"},
@@ -199,6 +200,33 @@ def replace_notices(conn: psycopg.Connection, rows: list[dict[str, Any]]) -> Non
                 row["published_at"],
                 row.get("summary", ""),
                 Jsonb(row.get("labels", [])),
+                row.get("source_url"),
+                row.get("source_tag", "demo"),
+                row["last_synced_at"],
+            )
+            for row in rows
+        ],
+    )
+
+
+def replace_affiliated_notices(
+    conn: psycopg.Connection,
+    rows: list[dict[str, Any]],
+) -> None:
+    conn.execute("TRUNCATE TABLE affiliated_notices RESTART IDENTITY CASCADE")
+    _executemany(
+        conn,
+        """
+        INSERT INTO affiliated_notices (
+            topic, title, published_at, summary, source_url, source_tag, last_synced_at
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """,
+        [
+            (
+                row["topic"],
+                row["title"],
+                row["published_at"],
+                row.get("summary", ""),
                 row.get("source_url"),
                 row.get("source_tag", "demo"),
                 row["last_synced_at"],
@@ -650,6 +678,50 @@ def list_notices(
     params.append(limit)
     rows = conn.execute(sql, params).fetchall()
     return [_row_to_dict("notices", row) for row in rows]
+
+
+def list_affiliated_notices(
+    conn: psycopg.Connection,
+    *,
+    topic: str | None = None,
+    query: str | None = None,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    sql = "SELECT * FROM affiliated_notices"
+    params: list[Any] = []
+    clauses: list[str] = []
+    if topic:
+        clauses.append("topic = %s")
+        params.append(topic)
+
+    normalized_query = (query or "").strip()
+    query_like = f"%{normalized_query}%"
+    if normalized_query:
+        clauses.append("(title ILIKE %s OR summary ILIKE %s)")
+        params.extend([query_like, query_like])
+
+    if clauses:
+        sql += " WHERE " + " AND ".join(clauses)
+
+    if normalized_query:
+        sql += """
+            ORDER BY
+                CASE
+                    WHEN title ILIKE %s THEN 0
+                    WHEN summary ILIKE %s THEN 1
+                    ELSE 2
+                END,
+                published_at DESC,
+                id DESC
+            LIMIT %s
+        """
+        params.extend([query_like, query_like, limit])
+    else:
+        sql += " ORDER BY published_at DESC, id DESC LIMIT %s"
+        params.append(limit)
+
+    rows = conn.execute(sql, params).fetchall()
+    return [_row_to_dict("affiliated_notices", row) for row in rows]
 
 
 def replace_transport_guides(conn: psycopg.Connection, rows: list[dict[str, Any]]) -> None:
@@ -1530,6 +1602,7 @@ def get_dataset_sync_state(conn: psycopg.Connection, table: str) -> dict[str, An
         "academic_milestone_guides",
         "dormitory_guides",
         "phone_book_entries",
+        "affiliated_notices",
         "academic_calendar",
         "campus_dining_menus",
         "campus_facilities",

@@ -32,6 +32,7 @@ from songsim_campus.services import (
     list_academic_calendar,
     list_academic_status_guides,
     list_academic_support_guides,
+    list_affiliated_notices,
     list_certificate_guides,
     list_dormitory_guides,
     list_estimated_empty_classrooms,
@@ -43,6 +44,7 @@ from songsim_campus.services import (
     refresh_academic_calendar_from_source,
     refresh_academic_status_guides_from_source,
     refresh_academic_support_guides_from_source,
+    refresh_affiliated_notices_from_sources,
     refresh_campus_dining_menus_from_facilities_page,
     refresh_campus_facilities_from_source,
     refresh_certificate_guides_from_certificate_page,
@@ -162,6 +164,26 @@ def _dormitory_guide_row(
     }
 
 
+def _affiliated_notice_row(
+    *,
+    topic: str,
+    title: str,
+    published_at: str,
+    summary: str,
+    source_url: str = "https://example.com/notices/1",
+    source_tag: str = "cuk_affiliated_notice_boards",
+) -> dict:
+    return {
+        "topic": topic,
+        "title": title,
+        "published_at": published_at,
+        "summary": summary,
+        "source_url": source_url,
+        "source_tag": source_tag,
+        "last_synced_at": "2026-03-20T00:00:00+09:00",
+    }
+
+
 def _course_row(
     *,
     year: int,
@@ -217,6 +239,11 @@ def test_get_notice_categories_returns_public_canonical_metadata(app_env):
     ]
     assert categories[2].aliases == ["career"]
     assert categories[3].aliases == ["place"]
+
+
+def test_affiliated_notices_are_marked_best_effort_in_readiness_policy():
+    assert services_module.PUBLIC_READY_DATASET_POLICIES["affiliated_notices"] == "best_effort"
+    assert "affiliated_notices" in services_module.SYNC_DATASET_TABLES
 
 
 class FakeLibrarySeatStatusSource:
@@ -4211,6 +4238,50 @@ class FakeDormitoryHomepageSource:
         ]
 
 
+class FakeAffiliatedNoticeSource:
+    def __init__(
+        self,
+        topic: str,
+        items: list[dict[str, object]],
+        *,
+        source_tag: str = "cuk_affiliated_notice_boards",
+    ):
+        self.topic = topic
+        self.items = items
+        self.source_tag = source_tag
+
+    def fetch_list(self, *, offset: int = 0, limit: int = 10):
+        assert limit == 10
+        return f"<{self.topic}-list offset={offset}>"
+
+    def parse_list(self, html: str):
+        assert html.startswith(f"<{self.topic}-list")
+        return self.items
+
+    def fetch_detail(self, article_no: str, *, offset: int = 0, limit: int = 10):
+        assert limit == 10
+        return f"<detail article_no={article_no} offset={offset}>"
+
+    def parse_detail(
+        self,
+        html: str,
+        *,
+        default_title: str,
+        default_category: str = "",
+        default_summary: str,
+        default_published_at: str,
+        default_source_url: str | None = None,
+    ):
+        assert html.startswith("<detail article_no=")
+        return {
+            "title": default_title,
+            "summary": default_summary,
+            "published_at": default_published_at,
+            "source_url": default_source_url,
+            "source_tag": self.source_tag,
+        }
+
+
 class FakeAcademicStatusSource:
     def __init__(self, status: str, rows: list[dict[str, object]]):
         self.status = status
@@ -4571,6 +4642,108 @@ def test_refresh_dormitory_guides_replaces_rows_and_filters_by_topic(app_env):
     assert all_guides[0].source_url == "https://www.catholic.ac.kr/ko/campuslife/dormitory_songsim.do"
 
 
+def test_refresh_affiliated_notices_replaces_rows_and_orders_by_query_and_date(app_env):
+    init_db()
+
+    with connection() as conn:
+        repo.replace_affiliated_notices(
+            conn,
+            [
+                _affiliated_notice_row(
+                    topic="international_studies",
+                    title="오래된 임시 공지",
+                    published_at="2026-03-01",
+                    summary="old",
+                    source_url="https://example.com/old",
+                    source_tag="old",
+                )
+            ],
+        )
+        notices = refresh_affiliated_notices_from_sources(
+            conn,
+            sources=[
+                FakeAffiliatedNoticeSource(
+                    "international_studies",
+                    [
+                        {
+                            "article_no": "1",
+                            "title": "국제학부 공결 신청 안내",
+                            "published_at": "2026-03-18",
+                            "summary": "공결 신청",
+                            "source_url": "https://is.catholic.ac.kr/is/community/notice.do?articleNo=1",
+                        },
+                        {
+                            "article_no": "2",
+                            "title": "국제학부 일반 공지",
+                            "published_at": "2026-03-19",
+                            "summary": "공결 서식",
+                            "source_url": "https://is.catholic.ac.kr/is/community/notice.do?articleNo=2",
+                        },
+                    ],
+                ),
+                FakeAffiliatedNoticeSource(
+                    "dorm_k_a_general",
+                    [
+                        {
+                            "article_no": "3",
+                            "title": "기숙사 일반 공지",
+                            "published_at": "2026-03-20",
+                            "summary": "OT 안내",
+                            "source_url": "https://dorm.catholic.ac.kr/dormitory/board/comm_notice.do?articleNo=3",
+                        }
+                    ],
+                ),
+            ],
+            fetched_at="2026-03-20T00:00:00+09:00",
+        )
+        all_notices = list_affiliated_notices(conn, limit=20)
+        study_notices = list_affiliated_notices(
+            conn,
+            topic="international_studies",
+            query="공결",
+            limit=20,
+        )
+        latest_only = list_affiliated_notices(conn, query="공지", limit=20)
+
+    assert len(notices) == 3
+    assert [item.topic for item in all_notices] == [
+        "dorm_k_a_general",
+        "international_studies",
+        "international_studies",
+    ]
+    assert [item.title for item in study_notices] == [
+        "국제학부 공결 신청 안내",
+        "국제학부 일반 공지",
+    ]
+    assert [item.title for item in latest_only] == [
+        "기숙사 일반 공지",
+        "국제학부 일반 공지",
+    ]
+    assert all_notices[0].source_tag == "cuk_affiliated_notice_boards"
+    assert all_notices[0].source_url == "https://dorm.catholic.ac.kr/dormitory/board/comm_notice.do?articleNo=3"
+
+
+def test_list_affiliated_notices_rejects_unknown_topic(app_env):
+    init_db()
+
+    with connection() as conn:
+        repo.replace_affiliated_notices(
+            conn,
+            [
+                _affiliated_notice_row(
+                    topic="international_studies",
+                    title="국제학부 공지",
+                    published_at="2026-03-20",
+                    summary="공지",
+                    source_url="https://is.catholic.ac.kr/is/community/notice.do?articleNo=1",
+                )
+            ],
+        )
+
+    with connection() as conn, pytest.raises(InvalidRequestError, match="international_studies"):
+        list_affiliated_notices(conn, topic="invalid")
+
+
 def test_list_dormitory_guides_rejects_unknown_topic(app_env):
     init_db()
 
@@ -4912,6 +5085,10 @@ def test_sync_official_snapshot_runs_opening_hours_before_courses_and_transport(
         lambda conn, pages=None: call_order.append('notices') or [],
     )
     monkeypatch.setattr(
+        'songsim_campus.services.refresh_affiliated_notices_from_sources',
+        lambda conn, pages=None: call_order.append('affiliated_notices') or [],
+    )
+    monkeypatch.setattr(
         'songsim_campus.services.refresh_academic_calendar_from_source',
         lambda conn: call_order.append('academic_calendar') or [],
     )
@@ -4980,6 +5157,7 @@ def test_sync_official_snapshot_runs_opening_hours_before_courses_and_transport(
         'dining_menus',
         'courses',
         'notices',
+        'affiliated_notices',
         'academic_calendar',
         'certificate_guides',
         'leave_of_absence_guides',
@@ -5005,6 +5183,7 @@ def test_sync_official_snapshot_runs_opening_hours_before_courses_and_transport(
     assert summary['class_guides'] == 0
     assert summary['seasonal_semester_guides'] == 0
     assert summary['academic_milestone_guides'] == 0
+    assert summary['affiliated_notices'] == 0
     assert summary['dormitory_guides'] == 0
     assert summary['phone_book_entries'] == 0
     assert summary['scholarship_guides'] == 0

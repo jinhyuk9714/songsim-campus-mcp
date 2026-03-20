@@ -30,6 +30,7 @@ def test_run_admin_sync_records_success_history_for_snapshot(app_env, monkeypatc
             "dining_menus": 3,
             "courses": 5,
             "notices": 7,
+            "affiliated_notices": 8,
             "certificate_guides": 2,
             "leave_of_absence_guides": 4,
             "academic_status_guides": 3,
@@ -55,6 +56,7 @@ def test_run_admin_sync_records_success_history_for_snapshot(app_env, monkeypatc
         "dining_menus": 3,
         "courses": 5,
         "notices": 7,
+        "affiliated_notices": 8,
         "certificate_guides": 2,
         "leave_of_absence_guides": 4,
         "academic_status_guides": 3,
@@ -102,6 +104,16 @@ def test_run_admin_sync_dispatches_target_specific_parameters(app_env, monkeypat
 
     def fake_notices(conn, *, pages: int = 1, fetched_at: str | None = None, source=None):
         seen["notices"] = {"pages": pages, "fetched_at": fetched_at}
+        return []
+
+    def fake_affiliated_notices(
+        conn,
+        *,
+        pages: int = 1,
+        fetched_at: str | None = None,
+        sources=None,
+    ):
+        seen["affiliated_notices"] = {"pages": pages, "fetched_at": fetched_at}
         return []
 
     def fake_dining_menus(conn, *, fetched_at: str | None = None, source=None):
@@ -166,6 +178,10 @@ def test_run_admin_sync_dispatches_target_specific_parameters(app_env, monkeypat
     monkeypatch.setattr("songsim_campus.services.refresh_courses_from_subject_search", fake_courses)
     monkeypatch.setattr("songsim_campus.services.refresh_notices_from_notice_board", fake_notices)
     monkeypatch.setattr(
+        "songsim_campus.services.refresh_affiliated_notices_from_sources",
+        fake_affiliated_notices,
+    )
+    monkeypatch.setattr(
         "songsim_campus.services.refresh_campus_dining_menus_from_facilities_page",
         fake_dining_menus,
     )
@@ -229,6 +245,7 @@ def test_run_admin_sync_dispatches_target_specific_parameters(app_env, monkeypat
     support_run = run_admin_sync(target="academic_support_guides")
     courses_run = run_admin_sync(target="courses", year=2026, semester=1)
     notices_run = run_admin_sync(target="notices", notice_pages=3)
+    affiliated_run = run_admin_sync(target="affiliated_notices")
 
     assert places_run.summary == {"places": 0}
     assert dining_run.summary == {"dining_menus": 0}
@@ -238,6 +255,7 @@ def test_run_admin_sync_dispatches_target_specific_parameters(app_env, monkeypat
     assert class_run.summary == {"class_guides": 0}
     assert seasonal_run.summary == {"seasonal_semester_guides": 0}
     assert milestone_run.summary == {"academic_milestone_guides": 0}
+    assert affiliated_run.summary == {"affiliated_notices": 0}
     assert dormitory_run.summary == {"dormitory_guides": 0}
     assert phone_book_run.summary == {"phone_book_entries": 0}
     assert scholarship_run.summary == {"scholarship_guides": 0}
@@ -253,6 +271,7 @@ def test_run_admin_sync_dispatches_target_specific_parameters(app_env, monkeypat
     assert seen["class_guides"] == {"fetched_at": None}
     assert seen["seasonal_semester_guides"] == {"fetched_at": None}
     assert seen["academic_milestone_guides"] == {"fetched_at": None}
+    assert seen["affiliated_notices"] == {"pages": 1, "fetched_at": None}
     assert seen["dormitory_guides"] == {"fetched_at": None}
     assert seen["phone_book_entries"] == {"fetched_at": None}
     assert seen["scholarship_guides"] == {"fetched_at": None}

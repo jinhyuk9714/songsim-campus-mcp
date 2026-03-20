@@ -92,6 +92,17 @@ class Notice(BaseModel):
     last_synced_at: str
 
 
+class AffiliatedNotice(BaseModel):
+    id: int
+    topic: str
+    title: str
+    published_at: str
+    summary: str = ""
+    source_url: str | None = None
+    source_tag: str = "demo"
+    last_synced_at: str
+
+
 class TransportGuide(BaseModel):
     id: int
     mode: str
