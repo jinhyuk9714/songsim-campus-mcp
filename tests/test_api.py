@@ -1012,15 +1012,19 @@ def test_places_endpoint_matches_generic_facility_nouns(client):
 
     assert gym_response.status_code == 200
     assert [item["slug"] for item in gym_response.json()] == ["student-center"]
+    assert gym_response.json()[0]["matched_facility"]["location_hint"] == "학생회관"
     assert store_response.status_code == 200
     assert [item["slug"] for item in store_response.json()[:2]] == [
         "student-center",
         "dormitory-stephen",
     ]
+    assert store_response.json()[0]["matched_facility"]["location_hint"] == "학생회관"
     assert copy_response.status_code == 200
     assert [item["slug"] for item in copy_response.json()] == ["student-center"]
+    assert copy_response.json()[0]["matched_facility"]["location_hint"] == "학생회관"
     assert atm_response.status_code == 200
     assert [item["slug"] for item in atm_response.json()] == ["student-center"]
+    assert atm_response.json()[0]["matched_facility"]["location_hint"] == "학생회관"
 
 
 def test_places_endpoint_generic_facility_nouns_prefer_building_then_facility_then_dormitory(

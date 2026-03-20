@@ -647,6 +647,21 @@ def _matched_facility_from_row(row: dict[str, Any]) -> MatchedFacility:
     )
 
 
+def _with_matched_facility_location_fallback(
+    matched_facility: MatchedFacility,
+    *,
+    place: dict[str, Any],
+) -> MatchedFacility:
+    if matched_facility.location_hint is not None:
+        return matched_facility
+    fallback_location_hint = _normalize_optional_text(
+        place.get("canonical_name") or place.get("name")
+    )
+    if fallback_location_hint is None:
+        return matched_facility
+    return matched_facility.model_copy(update={"location_hint": fallback_location_hint})
+
+
 def _rank_campus_facility_composite_candidate(
     row: dict[str, Any],
     *,
@@ -1058,13 +1073,15 @@ def search_places(
                 aliases=aliases,
                 has_matched_facility=True,
             )
+            matched_facility = _with_matched_facility_location_fallback(
+                _matched_facility_from_row(facility_match[2]),
+                place=item,
+            )
             payload = {
                 **item,
                 "name": display_name,
                 "canonical_name": canonical_name,
-                "matched_facility": _matched_facility_from_row(facility_match[2]).model_dump(
-                    exclude_none=True
-                ),
+                "matched_facility": matched_facility.model_dump(exclude_none=True),
             }
         else:
             assert place_sort is not None
@@ -1075,8 +1092,9 @@ def search_places(
                 "canonical_name": canonical_name,
             }
             if query_is_plain_generic_facility and facility_match is not None:
-                matched_facility = _matched_facility_from_row(
-                    facility_match[2]
+                matched_facility = _with_matched_facility_location_fallback(
+                    _matched_facility_from_row(facility_match[2]),
+                    place=item,
                 ).model_dump(exclude_none=True)
                 payload["matched_facility"] = matched_facility
         preference_rank = 0 if slug in preferred_slug_set else 1

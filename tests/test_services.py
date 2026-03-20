@@ -912,6 +912,14 @@ def test_search_places_generic_facility_nouns_prefer_building_then_facility_then
     assert [place.slug for place in store_places[:3]] == expected_order
     assert [place.slug for place in copy_places[:3]] == expected_order
     assert [place.slug for place in atm_places[:3]] == expected_order
+    assert gym_places[0].matched_facility is not None
+    assert gym_places[0].matched_facility.location_hint == "김수환관"
+    assert store_places[0].matched_facility is not None
+    assert store_places[0].matched_facility.location_hint == "김수환관"
+    assert copy_places[0].matched_facility is not None
+    assert copy_places[0].matched_facility.location_hint == "김수환관"
+    assert atm_places[0].matched_facility is not None
+    assert atm_places[0].matched_facility.location_hint == "김수환관"
 
 
 def test_search_places_generic_facility_nouns_attach_matched_facility_when_place_alias_ties(

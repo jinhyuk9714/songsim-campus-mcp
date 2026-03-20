@@ -2072,6 +2072,10 @@ def test_mcp_public_search_places_returns_matched_facility_metadata(app_env, mon
     assert [item["slug"] for item in store_payloads[:2]] == ["student-center", "dormitory-stephen"]
     assert [item["slug"] for item in copy_payloads] == ["student-center"]
     assert [item["slug"] for item in atm_payloads] == ["student-center"]
+    assert gym_payloads[0]["matched_facility"]["location_hint"] == "학생회관"
+    assert store_payloads[0]["matched_facility"]["location_hint"] == "학생회관"
+    assert copy_payloads[0]["matched_facility"]["location_hint"] == "학생회관"
+    assert atm_payloads[0]["matched_facility"]["location_hint"] == "학생회관"
 
     clear_settings_cache()
 

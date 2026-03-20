@@ -4,7 +4,7 @@ from datetime import datetime
 
 from songsim_campus.db import connection, init_db
 from songsim_campus.repo import replace_campus_facilities, replace_places, replace_restaurants
-from songsim_campus.services import list_estimated_empty_classrooms
+from songsim_campus.services import list_estimated_empty_classrooms, search_places
 
 
 def _place_row(
@@ -15,6 +15,7 @@ def _place_row(
     aliases: list[str] | None = None,
     latitude: float | None = 37.4863,
     longitude: float | None = 126.8012,
+    opening_hours: dict[str, str] | None = None,
 ) -> dict:
     return {
         "slug": slug,
@@ -24,7 +25,7 @@ def _place_row(
         "description": "",
         "latitude": latitude,
         "longitude": longitude,
-        "opening_hours": {},
+        "opening_hours": opening_hours or {},
         "source_tag": "test",
         "last_synced_at": "2026-03-18T10:00:00+09:00",
     }
@@ -130,3 +131,69 @@ def test_place_search_runtime_preserves_facility_parent_display_and_origin_resol
     assert origin_place["slug"] == "sophie-barat-hall"
     assert building.slug == "nicholls-hall"
     assert classroom_payload.building.slug == "nicholls-hall"
+
+
+def test_place_search_runtime_populates_matched_facility_location_hint_for_plain_generic_queries(
+    app_env,
+):
+    init_db()
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                _place_row(
+                    slug="student-center",
+                    name="학생회관",
+                    category="facility",
+                    aliases=["학생센터"],
+                    opening_hours={
+                        "편의점": "상시 07:00~24:00",
+                        "교내복사실": "평일 08:50~19:00",
+                        "트러스트짐": "평일 07:00~22:30",
+                        "우리은행": "평일 09:00~16:00",
+                    },
+                ),
+                _place_row(
+                    slug="kim-sou-hwan-hall",
+                    name="김수환관",
+                    category="building",
+                    aliases=["K관"],
+                    opening_hours={
+                        "교내복사실": "평일 08:50~19:00",
+                    },
+                ),
+            ],
+        )
+
+        store_places = search_places(conn, query="편의점", limit=1)
+        copy_places = search_places(conn, query="복사실", limit=1)
+        gym_places = search_places(conn, query="헬스장", limit=1)
+        atm_places = search_places(conn, query="ATM", limit=1)
+
+    assert store_places[0].slug == "student-center"
+    assert store_places[0].name == "학생회관"
+    assert store_places[0].canonical_name == "학생회관"
+    assert store_places[0].matched_facility is not None
+    assert store_places[0].matched_facility.name == "편의점"
+    assert store_places[0].matched_facility.location_hint == "학생회관"
+    assert store_places[0].matched_facility.opening_hours == "상시 07:00~24:00"
+
+    assert copy_places[0].slug == "kim-sou-hwan-hall"
+    assert copy_places[0].name == "K관"
+    assert copy_places[0].canonical_name == "김수환관"
+    assert copy_places[0].matched_facility is not None
+    assert copy_places[0].matched_facility.name == "교내복사실"
+    assert copy_places[0].matched_facility.location_hint == "김수환관"
+    assert copy_places[0].matched_facility.opening_hours == "평일 08:50~19:00"
+
+    assert gym_places[0].slug == "student-center"
+    assert gym_places[0].matched_facility is not None
+    assert gym_places[0].matched_facility.name == "트러스트짐"
+    assert gym_places[0].matched_facility.location_hint == "학생회관"
+    assert gym_places[0].matched_facility.opening_hours == "평일 07:00~22:30"
+
+    assert atm_places[0].slug == "student-center"
+    assert atm_places[0].matched_facility is not None
+    assert atm_places[0].matched_facility.name == "우리은행"
+    assert atm_places[0].matched_facility.location_hint == "학생회관"
+    assert atm_places[0].matched_facility.opening_hours == "평일 09:00~16:00"
