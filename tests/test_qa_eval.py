@@ -1279,6 +1279,49 @@ def test_render_validation_report_includes_academic_milestone_guides_coverage() 
     assert report.count("| academic_milestone_guides | 1 | 1 |") == 2
 
 
+def test_render_validation_report_includes_phone_book_coverage() -> None:
+    rows = [
+        EvalCorpusRow.model_validate(
+            {
+                "id": "PB001",
+                "domain": "phone_book",
+                "style": "normal",
+                "user_utterance": "보건실 전화번호 알려줘",
+                "api_request": {
+                    "path": "/phone-book",
+                    "params": {"query": "보건실", "limit": 5},
+                },
+                "expected_mcp_flow": "tool_search_phone_book",
+                "truth_mode": "set_contains",
+                "pass_rule": {"summary_kind": "phone_book_top5"},
+                "watch_policy": "none",
+                "notes": "",
+            }
+        )
+    ]
+    results = [
+        {
+            "id": "PB001",
+            "status": "completed",
+            "verdict": "pass",
+            "actual_summary": [{"department": "보건실", "phone": "4126"}],
+            "comparison": "set_contains",
+            "truth_source": "official_source",
+            "checked_at": "2026-03-20T10:20:00+09:00",
+        }
+    ]
+
+    report = render_validation_report(
+        rows=rows,
+        results=results,
+        checked_at="2026-03-20T10:20:00+09:00",
+        base_url="https://songsim-public-api.onrender.com",
+    )
+
+    assert "Guide-Domain Coverage" in report
+    assert report.count("| phone_book | 1 | 1 |") == 2
+
+
 def test_run_evaluation_records_http_errors_without_crashing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1319,7 +1362,7 @@ def test_default_eval_assets_match_distribution_plan() -> None:
     rows = load_eval_rows(DEFAULT_CORPUS_PATH)
     watchlist_rows = load_eval_rows(DEFAULT_WATCHLIST_PATH)
 
-    assert len(rows) == 1018
+    assert len(rows) == 1023
     assert len(watchlist_rows) == 5
 
     by_domain: dict[str, int] = {}
@@ -1343,6 +1386,7 @@ def test_default_eval_assets_match_distribution_plan() -> None:
         "class_guides": 5,
         "seasonal_semester_guides": 4,
         "academic_milestone_guides": 5,
+        "phone_book": 5,
         "out_of_scope": 30,
     }
 
@@ -1402,3 +1446,10 @@ def test_default_eval_assets_match_distribution_plan() -> None:
         "grade_evaluation",
         "graduation_requirement",
     }
+
+    phone_rows = [row for row in rows if row.domain == "phone_book"]
+
+    assert len(phone_rows) == 5
+    assert {row.api_request.path for row in phone_rows} == {"/phone-book"}
+    assert {row.expected_mcp_flow for row in phone_rows} == {"tool_search_phone_book"}
+    assert {row.pass_rule["summary_kind"] for row in phone_rows} == {"phone_book_top5"}

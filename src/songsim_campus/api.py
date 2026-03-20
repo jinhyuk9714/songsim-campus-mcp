@@ -49,6 +49,7 @@ from .schemas import (
     Notice,
     NoticeCategoryInfo,
     Period,
+    PhoneBookEntry,
     Place,
     Profile,
     ProfileCourseRef,
@@ -103,6 +104,7 @@ from .services import (
     run_automation_tick,
     search_campus_dining_menus,
     search_courses,
+    search_phone_book_entries,
     search_places,
     search_restaurants,
     set_automation_leader,
@@ -481,6 +483,14 @@ def create_app() -> FastAPI:
                 return list_academic_milestone_guides(conn, topic=topic, limit=limit)
             except InvalidRequestError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/phone-book", response_model=list[PhoneBookEntry])
+    def phone_book(
+        query: str | None = Query(default=None, description="부서명, 업무, 내선번호 검색어"),
+        limit: int = Query(default=20, ge=1, le=50),
+    ) -> list[PhoneBookEntry]:
+        with connection() as conn:
+            return search_phone_book_entries(conn, query=query, limit=limit)
 
     @app.get("/leave-of-absence-guides", response_model=list[LeaveOfAbsenceGuide])
     def leave_of_absence_guides(

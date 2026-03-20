@@ -206,6 +206,16 @@ class AcademicMilestoneGuide(BaseModel):
     last_synced_at: str
 
 
+class PhoneBookEntry(BaseModel):
+    id: int
+    department: str
+    tasks: str
+    phone: str
+    source_url: str | None = None
+    source_tag: str = "demo"
+    last_synced_at: str
+
+
 class WifiGuide(BaseModel):
     id: int
     building_name: str

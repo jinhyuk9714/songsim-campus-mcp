@@ -59,6 +59,7 @@ from .services import (
     list_wifi_guides,
     search_campus_dining_menus,
     search_courses,
+    search_phone_book_entries,
     search_places,
     search_restaurants,
     set_profile_interests,
@@ -241,6 +242,34 @@ def register_shared_tools(
             if public_readonly:
                 return [serialize_public_academic_status_guide(item) for item in guides]
             return [item.model_dump() for item in guides]
+
+    @mcp.tool(
+        description=(
+            (
+                "학교 주요전화번호 / 부서 연락처를 찾을 때 사용합니다. 보건실, 학사지원팀, "
+                "트리니티 문의, 유실물 문의, 기숙사 운영팀 같은 campus-wide 연락처를 "
+                "current snapshot으로 찾습니다."
+            )
+            if public_readonly
+            else "학교 주요전화번호 / 부서 연락처 current snapshot을 검색합니다."
+        ),
+        meta=tool_meta,
+    )
+    def tool_search_phone_book(
+        query: Annotated[
+            str | None,
+            Field(
+                description=(
+                    "부서명, 업무, 내선번호 검색어. 예: 보건실, 학사지원팀, 트리니티, "
+                    "유실물, 기숙사 운영팀"
+                )
+            ),
+        ] = None,
+        limit: Annotated[int, Field(description="최대 결과 수. 기본값은 20입니다.")] = 20,
+    ):
+        with connection_factory() as conn:
+            entries = search_phone_book_entries(conn, query=query, limit=limit)
+            return [item.model_dump() for item in entries]
 
     @mcp.tool(
         description=(

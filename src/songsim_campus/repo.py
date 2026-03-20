@@ -924,6 +924,29 @@ def replace_academic_milestone_guides(
     )
 
 
+def replace_phone_book_entries(conn: psycopg.Connection, rows: list[dict[str, Any]]) -> None:
+    conn.execute("TRUNCATE TABLE phone_book_entries RESTART IDENTITY CASCADE")
+    _executemany(
+        conn,
+        """
+        INSERT INTO phone_book_entries (
+            department, tasks, phone, source_url, source_tag, last_synced_at
+        ) VALUES (%s, %s, %s, %s, %s, %s)
+        """,
+        [
+            (
+                row["department"],
+                row["tasks"],
+                row["phone"],
+                row.get("source_url"),
+                row.get("source_tag", "demo"),
+                row["last_synced_at"],
+            )
+            for row in rows
+        ],
+    )
+
+
 def replace_academic_calendar(conn: psycopg.Connection, rows: list[dict[str, Any]]) -> None:
     conn.execute("TRUNCATE TABLE academic_calendar RESTART IDENTITY CASCADE")
     _executemany(
@@ -1300,6 +1323,23 @@ def list_academic_milestone_guides(
     return [_row_to_dict("academic_milestone_guides", row) for row in rows]
 
 
+def list_phone_book_entries(
+    conn: psycopg.Connection,
+    *,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT *
+        FROM phone_book_entries
+        ORDER BY department, id
+        LIMIT %s
+        """,
+        (limit,),
+    ).fetchall()
+    return [_row_to_dict("phone_book_entries", row) for row in rows]
+
+
 def list_campus_facilities(
     conn: psycopg.Connection,
     *,
@@ -1442,6 +1482,7 @@ def get_dataset_sync_state(conn: psycopg.Connection, table: str) -> dict[str, An
         "class_guides",
         "seasonal_semester_guides",
         "academic_milestone_guides",
+        "phone_book_entries",
         "academic_calendar",
         "campus_dining_menus",
         "campus_facilities",

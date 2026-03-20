@@ -1478,6 +1478,28 @@ class GraduationRequirementGuideSource(AcademicMilestoneGuideSourceBase):
         super().__init__(url)
 
 
+class PhoneBookSource:
+    """Parser for the 주요전화번호 page."""
+
+    source_tag = "cuk_phone_book"
+
+    def __init__(self, url: str = "https://www.catholic.ac.kr/ko/about/phone_book.do"):
+        self.url = url
+
+    def fetch(self) -> str:
+        response = httpx.get(self.url, timeout=20)
+        response.raise_for_status()
+        return response.text
+
+    def parse(self, html: str, *, fetched_at: str) -> list[dict]:
+        return _parse_phone_book_entries(
+            html,
+            base_url=self.url,
+            source_tag=self.source_tag,
+            fetched_at=fetched_at,
+        )
+
+
 def _parse_class_guide_sections(
     html: str,
     *,
@@ -1661,6 +1683,62 @@ def _academic_milestone_direct_text_steps(node) -> list[str]:
         if text:
             steps.append(text)
     return _unique(steps)
+
+
+def _parse_phone_book_entries(
+    html: str,
+    *,
+    base_url: str,
+    source_tag: str,
+    fetched_at: str,
+) -> list[dict]:
+    soup = BeautifulSoup(html, "html.parser")
+    target_box = next(
+        (
+            box
+            for box in soup.select(".con-box")
+            if _clean_text(
+                box.select_one(".h4-tit01").get_text(" ", strip=True)
+                if box.select_one(".h4-tit01")
+                else ""
+            ).startswith("주요연락처")
+            and "주요연락처 안내표"
+            in _clean_text(
+                box.select_one("table caption").get_text(" ", strip=True)
+                if box.select_one("table caption")
+                else ""
+            )
+        ),
+        None,
+    )
+    if target_box is None:
+        return []
+
+    table = target_box.select_one(".table-wrap table")
+    if table is None:
+        return []
+
+    rows: list[dict] = []
+    for tr in table.select("tbody tr"):
+        cells = tr.find_all("td", recursive=False)
+        if len(cells) != 3:
+            continue
+        department = _clean_text(cells[0].get_text(" ", strip=True))
+        tasks = _clean_text(cells[1].get_text(" ", strip=True))
+        phone = _normalize_phone(cells[2].get_text(" ", strip=True))
+        if not department or not tasks or phone is None:
+            continue
+        rows.append(
+            {
+                "department": department,
+                "tasks": tasks,
+                "phone": phone,
+                "source_url": base_url,
+                "source_tag": source_tag,
+                "last_synced_at": fetched_at,
+            }
+        )
+    return rows
 
 
 def _extract_academic_milestone_direct_text(node) -> str:

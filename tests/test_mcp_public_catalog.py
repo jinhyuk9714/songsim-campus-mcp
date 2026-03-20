@@ -20,6 +20,7 @@ def test_public_usage_guide_text_contains_current_anchor_phrases():
     assert "tool_list_class_guides" in content
     assert "tool_list_seasonal_semester_guides" in content
     assert "tool_list_academic_milestone_guides" in content
+    assert "tool_search_phone_book" in content
     assert "tool_list_leave_of_absence_guides" in content
     assert "tool_list_scholarship_guides" in content
     assert "tool_list_wifi_guides" in content
@@ -31,6 +32,7 @@ def test_public_usage_guide_text_contains_current_anchor_phrases():
     assert "계절학기 신청 시기" in content
     assert "성적평가 방법" in content
     assert "졸업요건" in content
+    assert "보건실 전화번호" in content
     assert "학점교류 담당 전화번호" in content
     assert "재입학 지원자격" in content
     assert "/gpt/" not in content
@@ -106,5 +108,6 @@ def test_register_shared_resources_exposes_expected_resource_uris(tmp_path):
         "songsim://class-guide",
         "songsim://seasonal-semester-guide",
         "songsim://academic-milestone-guide",
+        "songsim://phone-book",
         "songsim://academic-calendar",
     }

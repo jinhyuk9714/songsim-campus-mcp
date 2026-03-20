@@ -8,6 +8,7 @@
 - `registration_guides`가 공개 HTTP와 MCP 양쪽에서 보이는지 확인
 - `class_guides`가 공개 HTTP와 MCP 양쪽에서 보이는지 확인
 - `seasonal_semester_guides`가 공개 HTTP와 MCP 양쪽에서 보이는지 확인
+- `phone_book_entries`가 공개 HTTP와 MCP 양쪽에서 보이는지 확인
 - `notices`의 `academic` 최신 3건이 공개 HTTP와 MCP 양쪽에서 보이는지 확인
 - nearby restaurants의 대표 alias origin과 strict `open_now` 경로가 공개 HTTP/MCP에서 유지되는지 확인
 - 대표 `courses` watchlist query가 500/timeout 없이 처리되는지 확인
@@ -132,7 +133,27 @@ curl -fsS "$PUBLIC_HTTP_URL/seasonal-semester-guides?topic=seasonal_semester&lim
   | jq '.[0] | {topic, title, source_tag}'
 ```
 
-## 7. Nearby restaurants HTTP smoke
+## 7. Phone book HTTP smoke
+
+```bash
+curl -fsS "$PUBLIC_HTTP_URL/phone-book?query=%EB%B3%B4%EA%B1%B4%EC%8B%A4&limit=1"
+```
+
+기대값:
+
+- HTTP `200`
+- JSON array
+- 첫 결과 안에 `"department":"보건실"`
+- `"source_tag":"cuk_phone_book"`가 보임
+
+`jq` 예시:
+
+```bash
+curl -fsS "$PUBLIC_HTTP_URL/phone-book?query=%EB%B3%B4%EA%B1%B4%EC%8B%A4&limit=1" \
+  | jq '.[0] | {department, phone, source_tag}'
+```
+
+## 8. Nearby restaurants HTTP smoke
 
 ```bash
 curl -fsS "$PUBLIC_HTTP_URL/restaurants/nearby?origin=%EC%A4%91%EB%8F%84&limit=3"
@@ -153,7 +174,7 @@ curl -fsS "$PUBLIC_HTTP_URL/restaurants/nearby?origin=%EC%A4%91%EB%8F%84&limit=3
   | jq '.[0] | {name, origin, estimated_walk_minutes, source_tag}'
 ```
 
-## 8. MCP initialize + guide checks
+## 9. MCP initialize + guide checks
 
 아래 Python smoke는 live에서 검증한 payload 형태를 그대로 사용합니다.
 
@@ -249,6 +270,21 @@ with httpx.Client(timeout=20.0) as client:
     )
     print("tool_list_academic_milestone_guides", milestone_call.status_code)
 
+    phone_book_call = client.post(
+        base,
+        headers=call_headers,
+        json={
+            "jsonrpc": "2.0",
+            "id": 24,
+            "method": "tools/call",
+            "params": {
+                "name": "tool_search_phone_book",
+                "arguments": {"query": "보건실", "limit": 1},
+            },
+        },
+    )
+    print("tool_search_phone_book", phone_book_call.status_code)
+
     notices_call = client.post(
         base,
         headers=call_headers,
@@ -326,6 +362,18 @@ with httpx.Client(timeout=20.0) as client:
         },
     )
     print("academic milestone resource", milestone_resource_read.status_code)
+
+    phone_book_resource_read = client.post(
+        base,
+        headers=call_headers,
+        json={
+            "jsonrpc": "2.0",
+            "id": 9,
+            "method": "resources/read",
+            "params": {"uri": "songsim://phone-book"},
+        },
+    )
+    print("phone book resource", phone_book_resource_read.status_code)
 PY
 ```
 
@@ -336,23 +384,27 @@ PY
 - `tool_list_class_guides 200`
 - `tool_list_seasonal_semester_guides 200`
 - `tool_list_academic_milestone_guides 200`
+- `tool_search_phone_book 200`
 - `tool_list_latest_notices 200`
 - `tool_find_nearby_restaurants 200`
 - `registration resource 200`
 - `class resource 200`
 - `seasonal semester resource 200`
 - `academic milestone resource 200`
+- `phone book resource 200`
 - `initialize` 응답의 `instructions`에 `registration` 문구가 포함됨
 - `tool_list_registration_guides` payload가 빈 결과가 아님
 - `tool_list_class_guides` payload가 빈 결과가 아니고 `course_evaluation` 항목을 포함함
 - `tool_list_seasonal_semester_guides` payload가 빈 결과가 아니고 `seasonal_semester` 항목을 포함함
 - `tool_list_academic_milestone_guides` payload가 빈 결과가 아니고 `grade_evaluation` 항목을 포함함
+- `tool_search_phone_book` payload가 빈 결과가 아니고 `보건실` 항목을 포함함
 - `tool_list_latest_notices` payload가 빈 결과가 아니고 academic 항목을 포함함
 - `tool_find_nearby_restaurants` payload가 빈 결과가 아니고 nearby 식당 요약 payload를 반환함
 - `resources/read` 결과의 첫 항목에 `source_tag=cuk_registration_guides`가 포함됨
 - `class` resource 결과의 첫 항목에 `source_tag=cuk_class_guides`가 포함됨
 - `seasonal semester` resource 결과의 첫 항목에 `source_tag=cuk_seasonal_semester_guides`가 포함됨
 - `academic milestone` resource 결과의 첫 항목에 `source_tag=cuk_academic_milestone_guides`가 포함됨
+- `phone book` resource 결과의 첫 항목에 `source_tag=cuk_phone_book`가 포함됨
 
 ## Pass 기준
 
@@ -361,11 +413,12 @@ PY
 - `/class-guides`가 `course_evaluation` topic과 `cuk_class_guides` source tag를 반환
 - `/seasonal-semester-guides`가 `seasonal_semester` topic과 `cuk_seasonal_semester_guides` source tag를 반환
 - `/academic-milestone-guides`가 `grade_evaluation` topic과 `cuk_academic_milestone_guides` source tag를 반환
+- `/phone-book`가 `보건실` 또는 질의한 부서의 `cuk_phone_book` source tag를 반환
 - `/notices?category=academic&limit=3`가 `academic` notice와 `cuk_campus_notices` source tag를 반환
 - `/restaurants/nearby?origin=중도`가 `central-library` origin으로 nearby 결과를 반환
 - `/restaurants/nearby?origin=학생식당&open_now=true&category=cafe&limit=3`가 `200`으로 안정 응답하고, 빈 배열이어도 `open_now` strict contract와 일치
 - `/courses?query=CSE301...`가 빈 배열이어도 좋으니 `200`으로 안정 응답
-- MCP initialize가 성공하고 `tool_list_registration_guides`, `tool_list_class_guides`, `tool_list_seasonal_semester_guides`, `tool_list_academic_milestone_guides`, `tool_list_latest_notices`, `tool_find_nearby_restaurants`, `songsim://registration-guide`, `songsim://class-guide`, `songsim://seasonal-semester-guide`, `songsim://academic-milestone-guide`가 모두 노출
+- MCP initialize가 성공하고 `tool_list_registration_guides`, `tool_list_class_guides`, `tool_list_seasonal_semester_guides`, `tool_list_academic_milestone_guides`, `tool_search_phone_book`, `tool_list_latest_notices`, `tool_find_nearby_restaurants`, `songsim://registration-guide`, `songsim://class-guide`, `songsim://seasonal-semester-guide`, `songsim://academic-milestone-guide`, `songsim://phone-book`가 모두 노출
 - MCP registration/nearby tool call이 에러 없이 응답
 
-이 기준이 통과하면 class-guides + registration-guides + seasonal-semester-guides + academic-milestone-guides + nearby restaurant 공개 smoke는 충분합니다.
+이 기준이 통과하면 class-guides + registration-guides + seasonal-semester-guides + academic-milestone-guides + phone-book + nearby restaurant 공개 smoke는 충분합니다.

@@ -51,6 +51,7 @@ from .ingest.official_sources import (
     LibraryHoursSource,
     LibrarySeatStatusSource,
     NoticeSource,
+    PhoneBookSource,
     ReAdmissionGuideSource,
     RegistrationBillLookupGuideSource,
     RegistrationPaymentAndReturnGuideSource,
@@ -93,6 +94,7 @@ from .schemas import (
     NoticeCategoryInfo,
     ObservabilitySnapshot,
     Period,
+    PhoneBookEntry,
     Place,
     Profile,
     ProfileCourseRef,
@@ -124,6 +126,7 @@ SCHOLARSHIP_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/scholarshi
 WIFI_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/campuslife/wifi.do"
 ACADEMIC_CALENDAR_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/calendar2024_list.do"
 ACADEMIC_SUPPORT_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/academic_contact_information.do"
+PHONE_BOOK_SOURCE_URL = "https://www.catholic.ac.kr/ko/about/phone_book.do"
 RETURN_FROM_LEAVE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/return_from_leave_of_absence.do"
 DROPOUT_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/dropout.do"
 RE_ADMISSION_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/re_admission.do"
@@ -158,6 +161,7 @@ SYNC_DATASET_TABLES = (
     "class_guides",
     "seasonal_semester_guides",
     "academic_milestone_guides",
+    "phone_book_entries",
     "scholarship_guides",
     "wifi_guides",
     "academic_support_guides",
@@ -175,6 +179,7 @@ PUBLIC_READY_CORE_DATASETS = frozenset(
         "class_guides",
         "seasonal_semester_guides",
         "academic_milestone_guides",
+        "phone_book_entries",
         "scholarship_guides",
         "academic_support_guides",
         "wifi_guides",
@@ -211,6 +216,7 @@ ADMIN_SYNC_TARGETS = {
     "class_guides",
     "seasonal_semester_guides",
     "academic_milestone_guides",
+    "phone_book_entries",
     "scholarship_guides",
     "academic_support_guides",
     "wifi_guides",
@@ -2792,6 +2798,49 @@ def list_academic_milestone_guides(
     ]
 
 
+def search_phone_book_entries(
+    conn: DBConnection,
+    *,
+    query: str | None = None,
+    limit: int = 20,
+) -> list[PhoneBookEntry]:
+    normalized_limit = max(1, min(limit, 50))
+    entries = [
+        PhoneBookEntry.model_validate(item)
+        for item in repo.list_phone_book_entries(conn, limit=500)
+    ]
+    normalized_query = (query or "").strip()
+    if not normalized_query:
+        return entries[:normalized_limit]
+
+    collapsed_query = normalized_query.casefold()
+    compact_query = re.sub(r"\s+", "", normalized_query).casefold()
+
+    ranked: list[tuple[int, str, PhoneBookEntry]] = []
+    for entry in entries:
+        department = entry.department.casefold()
+        tasks = entry.tasks.casefold()
+        phone = entry.phone.casefold()
+        department_compact = re.sub(r"\s+", "", entry.department).casefold()
+        tasks_compact = re.sub(r"\s+", "", entry.tasks).casefold()
+        phone_compact = re.sub(r"\s+", "", entry.phone).casefold()
+
+        rank: int | None = None
+        if department == collapsed_query or department_compact == compact_query:
+            rank = 0
+        elif collapsed_query in tasks or compact_query in tasks_compact:
+            rank = 1
+        elif collapsed_query in phone or compact_query in phone_compact:
+            rank = 2
+
+        if rank is None:
+            continue
+        ranked.append((rank, entry.department, entry))
+
+    ranked.sort(key=lambda item: (item[0], item[1]))
+    return [item[2] for item in ranked[:normalized_limit]]
+
+
 def list_academic_calendar(
     conn: DBConnection,
     *,
@@ -2961,6 +3010,8 @@ def _run_admin_sync_target(
         return {
             "academic_milestone_guides": len(refresh_academic_milestone_guides_from_source(conn))
         }
+    if target == "phone_book_entries":
+        return {"phone_book_entries": len(refresh_phone_book_entries_from_source(conn))}
     if target == "scholarship_guides":
         return {"scholarship_guides": len(refresh_scholarship_guides_from_source(conn))}
     if target == "wifi_guides":
@@ -4458,6 +4509,22 @@ def refresh_academic_milestone_guides_from_source(
     ]
 
 
+def refresh_phone_book_entries_from_source(
+    conn: DBConnection,
+    *,
+    source: Any | None = None,
+    fetched_at: str | None = None,
+) -> list[PhoneBookEntry]:
+    synced_at = fetched_at or _now_iso()
+    resolved_source = source or PhoneBookSource(PHONE_BOOK_SOURCE_URL)
+    rows = resolved_source.parse(resolved_source.fetch(), fetched_at=synced_at)
+    repo.replace_phone_book_entries(conn, rows)
+    return [
+        PhoneBookEntry.model_validate(item)
+        for item in repo.list_phone_book_entries(conn, limit=max(len(rows), 1))
+    ]
+
+
 def sync_official_snapshot(
     conn: DBConnection,
     *,
@@ -4494,6 +4561,7 @@ def sync_official_snapshot(
     class_guides = refresh_class_guides_from_source(conn)
     seasonal_semester_guides = refresh_seasonal_semester_guides_from_source(conn)
     academic_milestone_guides = refresh_academic_milestone_guides_from_source(conn)
+    phone_book_entries = refresh_phone_book_entries_from_source(conn)
     scholarship_guides = refresh_scholarship_guides_from_source(conn)
     academic_support_guides = refresh_academic_support_guides_from_source(conn)
     wifi_guides = refresh_wifi_guides_from_source(conn)
@@ -4512,6 +4580,7 @@ def sync_official_snapshot(
         "class_guides": len(class_guides),
         "seasonal_semester_guides": len(seasonal_semester_guides),
         "academic_milestone_guides": len(academic_milestone_guides),
+        "phone_book_entries": len(phone_book_entries),
         "scholarship_guides": len(scholarship_guides),
         "academic_support_guides": len(academic_support_guides),
         "wifi_guides": len(wifi_guides),

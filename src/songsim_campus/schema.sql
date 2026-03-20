@@ -250,6 +250,16 @@ CREATE TABLE IF NOT EXISTS academic_milestone_guides (
     last_synced_at TIMESTAMPTZ NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS phone_book_entries (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    department TEXT NOT NULL,
+    tasks TEXT NOT NULL,
+    phone TEXT NOT NULL,
+    source_url TEXT,
+    source_tag TEXT NOT NULL DEFAULT 'demo',
+    last_synced_at TIMESTAMPTZ NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS academic_calendar (
     id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     academic_year INTEGER NOT NULL,

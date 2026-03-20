@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 from collections import Counter
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -33,6 +34,7 @@ from .ingest.official_sources import (
     GraduationRequirementGuideSource,
     LeaveOfAbsenceGuideSource,
     NoticeSource,
+    PhoneBookSource,
     RegistrationBillLookupGuideSource,
     RegistrationPaymentAndReturnGuideSource,
     RegistrationPaymentByStudentGuideSource,
@@ -64,6 +66,7 @@ EvalDomain = Literal[
     "class_guides",
     "seasonal_semester_guides",
     "academic_milestone_guides",
+    "phone_book",
     "out_of_scope",
 ]
 EvalStyle = Literal["normal", "alias", "composite", "typo", "ambiguous", "out_of_scope"]
@@ -324,6 +327,16 @@ def _summarize_payload(payload: Any, *, summary_kind: str) -> Any:
             }
             for item in rows[:5]
         ]
+    if summary_kind == "phone_book_top5":
+        rows = payload if isinstance(payload, list) else []
+        return [
+            {
+                "department": item.get("department"),
+                "tasks": item.get("tasks"),
+                "phone": item.get("phone"),
+            }
+            for item in rows[:5]
+        ]
     if summary_kind == "scholarship_guides_top5":
         rows = payload if isinstance(payload, list) else []
         return [{"title": item.get("title"), "summary": item.get("summary")} for item in rows[:5]]
@@ -384,6 +397,54 @@ def _build_policy_summary(row: EvalCorpusRow) -> dict[str, Any]:
         fallback = {"mode": "unknown", "blocked_features": []}
         return dict(POLICY_SUMMARIES.get(row.api_request.policy, fallback))
     return {"mode": "unknown", "blocked_features": []}
+
+
+def _search_phone_book_rows(
+    rows: list[dict[str, Any]],
+    *,
+    query: str | None,
+    limit: int,
+) -> list[dict[str, Any]]:
+    normalized_limit = max(1, min(limit, 50))
+    sorted_rows = sorted(
+        rows,
+        key=lambda item: (
+            str(item.get("department") or ""),
+            str(item.get("phone") or ""),
+        ),
+    )
+    normalized_query = (query or "").strip()
+    if not normalized_query:
+        return sorted_rows[:normalized_limit]
+
+    collapsed_query = normalized_query.casefold()
+    compact_query = re.sub(r"\s+", "", normalized_query).casefold()
+    ranked: list[tuple[int, str, int, dict[str, Any]]] = []
+    for index, item in enumerate(sorted_rows):
+        department = str(item.get("department") or "")
+        tasks = str(item.get("tasks") or "")
+        phone = str(item.get("phone") or "")
+
+        department_folded = department.casefold()
+        tasks_folded = tasks.casefold()
+        phone_folded = phone.casefold()
+        department_compact = re.sub(r"\s+", "", department).casefold()
+        tasks_compact = re.sub(r"\s+", "", tasks).casefold()
+        phone_compact = re.sub(r"\s+", "", phone).casefold()
+
+        rank: int | None = None
+        if department_folded == collapsed_query or department_compact == compact_query:
+            rank = 0
+        elif collapsed_query in tasks_folded or compact_query in tasks_compact:
+            rank = 1
+        elif collapsed_query in phone_folded or compact_query in phone_compact:
+            rank = 2
+        if rank is None:
+            continue
+        ranked.append((rank, department, index, item))
+
+    ranked.sort(key=lambda item: (item[0], item[1], item[2]))
+    return [item[3] for item in ranked[:normalized_limit]]
 
 
 def _subset_match(expected: Any, actual: Any) -> bool:
@@ -548,6 +609,13 @@ def _payload_from_db(conn: psycopg.Connection, row: EvalCorpusRow) -> Any:
         items = services.list_academic_milestone_guides(
             conn,
             topic=row.api_request.params.get("topic"),
+            limit=_limit_from_row(row, 20),
+        )
+        return [item.model_dump() for item in items]
+    if path == "/phone-book":
+        items = services.search_phone_book_entries(
+            conn,
+            query=row.api_request.params.get("query"),
             limit=_limit_from_row(row, 20),
         )
         return [item.model_dump() for item in items]
@@ -1008,6 +1076,16 @@ def _payload_from_sources(
         if topic := row.api_request.params.get("topic"):
             rows = [item for item in rows if item.get("topic") == topic]
         return rows[:limit]
+    if path == "/phone-book":
+        cache_key = "phone_book_entries"
+        if cache_key not in source_cache:
+            source = PhoneBookSource(services.PHONE_BOOK_SOURCE_URL)
+            source_cache[cache_key] = source.parse(source.fetch(), fetched_at=captured_at)
+        return _search_phone_book_rows(
+            list(source_cache[cache_key]),
+            query=row.api_request.params.get("query"),
+            limit=limit,
+        )
     if path == "/academic-calendar":
         start_date, end_date = _current_academic_year_bounds()
         cache_key = f"academic_calendar:{start_date}:{end_date}"
@@ -1410,6 +1488,7 @@ def render_validation_report(
         "class_guides",
         "seasonal_semester_guides",
         "academic_milestone_guides",
+        "phone_book",
         "scholarship_guides",
         "wifi_guides",
         "leave_of_absence_guides",
