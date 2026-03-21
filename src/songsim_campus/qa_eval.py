@@ -61,6 +61,12 @@ from .ingest.pc_software import (
 from .ingest.pc_software import (
     search_pc_software_entries as rank_pc_software_rows,
 )
+from .ingest.student_activity_guides import (
+    CampusMediaGuideSource,
+    RotcGuideSource,
+    SocialVolunteeringGuideSource,
+    StudentGovernmentGuideSource,
+)
 
 try:
     from . import course_search_runtime as course_search_runtime
@@ -1445,6 +1451,26 @@ def _payload_from_sources(
         if topic := row.api_request.params.get("topic"):
             rows = [item for item in rows if item.get("topic") == topic]
         return rows[:limit]
+    if path == "/student-activity-guides":
+        cache_key = "student_activity_guides"
+        if cache_key not in source_cache:
+            rows: list[dict[str, Any]] = []
+            for source in (
+                StudentGovernmentGuideSource(
+                    services.STUDENT_ACTIVITY_GUIDE_SOURCE_URLS["student_government"]
+                ),
+                CampusMediaGuideSource(services.STUDENT_ACTIVITY_GUIDE_SOURCE_URLS["campus_media"]),
+                SocialVolunteeringGuideSource(
+                    services.STUDENT_ACTIVITY_GUIDE_SOURCE_URLS["social_volunteering"]
+                ),
+                RotcGuideSource(services.STUDENT_ACTIVITY_GUIDE_SOURCE_URLS["rotc"]),
+            ):
+                rows.extend(source.parse(source.fetch(), fetched_at=captured_at))
+            source_cache[cache_key] = rows
+        rows = list(source_cache[cache_key])
+        if topic := row.api_request.params.get("topic"):
+            rows = [item for item in rows if item.get("topic") == topic]
+        return rows[:limit]
     if path == "/student-exchange-partners":
         cache_key = "student_exchange_partners"
         if cache_key not in source_cache:
@@ -2067,6 +2093,7 @@ def render_validation_report(
         "class_guides",
         "seasonal_semester_guides",
         "academic_milestone_guides",
+        "student_activity_guides",
         "phone_book",
         "scholarship_guides",
         "wifi_guides",

@@ -1639,6 +1639,55 @@ def test_render_validation_report_includes_academic_milestone_guides_coverage() 
     assert report.count("| academic_milestone_guides | 1 | 1 |") == 2
 
 
+def test_render_validation_report_includes_student_activity_guides_coverage() -> None:
+    rows = [
+        EvalCorpusRow.model_validate(
+            {
+                "id": "SAG001",
+                "domain": "student_activity_guides",
+                "style": "normal",
+                "user_utterance": "총학생회 안내해줘",
+                "api_request": {
+                    "path": "/student-activity-guides",
+                    "params": {"topic": "student_government", "limit": 5},
+                },
+                "expected_mcp_flow": "tool_list_student_activity_guides",
+                "truth_mode": "set_contains",
+                "pass_rule": {"summary_kind": "student_activity_guides_top5"},
+                "watch_policy": "none",
+                "notes": "",
+            }
+        )
+    ]
+    results = [
+        {
+            "id": "SAG001",
+            "status": "completed",
+            "verdict": "pass",
+            "actual_summary": [
+                {
+                    "topic": "student_government",
+                    "title": "총학생회",
+                    "summary": "학생 자치 대표 기구",
+                }
+            ],
+            "comparison": "set_contains",
+            "truth_source": "official_source",
+            "checked_at": "2026-03-21T10:20:00+09:00",
+        }
+    ]
+
+    report = render_validation_report(
+        rows=rows,
+        results=results,
+        checked_at="2026-03-21T10:20:00+09:00",
+        base_url="https://songsim-public-api.onrender.com",
+    )
+
+    assert "Guide-Domain Coverage" in report
+    assert report.count("| student_activity_guides | 1 | 1 |") == 2
+
+
 def test_render_validation_report_includes_phone_book_coverage() -> None:
     rows = [
         EvalCorpusRow.model_validate(
@@ -1971,6 +2020,84 @@ def test_build_truth_rows_dedupes_affiliated_notices_by_topic_first_seen(app_env
             captured_at="2026-03-20T10:10:00+09:00",
             stability="stable",
         ),
+    ]
+
+
+def test_build_truth_rows_uses_student_activity_sources(monkeypatch: pytest.MonkeyPatch) -> None:
+    row = EvalCorpusRow.model_validate(
+        {
+            "id": "SAG101",
+            "domain": "student_activity_guides",
+            "style": "normal",
+            "user_utterance": "총학생회 안내해줘",
+            "api_request": {
+                "path": "/student-activity-guides",
+                "params": {"topic": "student_government", "limit": 5},
+            },
+            "expected_mcp_flow": "tool_list_student_activity_guides",
+            "truth_mode": "set_contains",
+            "pass_rule": {"summary_kind": "student_activity_guides_top5"},
+            "watch_policy": "none",
+            "notes": "",
+        }
+    )
+
+    class FakeStudentGovernmentSource:
+        def __init__(self, url: str):
+            self.url = url
+
+        def fetch(self) -> str:
+            return "ignored"
+
+        def parse(self, _html: str, *, fetched_at: str) -> list[dict[str, object]]:
+            return [
+                {
+                    "topic": "student_government",
+                    "title": "총학생회",
+                    "summary": "학생 자치 대표 기구",
+                    "steps": ["안내"],
+                    "links": [],
+                    "source_url": self.url,
+                    "source_tag": "cuk_student_activity_guides",
+                    "last_synced_at": fetched_at,
+                }
+            ]
+
+    class EmptySource:
+        def __init__(self, url: str):
+            self.url = url
+
+        def fetch(self) -> str:
+            return "ignored"
+
+        def parse(self, _html: str, *, fetched_at: str) -> list[dict[str, object]]:
+            return []
+
+    monkeypatch.setattr(qa_eval, "StudentGovernmentGuideSource", FakeStudentGovernmentSource)
+    monkeypatch.setattr(qa_eval, "CampusMediaGuideSource", EmptySource)
+    monkeypatch.setattr(qa_eval, "SocialVolunteeringGuideSource", EmptySource)
+    monkeypatch.setattr(qa_eval, "RotcGuideSource", EmptySource)
+
+    truth_rows = build_truth_rows(
+        [row],
+        database_url=None,
+        captured_at="2026-03-21T10:10:00+09:00",
+    )
+
+    assert truth_rows == [
+        EvalTruthRow(
+            id="SAG101",
+            normalized_expected=[
+                {
+                    "topic": "student_government",
+                    "title": "총학생회",
+                    "summary": "학생 자치 대표 기구",
+                }
+            ],
+            truth_source="official_source",
+            captured_at="2026-03-21T10:10:00+09:00",
+            stability="stable",
+        )
     ]
 
 
