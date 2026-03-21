@@ -159,7 +159,7 @@ async def lifespan(_: FastAPI):
     settings = get_settings()
     stop_event = asyncio.Event()
     automation_task: asyncio.Task[None] | None = None
-    if settings.sync_official_on_start:
+    if settings.startup_sync_enabled:
         with connection() as conn:
             sync_official_snapshot(conn)
     elif settings.seed_demo_on_start:

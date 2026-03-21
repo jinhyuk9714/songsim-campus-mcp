@@ -689,6 +689,28 @@ def test_public_readonly_mode_skips_automation_loop(app_env, monkeypatch):
     assert calls == []
 
 
+def test_public_readonly_mode_skips_startup_sync(app_env, monkeypatch):
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    monkeypatch.setenv("SONGSIM_SYNC_OFFICIAL_ON_START", "true")
+    clear_settings_cache()
+
+    calls: list[str] = []
+
+    def fail_sync(conn):
+        calls.append("called")
+        raise AssertionError("public readonly startup sync should not run")
+
+    monkeypatch.setattr(api_module, "sync_official_snapshot", fail_sync)
+
+    app = create_app()
+    with TestClient(app):
+        pass
+
+    clear_settings_cache()
+
+    assert calls == []
+
+
 def test_public_readonly_affiliated_notices_deduplicate_titles(app_env, monkeypatch):
     init_db()
     monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")

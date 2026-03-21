@@ -81,6 +81,10 @@ class Settings(BaseSettings):
     def automation_runtime_enabled(self) -> bool:
         return self.automation_enabled and self.app_mode != "public_readonly"
 
+    @property
+    def startup_sync_enabled(self) -> bool:
+        return self.sync_official_on_start and self.app_mode != "public_readonly"
+
     @model_validator(mode="after")
     def reject_legacy_database_path(self) -> Settings:
         if self.database_path or os.environ.get("SONGSIM_DATABASE_PATH"):

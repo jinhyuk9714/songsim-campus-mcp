@@ -128,7 +128,7 @@ def main() -> None:
 
     init_db()
     settings = get_settings()
-    if settings.sync_official_on_start:
+    if settings.startup_sync_enabled:
         with connection() as conn:
             sync_official_snapshot(conn)
     elif settings.seed_demo_on_start:
