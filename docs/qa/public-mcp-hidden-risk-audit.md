@@ -57,8 +57,8 @@
 | CW01 | 데이터베이스 과목 있어 | `GET /courses?query=데이터베이스&year=2026&semester=1&limit=5` | direct hit가 없으면 source-backed near match 여부를 기록해야 한다 | `데이터베이스활용` 1건만 반환 | fast | soft_pass | `source_gap_watchlist` | release gate가 아닌 watchlist로 계속 추적한다 |
 | CW02 | CSE301 과목 뭐야 | `GET /courses?query=CSE301&year=2026&semester=1&limit=5` | empty면 source-backed 부재 여부를 watchlist로 남겨야 한다 | `[]` | fast | soft_pass | `source_gap_watchlist` | 현재는 source-backed 아님 쪽으로 본다 |
 | CW03 | 김가톨 교수 수업 있어 | `GET /courses?query=김가톨&year=2026&semester=1&limit=5` | empty면 source-backed 부재 여부를 watchlist로 남겨야 한다 | `[]` | fast | soft_pass | `source_gap_watchlist` | release gate 바깥의 교수명 watchlist다 |
-| CW04 | 데이타베이스 과목 있어 | `GET /courses?query=데이타베이스&year=2026&semester=1&limit=5` | typo recovery 미지원이면 watchlist로만 기록해야 한다 | `[]` | fast | soft_pass | `source_gap_watchlist` | 현재는 deterministic canary가 아니다 |
-| CW05 | CSE 420 과목 뭐야 | `GET /courses?query=CSE%20420&year=2026&semester=1&limit=5` | spacing code query가 empty면 watchlist로만 남겨야 한다 | `[]` | fast | soft_pass | `source_gap_watchlist` | 검색 버그로 단정하지 않고 source-gap watchlist 유지 |
+| CW04 | 데이타베이스 과목 있어 | `GET /courses?query=데이타베이스&year=2026&semester=1&limit=5` | typo alias normalization이 near match로 회복돼야 한다 | `데이터베이스활용` 1건 반환 | fast | soft_pass | `normalized_alias` | watch-only는 유지하되 pure source-gap은 아니다 |
+| CW05 | CSE 420 과목 뭐야 | `GET /courses?query=CSE%20420&year=2026&semester=1&limit=5` | spacing normalization이 direct hit로 회복돼야 한다 | `CSE420` 1건 반환 | fast | pass | `normalized_spacing` | watch-only로 남겨도 실제 응답은 recovered다 |
 | LS01 | 니콜스에서 지금 빈 강의실 있어 | `GET /classrooms/empty?building=니콜스&limit=5` | valid building happy-path가 10초 안에 응답해야 한다 | `200`, 5건 반환 | slow | pass | `latency_ok` | 과거 timeout은 해소됐다 |
 | LS02 | 김수환관 지금 빈 강의실 있어 | `GET /classrooms/empty?building=김수환관&limit=5` | valid building happy-path가 10초 안에 응답해야 한다 | `200`, 5건 반환 | slow | pass | `latency_ok` | resolver와 응답 시간이 모두 정상 범위다 |
 | LS03 | 학생미래인재관 빈 강의실 있어 | `GET /classrooms/empty?building=학생미래인재관&limit=5` | room data가 있으면 결과를, 없으면 empty+note를 10초 안에 반환해야 한다 | `200`, 4건 반환 | slow | pass | `latency_ok` | 과거 timeout/empty note baseline은 더 이상 유효하지 않다 |
@@ -80,5 +80,5 @@
 
 - `classrooms timeout`, `transport mode mismatch`, `generic facility noun -> []`, `generic facility noun -> dormitory`, `스타벅스 주차장 노이즈`, `정문/K관` residual noise는 더 이상 현재 운영 baseline의 핵심 리스크가 아니다.
 - `affiliated notices`의 pinned/latest duplicate는 이번 slice 이후 resolved로 본다.
-- 현재 남아 있는 눈에 띄는 리스크는 `course source-gap watchlist` 쪽이다.
-- `course`는 release gate가 아니라 watchlist라는 현재 정책을 유지한다. `데이터베이스`, `CSE301`, `김가톨`, `데이타베이스`, `CSE 420`는 계속 source-backed 여부 중심으로만 추적한다.
+- 현재 남아 있는 눈에 띄는 리스크는 `course source-gap watchlist` 중에서도 `CSE301`, `김가톨` 쪽이다.
+- `course`는 release gate가 아니라 watchlist라는 현재 정책을 유지한다. `데이터베이스`와 `데이타베이스`는 near-match recovery, `CSE 420`은 direct-hit recovery로 따로 기록하고, `CSE301`과 `김가톨`만 source-backed 여부 중심으로 계속 추적한다.

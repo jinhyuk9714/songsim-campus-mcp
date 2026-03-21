@@ -1169,8 +1169,9 @@ def _search_courses_from_source(
         )
     snapshot_rows = list(source_cache[cache_key])
     query = str(params.get("query") or "")
-    collapsed_query, compact_query = services._normalized_query_variants(query)
-    if collapsed_query is None:
+    query_candidates = services._course_query_candidates(query)
+    normalized_query = services._normalize_course_query_text(query)
+    if normalized_query is None:
         rows = snapshot_rows
         if period_start is not None:
             rows = [
@@ -1178,9 +1179,7 @@ def _search_courses_from_source(
             ]
         return rows[:limit]
 
-    queries = [collapsed_query or ""]
-    if compact_query is not None and compact_query != queries[0]:
-        queries.append(compact_query)
+    queries = query_candidates
 
     ranked_items: list[tuple[int, int, int, str, str, str, int, dict[str, Any]]] = []
     seen_keys: set[tuple[Any, ...]] = set()
@@ -1205,8 +1204,7 @@ def _search_courses_from_source(
             seen_keys.add(item_key)
             rank = services._rank_course_search_candidate(
                 item,
-                collapsed_query=collapsed_query,
-                compact_query=compact_query,
+                queries=queries,
             )
             if rank is None:
                 continue

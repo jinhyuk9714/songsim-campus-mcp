@@ -2478,6 +2478,115 @@ def test_courses_query_returns_expected_course(client):
     assert items[0]['title'] == '객체지향프로그래밍설계'
 
 
+def test_courses_endpoint_recovers_typo_and_code_spacing_while_leaving_watchlist_queries_empty(
+    client,
+):
+    with connection() as conn:
+        replace_courses(
+            conn,
+            [
+                {
+                    "year": 2026,
+                    "semester": 1,
+                    "code": "CSE420",
+                    "title": "임베디드시스템",
+                    "professor": "담당교수",
+                    "department": "컴퓨터정보공학부",
+                    "section": "01",
+                    "day_of_week": "월",
+                    "period_start": 7,
+                    "period_end": 8,
+                    "room": "N401",
+                    "raw_schedule": "월7~8(N401)",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "year": 2026,
+                    "semester": 1,
+                    "code": "MTH101",
+                    "title": "데이터베이스활용",
+                    "professor": "담당교수",
+                    "department": "테스트학과",
+                    "section": "01",
+                    "day_of_week": "월",
+                    "period_start": 3,
+                    "period_end": 4,
+                    "room": "M101",
+                    "raw_schedule": "월3~4(M101)",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "year": 2026,
+                    "semester": 1,
+                    "code": "BIO102",
+                    "title": "분자생물학개론",
+                    "professor": "박요셉",
+                    "department": "자연과학계열",
+                    "section": "01",
+                    "day_of_week": "화",
+                    "period_start": 1,
+                    "period_end": 2,
+                    "room": "S201",
+                    "raw_schedule": "화1~2(S201)",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+
+    typo_response = client.get(
+        "/courses",
+        params={"query": "데이타베이스", "year": 2026, "semester": 1, "limit": 5},
+    )
+    spaced_title_response = client.get(
+        "/courses",
+        params={"query": "데 이 터 베 이 스", "year": 2026, "semester": 1, "limit": 5},
+    )
+    spaced_code_response = client.get(
+        "/courses",
+        params={"query": "CSE 420", "year": 2026, "semester": 1, "limit": 5},
+    )
+    dashed_code_response = client.get(
+        "/courses",
+        params={"query": "CSE-420", "year": 2026, "semester": 1, "limit": 5},
+    )
+    mixed_case_code_response = client.get(
+        "/courses",
+        params={"query": "cSe 420", "year": 2026, "semester": 1, "limit": 5},
+    )
+    spaced_professor_response = client.get(
+        "/courses",
+        params={"query": "박 요 셉", "year": 2026, "semester": 1, "limit": 5},
+    )
+    source_gap_code_response = client.get(
+        "/courses",
+        params={"query": "CSE301", "year": 2026, "semester": 1, "limit": 5},
+    )
+    source_gap_professor_response = client.get(
+        "/courses",
+        params={"query": "김가톨", "year": 2026, "semester": 1, "limit": 5},
+    )
+
+    assert typo_response.status_code == 200
+    assert [item["code"] for item in typo_response.json()] == ["MTH101"]
+    assert spaced_title_response.status_code == 200
+    assert [item["code"] for item in spaced_title_response.json()] == ["MTH101"]
+    assert spaced_code_response.status_code == 200
+    assert [item["code"] for item in spaced_code_response.json()] == ["CSE420"]
+    assert dashed_code_response.status_code == 200
+    assert [item["code"] for item in dashed_code_response.json()] == ["CSE420"]
+    assert mixed_case_code_response.status_code == 200
+    assert [item["code"] for item in mixed_case_code_response.json()] == ["CSE420"]
+    assert spaced_professor_response.status_code == 200
+    assert [item["code"] for item in spaced_professor_response.json()] == ["BIO102"]
+    assert source_gap_code_response.status_code == 200
+    assert source_gap_code_response.json() == []
+    assert source_gap_professor_response.status_code == 200
+    assert source_gap_professor_response.json() == []
+
+
 def test_courses_endpoint_prioritizes_ranked_matches_over_general_substrings(client):
     with connection() as conn:
         replace_courses(

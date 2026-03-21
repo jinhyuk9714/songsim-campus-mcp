@@ -1627,6 +1627,136 @@ def test_mcp_public_search_courses_tool_accepts_period_start(app_env, monkeypatc
     clear_settings_cache()
 
 
+def test_mcp_search_courses_recovers_alias_and_keeps_watchlist_empty(
+    app_env,
+    monkeypatch,
+):
+    pytest.importorskip("mcp.server.fastmcp")
+    init_db()
+    with connection() as conn:
+        replace_courses(
+            conn,
+            [
+                {
+                    "year": 2026,
+                    "semester": 1,
+                    "code": "CSE420",
+                    "title": "임베디드시스템",
+                    "professor": "담당교수",
+                    "department": "컴퓨터정보공학부",
+                    "section": "01",
+                    "day_of_week": "월",
+                    "period_start": 7,
+                    "period_end": 8,
+                    "room": "N401",
+                    "raw_schedule": "월7~8(N401)",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "year": 2026,
+                    "semester": 1,
+                    "code": "MTH101",
+                    "title": "데이터베이스활용",
+                    "professor": "담당교수",
+                    "department": "테스트학과",
+                    "section": "01",
+                    "day_of_week": "월",
+                    "period_start": 3,
+                    "period_end": 4,
+                    "room": "M101",
+                    "raw_schedule": "월3~4(M101)",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "year": 2026,
+                    "semester": 1,
+                    "code": "BIO102",
+                    "title": "분자생물학개론",
+                    "professor": "박요셉",
+                    "department": "자연과학계열",
+                    "section": "01",
+                    "day_of_week": "화",
+                    "period_start": 1,
+                    "period_end": 2,
+                    "room": "S201",
+                    "raw_schedule": "화1~2(S201)",
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        return {
+            "typo": _tool_payloads(
+                await mcp.call_tool(
+                    "tool_search_courses",
+                    {"query": "데이타베이스", "year": 2026, "semester": 1, "limit": 5},
+                )
+            ),
+            "spaced_title": _tool_payloads(
+                await mcp.call_tool(
+                    "tool_search_courses",
+                    {"query": "데 이 터 베 이 스", "year": 2026, "semester": 1, "limit": 5},
+                )
+            ),
+            "spaced_code": _tool_payloads(
+                await mcp.call_tool(
+                    "tool_search_courses",
+                    {"query": "CSE 420", "year": 2026, "semester": 1, "limit": 5},
+                )
+            ),
+            "dashed_code": _tool_payloads(
+                await mcp.call_tool(
+                    "tool_search_courses",
+                    {"query": "CSE-420", "year": 2026, "semester": 1, "limit": 5},
+                )
+            ),
+            "mixed_case_code": _tool_payloads(
+                await mcp.call_tool(
+                    "tool_search_courses",
+                    {"query": "cSe 420", "year": 2026, "semester": 1, "limit": 5},
+                )
+            ),
+            "spaced_professor": _tool_payloads(
+                await mcp.call_tool(
+                    "tool_search_courses",
+                    {"query": "박 요 셉", "year": 2026, "semester": 1, "limit": 5},
+                )
+            ),
+            "source_gap_code": _tool_payloads(
+                await mcp.call_tool(
+                    "tool_search_courses",
+                    {"query": "CSE301", "year": 2026, "semester": 1, "limit": 5},
+                )
+            ),
+            "source_gap_professor": _tool_payloads(
+                await mcp.call_tool(
+                    "tool_search_courses",
+                    {"query": "김가톨", "year": 2026, "semester": 1, "limit": 5},
+                )
+            ),
+        }
+
+    payload = asyncio.run(main())
+
+    assert [item["code"] for item in payload["typo"]] == ["MTH101"]
+    assert [item["code"] for item in payload["spaced_title"]] == ["MTH101"]
+    assert [item["code"] for item in payload["spaced_code"]] == ["CSE420"]
+    assert [item["code"] for item in payload["dashed_code"]] == ["CSE420"]
+    assert [item["code"] for item in payload["mixed_case_code"]] == ["CSE420"]
+    assert [item["code"] for item in payload["spaced_professor"]] == ["BIO102"]
+    assert payload["source_gap_code"] == []
+    assert payload["source_gap_professor"] == []
+
+    clear_settings_cache()
+
+
 def test_mcp_public_library_seat_tool_returns_live_room_payload(app_env, monkeypatch):
     pytest.importorskip('mcp.server.fastmcp')
     init_db()

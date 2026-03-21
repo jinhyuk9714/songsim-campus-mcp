@@ -668,15 +668,39 @@ def test_search_courses_normalizes_database_alias_and_code_spacing(app_env):
             [
                 _course_row(year=2026, semester=1, code="CSE420", title="임베디드시스템"),
                 _course_row(year=2026, semester=1, code="MTH101", title="데이터베이스활용"),
+                _course_row(
+                    year=2026,
+                    semester=1,
+                    code="BIO102",
+                    title="분자생물학개론",
+                    professor="박요셉",
+                ),
+                _course_row(
+                    year=2026,
+                    semester=1,
+                    code="CHE103",
+                    title="화학실험",
+                    professor="김가톨",
+                ),
             ],
         )
         alias_courses = search_courses(conn, query="데이타베이스", limit=5)
+        spaced_database_courses = search_courses(conn, query="데 이 터 베 이 스", limit=5)
         spaced_code_courses = search_courses(conn, query="CSE 420", limit=5)
+        dashed_code_courses = search_courses(conn, query="CSE-420", limit=5)
         mixed_case_code_courses = search_courses(conn, query="cSe 420", limit=5)
+        compact_code_courses = search_courses(conn, query="CSE420", limit=5)
+        spaced_professor_courses = search_courses(conn, query="김 가 톨", limit=5)
+        spaced_professor_two_courses = search_courses(conn, query="박 요 셉", limit=5)
 
     assert [course.code for course in alias_courses] == ["MTH101"]
+    assert [course.code for course in spaced_database_courses] == ["MTH101"]
     assert [course.code for course in spaced_code_courses] == ["CSE420"]
+    assert [course.code for course in dashed_code_courses] == ["CSE420"]
     assert [course.code for course in mixed_case_code_courses] == ["CSE420"]
+    assert [course.code for course in compact_code_courses] == ["CSE420"]
+    assert [course.code for course in spaced_professor_courses] == ["CHE103"]
+    assert [course.code for course in spaced_professor_two_courses] == ["BIO102"]
 
 
 def test_search_courses_filters_by_period_start(app_env):
@@ -3748,7 +3772,16 @@ def test_investigate_course_query_coverage_reports_covered_and_source_gaps(app_e
         )
         reports = investigate_course_query_coverage(
             conn,
-            queries=['데이타베이스', 'CSE301', 'cSe 420'],
+            queries=[
+                '데이타베이스',
+                '데 이 터 베 이 스',
+                'CSE-420',
+                'CSE301',
+                '김가톨',
+                '김 가 톨',
+                'cSe 420',
+                '박 요 셉',
+            ],
             source=FakeCourseCoverageSource(),
             year=2026,
             semester=1,
@@ -3793,7 +3826,103 @@ def test_investigate_course_query_coverage_reports_covered_and_source_gaps(app_e
             ],
         },
         {
+            'query': '데 이 터 베 이 스',
+            'year': 2026,
+            'semester': 1,
+            'status': 'covered',
+            'source_match_count': 1,
+            'db_match_count': 1,
+            'search_match_count': 1,
+            'source_matches': [
+                {
+                    'code': '05497',
+                    'title': '데이터베이스활용',
+                    'professor': '권보람',
+                    'department': '경영학과',
+                    'section': '01',
+                }
+            ],
+            'db_matches': [
+                {
+                    'code': '05497',
+                    'title': '데이터베이스활용',
+                    'professor': '권보람',
+                    'department': '경영학과',
+                    'section': '01',
+                }
+            ],
+            'search_matches': [
+                {
+                    'code': '05497',
+                    'title': '데이터베이스활용',
+                    'professor': '권보람',
+                    'department': '경영학과',
+                    'section': '01',
+                }
+            ],
+        },
+        {
+            'query': 'CSE-420',
+            'year': 2026,
+            'semester': 1,
+            'status': 'covered',
+            'source_match_count': 1,
+            'db_match_count': 1,
+            'search_match_count': 1,
+            'source_matches': [
+                {
+                    'code': 'CSE420',
+                    'title': '임베디드시스템',
+                    'professor': '박성심',
+                    'department': '컴퓨터정보공학부',
+                    'section': '01',
+                }
+            ],
+            'db_matches': [
+                {
+                    'code': 'CSE420',
+                    'title': '임베디드시스템',
+                    'professor': '박성심',
+                    'department': '컴퓨터정보공학부',
+                    'section': '01',
+                }
+            ],
+            'search_matches': [
+                {
+                    'code': 'CSE420',
+                    'title': '임베디드시스템',
+                    'professor': '박성심',
+                    'department': '컴퓨터정보공학부',
+                    'section': '01',
+                }
+            ],
+        },
+        {
             'query': 'CSE301',
+            'year': 2026,
+            'semester': 1,
+            'status': 'source_gap',
+            'source_match_count': 0,
+            'db_match_count': 0,
+            'search_match_count': 0,
+            'source_matches': [],
+            'db_matches': [],
+            'search_matches': [],
+        },
+        {
+            'query': '김가톨',
+            'year': 2026,
+            'semester': 1,
+            'status': 'source_gap',
+            'source_match_count': 0,
+            'db_match_count': 0,
+            'search_match_count': 0,
+            'source_matches': [],
+            'db_matches': [],
+            'search_matches': [],
+        },
+        {
+            'query': '김 가 톨',
             'year': 2026,
             'semester': 1,
             'status': 'source_gap',
@@ -3839,6 +3968,18 @@ def test_investigate_course_query_coverage_reports_covered_and_source_gaps(app_e
                     'section': '01',
                 }
             ],
+        },
+        {
+            'query': '박 요 셉',
+            'year': 2026,
+            'semester': 1,
+            'status': 'source_gap',
+            'source_match_count': 0,
+            'db_match_count': 0,
+            'search_match_count': 0,
+            'source_matches': [],
+            'db_matches': [],
+            'search_matches': [],
         },
     ]
 

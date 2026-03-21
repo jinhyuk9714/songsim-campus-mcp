@@ -1213,6 +1213,10 @@ def _normalize_course_query_text(value: str | None) -> str | None:
     return collapsed.replace("데이타베이스", "데이터베이스")
 
 
+def _looks_like_course_code_query(value: str) -> bool:
+    return bool(re.search(r"[A-Za-z]", value) and re.search(r"\d", value))
+
+
 def _matches_exact_text_candidate(
     text: str | None,
     *,
@@ -1269,59 +1273,69 @@ def _matches_prefix_text_candidate(
 def _rank_course_search_candidate(
     item: dict[str, Any],
     *,
-    collapsed_query: str,
-    compact_query: str | None,
+    queries: list[str],
 ) -> int | None:
     code = str(item.get("code") or "")
     title = str(item.get("title") or "")
     professor = str(item.get("professor") or "")
 
-    if _matches_exact_text_candidate(
-        code,
-        collapsed_query=collapsed_query,
-        compact_query=compact_query,
-    ):
-        return 0
-    if _matches_prefix_text_candidate(
-        code,
-        collapsed_query=collapsed_query,
-        compact_query=compact_query,
-    ):
-        return 1
-    if _matches_exact_text_candidate(
-        title,
-        collapsed_query=collapsed_query,
-        compact_query=compact_query,
-    ):
-        return 2
-    if _matches_prefix_text_candidate(
-        title,
-        collapsed_query=collapsed_query,
-        compact_query=compact_query,
-    ):
-        return 3
-    if _matches_exact_text_candidate(
-        professor,
-        collapsed_query=collapsed_query,
-        compact_query=compact_query,
-    ):
-        return 4
-    if _matches_prefix_text_candidate(
-        professor,
-        collapsed_query=collapsed_query,
-        compact_query=compact_query,
-    ):
-        return 5
-    if any(
-        _matches_partial_text_candidate(
-            field,
+    best_rank: int | None = None
+    for query in queries:
+        collapsed_query, compact_query = _normalized_query_variants(query)
+        if collapsed_query is None:
+            continue
+
+        rank: int | None = None
+        if _matches_exact_text_candidate(
+            code,
             collapsed_query=collapsed_query,
             compact_query=compact_query,
-        )
-        for field in (code, title, professor)
-    ):
-        return 6
-    return None
+        ):
+            rank = 0
+        elif _matches_prefix_text_candidate(
+            code,
+            collapsed_query=collapsed_query,
+            compact_query=compact_query,
+        ):
+            rank = 1
+        elif _matches_exact_text_candidate(
+            title,
+            collapsed_query=collapsed_query,
+            compact_query=compact_query,
+        ):
+            rank = 2
+        elif _matches_prefix_text_candidate(
+            title,
+            collapsed_query=collapsed_query,
+            compact_query=compact_query,
+        ):
+            rank = 3
+        elif _matches_exact_text_candidate(
+            professor,
+            collapsed_query=collapsed_query,
+            compact_query=compact_query,
+        ):
+            rank = 4
+        elif _matches_prefix_text_candidate(
+            professor,
+            collapsed_query=collapsed_query,
+            compact_query=compact_query,
+        ):
+            rank = 5
+        elif any(
+            _matches_partial_text_candidate(
+                field,
+                collapsed_query=collapsed_query,
+                compact_query=compact_query,
+            )
+            for field in (code, title, professor)
+        ):
+            rank = 6
+        if rank is None:
+            continue
+        if best_rank is None or rank < best_rank:
+            best_rank = rank
+    return best_rank
 
 
 def _normalize_transport_mode(mode: str | None) -> str | None:
@@ -2414,13 +2428,10 @@ def search_courses(
             )
         ]
 
-    collapsed_query, compact_query = _normalized_query_variants(normalized_query)
-    queries = query_candidates
-
     ranked_items: list[tuple[int, int, int, str, str, str, int, dict[str, Any]]] = []
     seen_ids: set[int] = set()
     order_index = 0
-    for candidate_query in queries:
+    for candidate_query in query_candidates:
         for item in repo.search_courses(
             conn,
             candidate_query,
@@ -2435,8 +2446,7 @@ def search_courses(
             seen_ids.add(item_id)
             rank = _rank_course_search_candidate(
                 item,
-                collapsed_query=collapsed_query,
-                compact_query=compact_query,
+                queries=query_candidates,
             )
             if rank is None:
                 continue
@@ -2633,6 +2643,10 @@ def _course_query_candidates(query: str) -> list[str]:
     queries = [collapsed_query]
     if compact_query is not None and compact_query != queries[0]:
         queries.append(compact_query)
+    if _looks_like_course_code_query(collapsed_query):
+        code_compact_query = re.sub(r"[\s\-_]+", "", collapsed_query)
+        if code_compact_query and code_compact_query not in queries:
+            queries.append(code_compact_query)
     return queries
 
 

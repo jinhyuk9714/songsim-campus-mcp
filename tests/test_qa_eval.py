@@ -88,6 +88,159 @@ def test_load_eval_rows_rejects_invalid_truth_mode(tmp_path: Path) -> None:
         load_eval_rows(corpus_path)
 
 
+@pytest.mark.parametrize(
+    ("query", "expected_code", "source_rows"),
+    [
+        (
+            "데이타베이스",
+            "MTH101",
+            [
+                {
+                    "year": 2026,
+                    "semester": 1,
+                    "code": "MTH101",
+                    "title": "데이터베이스활용",
+                    "professor": "권보람",
+                    "department": "경영학과",
+                    "section": "01",
+                    "day_of_week": "화",
+                    "period_start": 1,
+                    "period_end": 2,
+                    "room": "M307",
+                    "raw_schedule": "화1~2(M307)",
+                    "source_tag": "cuk_subject_search",
+                    "last_synced_at": "2026-03-20T10:00:00+09:00",
+                }
+            ],
+        ),
+        (
+            "데 이 터 베 이 스",
+            "MTH101",
+            [
+                {
+                    "year": 2026,
+                    "semester": 1,
+                    "code": "MTH101",
+                    "title": "데이터베이스활용",
+                    "professor": "권보람",
+                    "department": "경영학과",
+                    "section": "01",
+                    "day_of_week": "화",
+                    "period_start": 1,
+                    "period_end": 2,
+                    "room": "M307",
+                    "raw_schedule": "화1~2(M307)",
+                    "source_tag": "cuk_subject_search",
+                    "last_synced_at": "2026-03-20T10:00:00+09:00",
+                }
+            ],
+        ),
+        (
+            "cSe 420",
+            "CSE420",
+            [
+                {
+                    "year": 2026,
+                    "semester": 1,
+                    "code": "CSE420",
+                    "title": "임베디드시스템",
+                    "professor": "박성심",
+                    "department": "컴퓨터정보공학부",
+                    "section": "01",
+                    "day_of_week": "목",
+                    "period_start": 5,
+                    "period_end": 6,
+                    "room": "N201",
+                    "raw_schedule": "목5~6(N201)",
+                    "source_tag": "cuk_subject_search",
+                    "last_synced_at": "2026-03-20T10:00:00+09:00",
+                }
+            ],
+        ),
+        (
+            "CSE-420",
+            "CSE420",
+            [
+                {
+                    "year": 2026,
+                    "semester": 1,
+                    "code": "CSE420",
+                    "title": "임베디드시스템",
+                    "professor": "박성심",
+                    "department": "컴퓨터정보공학부",
+                    "section": "01",
+                    "day_of_week": "목",
+                    "period_start": 5,
+                    "period_end": 6,
+                    "room": "N201",
+                    "raw_schedule": "목5~6(N201)",
+                    "source_tag": "cuk_subject_search",
+                    "last_synced_at": "2026-03-20T10:00:00+09:00",
+                }
+            ],
+        ),
+        (
+            "박 요 셉",
+            "BIO102",
+            [
+                {
+                    "year": 2026,
+                    "semester": 1,
+                    "code": "BIO102",
+                    "title": "분자생물학개론",
+                    "professor": "박요셉",
+                    "department": "자연과학계열",
+                    "section": "01",
+                    "day_of_week": "화",
+                    "period_start": 1,
+                    "period_end": 2,
+                    "room": "S201",
+                    "raw_schedule": "화1~2(S201)",
+                    "source_tag": "cuk_subject_search",
+                    "last_synced_at": "2026-03-20T10:00:00+09:00",
+                }
+            ],
+        ),
+    ],
+)
+def test_search_courses_from_source_normalizes_database_alias(
+    monkeypatch: pytest.MonkeyPatch,
+    query: str,
+    expected_code: str,
+    source_rows: list[dict[str, object]],
+) -> None:
+    row = EvalCorpusRow.model_validate(
+        {
+            "id": "CQ001",
+            "domain": "courses",
+            "style": "normal",
+            "user_utterance": f"{query} 과목 있어",
+            "api_request": {
+                "path": "/courses",
+                "params": {"query": query, "year": 2026, "semester": 1},
+            },
+            "expected_mcp_flow": "tool_search_courses",
+            "truth_mode": "watch_only",
+            "pass_rule": {"summary_kind": "courses_top5"},
+            "watch_policy": "course_source_gap",
+            "notes": "",
+        }
+    )
+    monkeypatch.setattr(
+        qa_eval.services,
+        "_collect_course_snapshot_rows",
+        lambda *args, **kwargs: source_rows,
+    )
+
+    results = qa_eval._search_courses_from_source(
+        row,
+        fetched_at="2026-03-20T10:10:00+09:00",
+        source_cache={},
+    )
+
+    assert [item["code"] for item in results] == [expected_code]
+
+
 def test_build_truth_rows_uses_database_snapshot_for_academic_support_guides(app_env: str) -> None:
     row = EvalCorpusRow.model_validate(
         {
