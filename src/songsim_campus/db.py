@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import re
+import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 import psycopg
 from psycopg.rows import dict_row
@@ -12,7 +14,8 @@ from .settings import get_settings
 
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 SCHEMA_INIT_LOCK_KEY = 608_489_971_338_014_235
-DBConnection = psycopg.Connection
+PUBLIC_READONLY_DB_CONNECTION_LIMIT = 4
+DBConnection = Any
 
 _CREATE_EXTENSION_RE = re.compile(
     r"^CREATE\s+EXTENSION\s+IF\s+NOT\s+EXISTS\s+([a-zA-Z_][a-zA-Z0-9_]*)$",
@@ -32,12 +35,78 @@ _CREATE_INDEX_RE = re.compile(
 )
 
 
+class _ManagedConnection:
+    def __init__(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limiter: threading.BoundedSemaphore | None = None,
+    ) -> None:
+        self._conn = conn
+        self._limiter = limiter
+        self._closed = False
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._conn, name)
+
+    def __enter__(self) -> _ManagedConnection:
+        self._conn.__enter__()
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> bool | None:
+        try:
+            return self._conn.__exit__(exc_type, exc, tb)
+        finally:
+            self._release_limiter()
+
+    def close(self) -> None:
+        try:
+            self._conn.close()
+        finally:
+            self._release_limiter()
+
+    def _release_limiter(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        if self._limiter is not None:
+            self._limiter.release()
+
+
+_CONNECTION_LIMITERS: dict[str, threading.BoundedSemaphore] = {}
+
+
+def _connection_limiter_key(settings: Any) -> str:
+    return f"{settings.app_mode}:{settings.database_url}"
+
+
+def _get_connection_limiter(settings: Any) -> threading.BoundedSemaphore | None:
+    if settings.app_mode != "public_readonly":
+        return None
+    key = _connection_limiter_key(settings)
+    limiter = _CONNECTION_LIMITERS.get(key)
+    if limiter is None:
+        limiter = threading.BoundedSemaphore(PUBLIC_READONLY_DB_CONNECTION_LIMIT)
+        _CONNECTION_LIMITERS[key] = limiter
+    return limiter
+
+
 def get_connection() -> DBConnection:
     settings = get_settings()
-    return psycopg.connect(
-        settings.database_url,
-        row_factory=dict_row,
-    )
+    limiter = _get_connection_limiter(settings)
+    if limiter is not None:
+        limiter.acquire()
+    try:
+        conn = psycopg.connect(
+            settings.database_url,
+            row_factory=dict_row,
+            connect_timeout=5,
+        )
+    except Exception:
+        if limiter is not None:
+            limiter.release()
+        raise
+    return _ManagedConnection(conn, limiter=limiter)
 
 
 def init_db() -> None:

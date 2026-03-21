@@ -4,6 +4,7 @@ from pathlib import Path
 
 import songsim_campus.db as db_module
 from songsim_campus.db import connection, get_connection, init_db
+from songsim_campus.settings import clear_settings_cache
 
 
 def test_get_connection_uses_configured_database_url(app_env):
@@ -14,6 +15,71 @@ def test_get_connection_uses_configured_database_url(app_env):
         conn.close()
 
     assert row["name"].startswith("songsim_test_")
+
+
+def test_get_connection_releases_public_readonly_limiter_on_close(monkeypatch):
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    monkeypatch.setenv("SONGSIM_DATABASE_URL", "postgresql://songsim:songsim@127.0.0.1:55432/fake")
+    clear_settings_cache()
+    db_module._CONNECTION_LIMITERS.clear()
+
+    events: list[str] = []
+
+    class FakeLimiter:
+        def acquire(self) -> None:
+            events.append("acquire")
+
+        def release(self) -> None:
+            events.append("release")
+
+    class FakeConnection:
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    monkeypatch.setattr(db_module, "_get_connection_limiter", lambda settings: FakeLimiter())
+    monkeypatch.setattr(db_module.psycopg, "connect", lambda *args, **kwargs: FakeConnection())
+
+    conn = get_connection()
+    conn.close()
+    conn.close()
+
+    assert events == ["acquire", "release"]
+    clear_settings_cache()
+
+
+def test_get_connection_releases_public_readonly_limiter_when_connect_fails(monkeypatch):
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    monkeypatch.setenv("SONGSIM_DATABASE_URL", "postgresql://songsim:songsim@127.0.0.1:55432/fake")
+    clear_settings_cache()
+    db_module._CONNECTION_LIMITERS.clear()
+
+    events: list[str] = []
+
+    class FakeLimiter:
+        def acquire(self) -> None:
+            events.append("acquire")
+
+        def release(self) -> None:
+            events.append("release")
+
+    monkeypatch.setattr(db_module, "_get_connection_limiter", lambda settings: FakeLimiter())
+
+    def broken_connect(*args, **kwargs):
+        raise RuntimeError("db connect failed")
+
+    monkeypatch.setattr(db_module.psycopg, "connect", broken_connect)
+
+    try:
+        get_connection()
+    except RuntimeError as exc:
+        assert str(exc) == "db connect failed"
+    else:
+        raise AssertionError("expected connect failure")
+
+    assert events == ["acquire", "release"]
+    clear_settings_cache()
 
 
 def test_init_db_creates_postgis_schema(app_env):
