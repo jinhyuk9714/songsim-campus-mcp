@@ -164,7 +164,7 @@ async def lifespan(_: FastAPI):
             sync_official_snapshot(conn)
     elif settings.seed_demo_on_start:
         seed_demo(force=False)
-    if settings.automation_enabled:
+    if settings.automation_runtime_enabled:
         set_automation_leader(False)
 
         async def automation_loop() -> None:

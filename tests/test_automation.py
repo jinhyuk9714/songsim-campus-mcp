@@ -159,6 +159,24 @@ def test_run_automation_tick_records_snapshot_run_as_automation(app_env, monkeyp
     assert "event=automation_job_completed" in caplog.text
 
 
+def test_run_automation_tick_skips_public_readonly_mode(app_env, monkeypatch, caplog):
+    caplog.set_level(logging.INFO)
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    monkeypatch.setenv("SONGSIM_AUTOMATION_ENABLED", "true")
+    clear_settings_cache()
+    init_db()
+
+    runs = run_automation_tick(job_names={"snapshot"})
+
+    assert runs == []
+    assert "reason=public_readonly" in caplog.text
+
+    with connection() as conn:
+        snapshot = get_observability_snapshot(conn)
+
+    assert snapshot.automation.enabled is False
+
+
 def test_run_automation_tick_records_library_seat_prewarm_run_as_automation(
     app_env,
     monkeypatch,
@@ -332,11 +350,8 @@ def test_run_automation_tick_skips_snapshot_jobs_in_public_readonly_mode(
 
     runs = run_automation_tick()
 
-    assert runs == [None, None]
-    assert [call["target"] for call in calls] == [
-        "library_seat_prewarm",
-        "cache_cleanup",
-    ]
+    assert runs == []
+    assert calls == []
 
 
 def test_run_automation_tick_returns_noop_for_explicit_snapshot_job_in_public_readonly_mode(

@@ -77,6 +77,10 @@ class Settings(BaseSettings):
     def resolved_mcp_oauth_audience(self) -> str | None:
         return self.mcp_oauth_audience or self.public_mcp_url
 
+    @property
+    def automation_runtime_enabled(self) -> bool:
+        return self.automation_enabled and self.app_mode != "public_readonly"
+
     @model_validator(mode="after")
     def reject_legacy_database_path(self) -> Settings:
         if self.database_path or os.environ.get("SONGSIM_DATABASE_PATH"):

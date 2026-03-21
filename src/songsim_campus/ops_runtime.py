@@ -453,7 +453,7 @@ def get_automation_status(
 ) -> AutomationObservability:
     settings = get_settings()
     return AutomationObservability(
-        enabled=settings.automation_enabled,
+        enabled=settings.automation_runtime_enabled,
         leader=bool(_OBSERVABILITY_STATE["automation"]["leader"]),
         jobs=[
             automation_job_snapshot(conn, target=target, now=now)

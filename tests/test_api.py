@@ -667,6 +667,28 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     assert "/admin/sync" not in openapi.text
 
 
+def test_public_readonly_mode_skips_automation_loop(app_env, monkeypatch):
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    monkeypatch.setenv("SONGSIM_AUTOMATION_ENABLED", "true")
+    clear_settings_cache()
+
+    calls: list[str] = []
+
+    def fail_get_connection():
+        calls.append("called")
+        raise AssertionError("public readonly automation loop should not start")
+
+    monkeypatch.setattr(api_module, "get_connection", fail_get_connection)
+
+    app = create_app()
+    with TestClient(app):
+        time.sleep(0.05)
+
+    clear_settings_cache()
+
+    assert calls == []
+
+
 def test_public_readonly_affiliated_notices_deduplicate_titles(app_env, monkeypatch):
     init_db()
     monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")

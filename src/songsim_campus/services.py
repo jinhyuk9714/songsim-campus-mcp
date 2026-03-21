@@ -3504,7 +3504,10 @@ def run_automation_tick(
     now: datetime | None = None,
 ) -> list[SyncRun]:
     settings = get_settings()
-    if not settings.automation_enabled:
+    if settings.app_mode == "public_readonly":
+        logger.info("event=automation_tick_skipped reason=public_readonly")
+        return []
+    if not settings.automation_runtime_enabled:
         logger.info("event=automation_tick_skipped reason=disabled")
         return []
 
