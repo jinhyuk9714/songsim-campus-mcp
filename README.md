@@ -1,10 +1,11 @@
 # Songsim Campus MCP
 
-가톨릭대학교 성심교정 학생이 실제로 묻는 질문을  
-**공식 캠퍼스 데이터 기반 Remote MCP + HTTP API**로 답하는 프로젝트입니다.
+가톨릭대학교 성심교정 학생이 학기 중 실제로 처리해야 하는 질문을  
+**공식 source 기반 Remote MCP + HTTP API**로 연결하는 프로젝트입니다.
 
 공개 배포에서는 **read-only Remote MCP**가 학생용 기본 입구이고,  
-**HTTP API**는 같은 데이터를 직접 확인하거나 외부 앱에서 연동할 때 쓰는 companion layer입니다.
+**HTTP API**는 같은 결과를 직접 검증하거나 외부 앱에서 연동할 때 쓰는 companion layer입니다.
+Local Full Mode는 운영과 개인화용 별도 모드입니다.
 
 [Public API](https://songsim-public-api.onrender.com) · [Connect ChatGPT](docs/connect-chatgpt.md) · [Connect Codex](docs/connect-codex.md) · [Connect Claude](docs/connect-claude.md) · [Source Registry](docs/source_registry.md) · [QA Baseline](docs/qa/public-api-live-validation-1000.md)
 
@@ -33,7 +34,7 @@
 
 ### Student-first
 
-질문 축이 추상적이지 않습니다. 장소, 시설, 공지, 학사일정, 등록, 증명, 학식, 식당, 도서관 좌석, 예상 빈 강의실, 교통, Wi-Fi처럼 학생이 바로 체감하는 도메인을 다룹니다.
+질문 축이 추상적이지 않습니다. `오늘 할 일`, `어디/연락처`, `절차/제도`, `공부공간/자원`, `특수 경로`처럼 학생이 바로 행동으로 옮기는 여정을 먼저 다룹니다.
 
 ### Trust-first
 
@@ -54,13 +55,26 @@
 - `songsim://usage-guide`
 - `songsim://academic-calendar`
 - `songsim://registration-guide`
+- `songsim://class-guide`
+- `songsim://academic-milestone-guide`
+- `songsim://student-exchange-guide`
+- `songsim://student-exchange-partners`
+- `songsim://phone-book`
+- `songsim://campus-life-support-guide`
+- `songsim://dormitory-guide`
 - `songsim://certificate-guide`
 - `songsim://scholarship-guide`
+- `songsim://affiliated-notices`
+- `songsim://campus-life-notices`
 - `songsim://transport-guide`
 - `songsim://wifi-guide`
 - `tool_search_places`
 - `tool_search_courses`
+- `tool_search_phone_book`
+- `tool_search_pc_software`
 - `tool_list_latest_notices`
+- `tool_list_affiliated_notices`
+- `tool_list_campus_life_notices`
 - `tool_search_dining_menus`
 - `tool_find_nearby_restaurants`
 - `tool_get_library_seat_status`
@@ -73,16 +87,27 @@
 대표 endpoint:
 
 - `/places`
+- `/phone-book`
 - `/courses`
 - `/periods`
 - `/academic-calendar`
 - `/registration-guides`
+- `/class-guides`
+- `/seasonal-semester-guides`
+- `/academic-milestone-guides`
+- `/student-exchange-guides`
+- `/student-exchange-partners`
 - `/certificate-guides`
 - `/leave-of-absence-guides`
 - `/academic-status-guides`
 - `/academic-support-guides`
 - `/scholarship-guides`
 - `/notices`
+- `/affiliated-notices`
+- `/campus-life-notices`
+- `/dormitory-guides`
+- `/campus-life-support-guides`
+- `/pc-software`
 - `/dining-menus`
 - `/restaurants/nearby`
 - `/restaurants/search`
@@ -91,37 +116,23 @@
 - `/transport`
 - `/wifi-guides`
 
-### 3. Local Full Mode
-
-로컬 full 모드에서는 student-facing read-only surface 외에 운영용 기능도 함께 씁니다.
-
-- profile
-- admin
-- sync
-- observability
-- automation
-
 ## What This Project Can Answer
 
 | 영역 | 어떤 질문을 받나 | 대표 질문 | 대표 MCP resource/tool | 대표 HTTP companion |
 | --- | --- | --- | --- | --- |
-| 장소 / 시설 | 건물, 별칭, 편의시설 위치와 전화번호/운영시간 | `학생회관 어디야?` `복사실이 어디야?` `우리은행 전화번호 알려줘` `트러스트짐 운영시간 알려줘` | `songsim://usage-guide` `tool_search_places` `tool_get_place` | `/places` `/places/{identifier}` |
-| 과목 / 교시 / 학사일정 | 개설과목 검색, 교시 시간, 월별/키워드별 학사일정 | `7교시가 몇 시야?` `2026년 1학기 객체지향 과목 찾아줘` `2026학년도 3월 학사일정 보여줘` | `tool_search_courses` `tool_get_class_periods` `tool_list_academic_calendar` | `/courses` `/periods` `/academic-calendar` |
-| 학사지원 가이드 | 등록금 고지서/납부/반환, 증명발급, 휴학, 복학/자퇴/재입학, 학사지원 업무안내, 장학제도 | `등록금 고지서 조회 방법 알려줘` `등록금 반환 기준 알려줘` `재학증명서 발급 방법 알려줘` `자퇴 절차 알려줘` | `tool_list_registration_guides` `tool_list_certificate_guides` `tool_list_leave_of_absence_guides` `tool_list_academic_status_guides` `tool_list_academic_support_guides` `tool_list_scholarship_guides` | `/registration-guides` `/certificate-guides` `/leave-of-absence-guides` `/academic-status-guides` `/academic-support-guides` `/scholarship-guides` |
-| 공지 | 최신 공지 목록, 카테고리별 공지, 카테고리 정규화 | `최신 학사 공지 2개 보여줘` `최신 취업 공지 3개 보여줘` `employment랑 career 차이 알려줘` | `tool_list_latest_notices` `songsim://notice-categories` | `/notices` `/notice-categories` |
-| 식당 / 학식 | 교내 공식 학식 메뉴, 근처 식당 추천, 브랜드 검색 | `학생식당 메뉴 보여줘` `카페 보나 이번 주 메뉴 알려줘` `중앙도서관 근처 한식집 찾아줘` `매머드커피 어디 있어?` | `tool_search_dining_menus` `tool_find_nearby_restaurants` `tool_search_restaurants` | `/dining-menus` `/restaurants/nearby` `/restaurants/search` |
-| 도서관 / 예상 빈 강의실 | 중앙도서관 열람실 좌석, 현재 시점 기준 예상 빈 강의실 | `중앙도서관 열람실 남은 좌석 알려줘` `제1자유열람실 남은 좌석 알려줘` `K관 지금 예상 빈 강의실 있어?` | `tool_get_library_seat_status` `tool_list_estimated_empty_classrooms` | `/library-seats` `/classrooms/empty` |
-| 교통 / Wi-Fi | 지하철·버스 접근 안내, 건물별 Wi-Fi 안내 | `성심교정 지하철 오는 길 알려줘` `니콜스관 WIFI 안내 알려줘` | `tool_list_transport_guides` `tool_list_wifi_guides` `songsim://transport-guide` `songsim://wifi-guide` | `/transport` `/wifi-guides` |
+| 오늘 할 일 | 최신 공지, 소속기관 공지, 행사/대외 프로그램, 월별 학사일정 | `최신 학사 공지 2개 보여줘` `국제학부 최신 공지 알려줘` `행사안내 보여줘` `2026학년도 3월 학사일정 보여줘` | `tool_list_latest_notices` `tool_list_affiliated_notices` `tool_list_campus_life_notices` `tool_list_academic_calendar` | `/notices` `/affiliated-notices` `/campus-life-notices` `/academic-calendar` |
+| 어디 / 연락처 | 건물, 별칭, 편의시설, 전화번호, 운영시간, 교통, Wi-Fi | `학생회관 어디야?` `복사실이 어디야?` `보건실 전화번호 알려줘` `니콜스관 WIFI 안내 알려줘` | `songsim://usage-guide` `tool_search_places` `tool_get_place` `tool_search_phone_book` `tool_list_transport_guides` `tool_list_wifi_guides` | `/places` `/places/{identifier}` `/phone-book` `/transport` `/wifi-guides` |
+| 절차 / 제도 | 등록, 증명, 휴학, 복학/자퇴/재입학, 수업, 계절학기, 성적·졸업, 학생교류, 장학 | `등록금 반환 기준 알려줘` `재학증명서 발급 방법 알려줘` `공결 신청 방법 알려줘` `계절학기 신청 시기 알려줘` `졸업요건 알려줘` `국내 학점교류 신청대상 알려줘` | `tool_list_registration_guides` `tool_list_certificate_guides` `tool_list_leave_of_absence_guides` `tool_list_academic_status_guides` `tool_list_class_guides` `tool_list_seasonal_semester_guides` `tool_list_academic_milestone_guides` `tool_list_student_exchange_guides` `tool_search_student_exchange_partners` `tool_list_scholarship_guides` | `/registration-guides` `/certificate-guides` `/leave-of-absence-guides` `/academic-status-guides` `/class-guides` `/seasonal-semester-guides` `/academic-milestone-guides` `/student-exchange-guides` `/student-exchange-partners` `/scholarship-guides` |
+| 공부공간 / 자원 | 과목, 교시, 도서관 좌석, 예상 빈 강의실, 학식, 주변 식당, PC 소프트웨어 | `7교시가 몇 시야?` `2026년 1학기 객체지향 과목 찾아줘` `중앙도서관 열람실 남은 좌석 알려줘` `K관 지금 예상 빈 강의실 있어?` `학생식당 메뉴 보여줘` `SPSS 설치된 컴퓨터실 어디야` | `tool_search_courses` `tool_get_class_periods` `tool_get_library_seat_status` `tool_list_estimated_empty_classrooms` `tool_search_dining_menus` `tool_find_nearby_restaurants` `tool_search_restaurants` `tool_search_pc_software` | `/courses` `/periods` `/library-seats` `/classrooms/empty` `/dining-menus` `/restaurants/nearby` `/restaurants/search` `/pc-software` |
+| 특수 경로 | 기숙사, 생활지원, 상담·예비군·병원, 소속기관 공지 | `성심교정 기숙사 안내해줘` `학생상담 어디서 받아?` `예비군 신고 시기 알려줘` `부속병원 이용 안내해줘` `프란치스코관 입퇴사공지 알려줘` | `tool_list_dormitory_guides` `tool_list_campus_life_support_guides` `tool_list_affiliated_notices` | `/dormitory-guides` `/campus-life-support-guides` `/affiliated-notices` |
 
 질문 패턴 예시:
 
-- 위치: `학생회관 어디야?`, `K관 어디야?`, `복사실이 어디야?`
-- 전화번호: `우리은행 전화번호 알려줘`, `카페드림 전화번호 알려줘`
-- 운영시간: `CU 운영시간 알려줘`, `트러스트짐 운영시간 알려줘`
-- 일정: `2026학년도 3월 학사일정 보여줘`, `추가 등록기간 일정 알려줘`
-- 안내 / 절차: `등록금 납부 방법 알려줘`, `등록금 반환 기준 알려줘`, `초과학기생 등록은 어떻게 해?`, `재학증명서 발급 방법 알려줘`
-- 최신 목록: `최신 학사 공지 2개 보여줘`, `장학 공지 최신순으로 3개 보여줘`
-- 근처 추천: `중앙도서관 근처 한식집 찾아줘`, `중앙도서관에서 10분 안쪽에 1만원 이하 식당 보여줘`
+- 오늘 할 일: `최신 학사 공지 2개 보여줘`, `행사안내 보여줘`, `3월 학사일정 알려줘`
+- 어디 / 연락처: `학생회관 어디야?`, `보건실 전화번호 알려줘`, `트러스트짐 운영시간 알려줘`
+- 절차 / 제도: `등록금 납부 방법 알려줘`, `공결 신청 방법 알려줘`, `졸업논문 제출 절차 알려줘`
+- 공부공간 / 자원: `7교시에 시작하는 과목 찾고 싶어`, `중앙도서관 열람실 남은 좌석 알려줘`, `포토샵 있는 PC실 알려줘`
+- 특수 경로: `기숙사 입사안내 어디서 봐?`, `학생상담 어디서 받아?`, `국제학부 최신 공지 알려줘`
 
 ## Reliability Contract
 
@@ -150,6 +161,11 @@ Public API live baseline 기준:
 - skip: `0`
 
 현재 watch item은 course source-gap 계열로 분리되어 있고, hard fail은 없습니다. 자세한 내용은 [공개 API 1000문장 라이브 검증](docs/qa/public-api-live-validation-1000.md)에서 확인할 수 있습니다.
+
+Public MCP는 별도 release pack과 live validation 문서로 관리합니다.
+
+- [Public MCP Release Pack (50)](docs/qa/public-mcp-release-pack-50.md)
+- [Public MCP Live Validation Summary](docs/qa/public-mcp-live-validation-summary.md)
 
 ## Quick MCP Flow
 
@@ -312,6 +328,16 @@ curl 'http://127.0.0.1:8000/wifi-guides'
 - observability
 - 내부 automation
 - `/gpt/*` 및 GPT Actions packaging layer
+
+## Local Full Mode
+
+로컬 full 모드에서는 공개 student-facing read-only surface 외에 운영용 기능도 함께 씁니다.
+
+- profile
+- admin
+- sync
+- observability
+- automation
 
 ## Docs
 

@@ -45,239 +45,129 @@ def public_usage_guide_text() -> str:
             "Songsim public MCP usage guide",
             "",
             "This server is read-only.",
+            "",
             (
-                "Available: places, courses, academic calendar, academic support guides, "
-                "academic status guides, registration guides, class guides, certificate guides, "
-                "seasonal semester guides, academic milestone guides, phone book entries, "
-                "campus life support guides, campus life notices, pc software entries, "
-                "leave-of-absence guides, scholarship guides, wifi guides, student exchange "
-                "guides, student exchange partners, notices, dining menus, library seats, "
-                "empty classrooms, nearby restaurants, restaurant search, affiliated notices, "
-                "transport guides."
+                "Use this public MCP first for source-backed student questions about deadlines, "
+                "places, procedures, study resources, dormitory, campus-life support, and "
+                "department notice bundles."
             ),
             "Use these public read-only tools for student information questions first.",
+            (
+                "Remote MCP is the primary student entry. HTTP API is a companion layer for "
+                "direct verification or external app integration. Local Full mode is separate."
+            ),
             "",
             "Recommended flow:",
-            "1. Read songsim://usage-guide when you need the public MCP capability overview.",
+            "1. Read songsim://usage-guide when you need the public capability overview.",
             (
-                "2. Use a prompt such as prompt_find_place or "
-                "prompt_find_nearby_restaurants to choose the first tool."
+                "2. Pick the student journey that matches the question: 오늘 할 일, "
+                "어디/연락처, 절차/제도, 공부공간/자원, 특수 경로."
             ),
             (
-                "3. Use tool_search_places for fuzzy building/facility queries such as "
-                "트러스트짐, 헬스장, 편의점, ATM, 복사실, K관, or 정문, then "
-                "tool_get_place when you know the slug."
-            ),
-            (
-                "4. Use tool_list_estimated_empty_classrooms for classroom availability "
-                "in a lecture building like 니콜스관, N관, or 김수환관. 공식 실시간 "
-                "데이터가 있으면 먼저 사용하고, 없으면 시간표 기반 예상 공실로 "
-                "폴백합니다."
-            ),
-            (
-                "5. Use tool_find_nearby_restaurants for walkable food "
-                "recommendations from a campus origin. You can pass a slug, 대표 이름, "
-                "or a clear alias like 중도 or 학생식당. If you set budget_max, only "
-                "restaurants with explicit price evidence remain."
-            ),
-            (
-                "6. Use tool_search_restaurants for direct brand-name searches such as "
-                "매머드커피, 메가커피, 이디야, 스타벅스, 커피빈, 투썸, or 빽다방. "
-                "origin이 없어도 캠퍼스 주변에서 브랜드를 직접 찾을 수 있고, "
-                "캠퍼스에 가까운 후보를 먼저 찾은 뒤 필요하면 더 가까운 외부 "
-                "지점까지 보여줄 수 있습니다."
-            ),
-            (
-                "7. Use tool_search_dining_menus for official campus dining menus such as "
-                "학생식당 메뉴, 카페 보나 메뉴, 카페 멘사 메뉴, or 부온 프란조 이번 주 메뉴. "
-                "Returns extracted weekly menu text plus the original PDF link when available."
-            ),
-            (
-                "8. Use tool_get_library_seat_status for 중앙도서관 열람실 남은 좌석, "
-                "중앙도서관 좌석 현황, or 제1자유열람실 남은 좌석 questions. "
-                "This is a best-effort live lookup with stale fallback."
-            ),
-            (
-                "9. Use tool_list_academic_calendar for 학사일정 questions such as "
-                "3월 학사일정, 1학기 개시일, 추가 등록기간, or 중간고사 일정."
-            ),
-            (
-                "10. Use tool_list_academic_support_guides for 학사지원 업무안내 such as "
-                "휴복학 문의처, 학점교류 담당 전화번호, 성적 담당처, or 교직 업무 문의 questions."
-            ),
-            (
-                "11. Use tool_list_academic_status_guides for 학적변동 안내 such as "
-                "복학 신청 방법, 자퇴 절차, or 재입학 지원자격 questions."
-            ),
-            (
-                "12. Use tool_list_student_exchange_guides for 학생교류 안내 such as "
-                "국내 학점교류 신청대상, 학점교류 신청시기, 교류대학 현황, 교환학생 프로그램, "
-                "or 해외 교류프로그램 questions."
-            ),
-            (
-                "13. Use tool_list_campus_life_support_guides for 생활지원 안내 such as "
-                "보건실 위치와 운영시간, 유실물 찾는 방법, 성심교정 주차요금, 학생상담 "
-                "어디서 받아?, 장애학생지원센터 뭐 해줘?, 예비군 신고 시기 알려줘, "
-                "부속병원 이용 안내해줘, 성심교정 대관안내 알려줘, or 개인형 이동장치 "
-                "안전교육 알려줘 questions."
-            ),
-            (
-                "14. Use tool_search_pc_software for PC실 / 설치 소프트웨어 검색 such as "
-                "SPSS 설치된 컴퓨터실, 포토샵 있는 PC실, Visual Studio 설치된 실습실, "
-                "or 마리아관 실습실 questions."
-            ),
-            (
-                "15. Use tool_search_phone_book for 주요전화번호 / 부서 연락처 such as "
-                "보건실 전화번호, 학사지원팀 전화번호, 트리니티 문의 전화번호, "
-                "유실물 문의 전화번호, or 기숙사 운영팀 전화번호 questions."
-            ),
-            (
-                "16. Use tool_search_student_exchange_partners for 해외협정대학 검색 such as "
-                "해외협정대학 알려줘, 네덜란드 협정대학 알려줘, Utrecht University 있어?, "
-                "유럽 교류대학 알려줘, or 대만 해외협정대학 홈페이지 알려줘 questions."
-            ),
-            (
-                "17. Use tool_list_dormitory_guides for 기숙사 안내 such as "
-                "성심교정 기숙사 안내해줘, 스테파노관 정보 알려줘, "
-                "기숙사 입사안내 어디서 봐?, or 기숙사 최신 공지 알려줘 questions."
-            ),
-            (
-                "18. Use tool_list_registration_guides for 등록 안내 such as "
-                "등록금 고지서 조회 방법, "
-                "등록금 납부 방법, 등록금 반환 기준, or 초과학기생 등록 questions."
-            ),
-            (
-                "19. Use tool_list_certificate_guides for 증명서 발급 안내 such as "
-                "재학증명서 발급 방법, 졸업증명서 발급 안내, or 인터넷 증명발급 questions."
-            ),
-            (
-                "20. Use tool_list_class_guides for 수업 안내 such as "
-                "수강신청 변경기간, 재수강 기준, 수업평가 기간, 공결 신청 방법, "
-                "or 외국어강의 의무이수 요건 questions."
-            ),
-            (
-                "21. Use tool_list_leave_of_absence_guides for 휴학 안내 such as 휴학 신청방법, "
-                "군휴학, 질병휴학, 등록금 반환 기준, or 휴복학 FAQ questions."
-            ),
-            (
-                "22. Use tool_list_seasonal_semester_guides for 계절학기 안내 such as "
-                "계절학기 신청 시기, 신청대상, 학점 제한, or 신청절차 questions."
-            ),
-            (
-                "23. Use tool_list_academic_milestone_guides for 성적·졸업 안내 such as "
-                "성적평가 방법, 성적확인, 결석이 4분의 1 넘으면 어떻게 되는지, "
-                "졸업요건, or 졸업논문 제출 절차 questions."
-            ),
-            (
-                "24. Use tool_list_scholarship_guides for 장학제도 baseline guidance such as "
-                "장학생 자격, 장학금 신청, 장학금 지급, or 장학제도 공식 문서 questions."
-            ),
-            (
-                "25. Use tool_list_wifi_guides for campus wifi guidance such as 니콜스관 "
-                "SSID, 중앙도서관 와이파이, or 무선랜 접속 방법 questions."
-            ),
-            (
-                "26. Use tool_list_campus_life_notices for campus-life notice bundles such "
-                "as 외부기관공지, 대외 프로그램 공지, 행사안내, or 교내 행사 공지."
-            ),
-            (
-                "27. Use tool_list_affiliated_notices for affiliated department and dormitory "
-                "board notice bundles such as 국제학부 최신 공지 or 기숙사 일반공지."
-            ),
-            "28. Use tool_list_latest_notices for latest notices; category is optional.",
-            (
-                "29. Use tool_list_transport_guides for static subway or bus access "
-                "guidance. You can pass query with natural-language cues like 지하철, "
-                "1호선, 역곡역, or 버스. 셔틀은 현재 지원하지 않아 빈 결과가 정상입니다."
-            ),
-            (
-                "30. Optional reference resources exist for notice categories and class periods "
-                "when you need them."
+                "3. Call the matching prompt, resource, or tool first. Use HTTP only when "
+                "you want to verify the same result directly."
             ),
             "",
-            "Example questions:",
-            "- 성심교정 중앙도서관 위치 알려줘",
-            "- K관 어디야?",
-            "- 정문 위치 알려줘",
-            "- 트러스트짐 어디야?",
-            "- 헬스장 어디야?",
-            "- 편의점 어디 있어?",
-            "- 최신 장학 공지 3개 보여줘",
-            "- 장학제도 안내 알려줘",
-            "- 등록금 고지서 조회 방법 알려줘",
-            "- 등록금 납부 방법 알려줘",
-            "- 등록금 반환 기준 알려줘",
-            "- 초과학기생 등록은 어떻게 해?",
-            "- 국제학부 최신 공지 알려줘",
-            "- 국제학부 공결 신청 공지 있어?",
-            "- 기숙사 일반공지 알려줘",
-            "- 프란치스코관 입퇴사공지 알려줘",
-            "- 기숙사 OT 공지 알려줘",
-            "- 외부기관공지 알려줘",
-            "- 대외 프로그램 공지 있어?",
-            "- 외부기관 장학 공지 있어?",
-            "- 행사안내 알려줘",
-            "- 교내 행사 공지 있어?",
-            "- 보건실 전화번호 알려줘",
-            "- 보건실 위치와 운영시간 알려줘",
-            "- 유실물 찾는 방법 알려줘",
-            "- 성심교정 주차요금 알려줘",
-            "- 학생상담 어디서 받아?",
-            "- 장애학생지원센터 뭐 해줘?",
-            "- 예비군 신고 시기 알려줘",
-            "- 부속병원 이용 안내해줘",
-            "- 성심교정 대관안내 알려줘",
-            "- 개인형 이동장치 안전교육 알려줘",
-            "- 학사지원팀 전화번호 알려줘",
-            "- 트리니티 문의 전화번호 알려줘",
-            "- 유실물 문의 전화번호 알려줘",
-            "- 기숙사 운영팀 전화번호 알려줘",
-            "- SPSS 설치된 컴퓨터실 어디야",
-            "- 포토샵 있는 PC실 알려줘",
-            "- Visual Studio 설치된 실습실 있어?",
-            "- 해외협정대학 알려줘",
-            "- 네덜란드 협정대학 알려줘",
-            "- Utrecht University 있어?",
-            "- 유럽 교류대학 알려줘",
-            "- 대만 해외협정대학 홈페이지 알려줘",
-            "- 성심교정 기숙사 안내해줘",
-            "- 기숙사 최신 공지 알려줘",
-            "- 수강신청 변경기간 알려줘",
-            "- 재수강 기준 알려줘",
-            "- 수업평가 기간 알려줘",
-            "- 공결 신청 방법 알려줘",
-            "- 외국어강의 의무이수 요건 알려줘",
-            "- 계절학기 신청 시기 알려줘",
-            "- 계절학기 신청대상 알려줘",
-            "- 계절학기 학점 제한 알려줘",
-            "- 계절학기 신청절차 알려줘",
-            "- 성적평가 방법 알려줘",
-            "- 성적확인 어떻게 해?",
-            "- 결석이 4분의 1 넘으면 어떻게 돼?",
-            "- 졸업요건 알려줘",
-            "- 졸업논문 제출 절차 알려줘",
-            "- 휴복학 문의 어디로 해야 해?",
-            "- 학점교류 담당 전화번호 알려줘",
-            "- 국내 학점교류 신청대상 알려줘",
-            "- 학점교류 신청시기 알려줘",
-            "- 교류대학 현황 알려줘",
-            "- 교환학생 프로그램 알려줘",
-            "- 해외 교류프로그램 알려줘",
-            "- 복학 신청 방법 알려줘",
-            "- 자퇴 절차 알려줘",
-            "- 재입학 지원자격 알려줘",
-            "- 휴학 신청방법 알려줘",
-            "- 군휴학 제출 안내 알려줘",
-            "- 니콜스관 WIFI 안내 알려줘",
-            "- 재학증명서 발급 안내 알려줘",
-            "- 니콜스관인데 지금 예상 빈 강의실 있어?",
-            "- 매머드커피 어디 있어?",
-            "- 스타벅스 있어?",
-            "- 중앙도서관 근처 밥집 추천해줘",
-            "- 중도 근처 밥집 추천해줘",
-            "- 학생식당 메뉴 보여줘",
-            "- 카페 보나 이번 주 메뉴 알려줘",
-            "- 중앙도서관 열람실 남은 좌석 알려줘",
+            "Student journeys:",
+            "",
+            "1. 오늘 할 일",
+            (
+                "Use tool_list_latest_notices, tool_list_affiliated_notices, "
+                "tool_list_campus_life_notices, and tool_list_academic_calendar for "
+                "latest notices, department/dormitory boards, campus-life notices, and "
+                "academic calendar deadlines."
+            ),
+            (
+                "Example: 최신 학사 공지 2개 보여줘 / 국제학부 최신 공지 알려줘 / "
+                "행사안내 보여줘 / 교내 행사 공지 있어? / 3월 학사일정 알려줘"
+            ),
+            "",
+            "2. 어디 / 연락처",
+            (
+                "Use tool_search_places and tool_get_place for buildings, aliases, and "
+                "facility lookups. Use tool_search_phone_book for department phone numbers. "
+                "Use tool_list_transport_guides and tool_list_wifi_guides for static access "
+                "and wifi guidance."
+            ),
+            (
+                "Example: 학생회관 어디야 / 복사실이 어디야 / 보건실 위치와 운영시간 알려줘 / "
+                "보건실 전화번호 알려줘 / 니콜스관 WIFI 안내 알려줘"
+            ),
+            "",
+            "3. 절차 / 제도",
+            (
+                "Use tool_list_registration_guides, tool_list_certificate_guides, "
+                "tool_list_academic_support_guides, "
+                "tool_list_leave_of_absence_guides, tool_list_academic_status_guides, "
+                "tool_list_class_guides, tool_list_seasonal_semester_guides, "
+                "tool_list_academic_milestone_guides, tool_list_student_exchange_guides, "
+                "tool_search_student_exchange_partners, and tool_list_scholarship_guides "
+                "for academic procedures and institutional rules."
+            ),
+            (
+                "Example: 휴복학 문의 어디로 해야 해 / 복학 신청 방법 알려줘 / "
+                "등록금 고지서 조회 방법 알려줘 / 등록금 납부 방법 알려줘 / "
+                "등록금 반환 기준 알려줘 / 학점교류 담당 전화번호 알려줘 / "
+                "수강신청 변경기간 알려줘 / 수업평가 기간 알려줘 / "
+                "외국어강의 의무이수 요건 알려줘 / 공결 신청 방법 알려줘 / "
+                "계절학기 신청 시기 알려줘 / 성적평가 방법 알려줘 / "
+                "졸업요건 알려줘 / 재입학 지원자격 알려줘 / "
+                "국내 학점교류 신청대상 알려줘 / 학점교류 신청시기 알려줘 / "
+                "교류대학 현황 알려줘 / 교환학생 프로그램 알려줘 / "
+                "해외 교류프로그램 알려줘 / 해외협정대학 알려줘 / "
+                "네덜란드 협정대학 알려줘 / Utrecht University 있어? / "
+                "유럽 교류대학 알려줘 / 대만 해외협정대학 홈페이지 알려줘"
+            ),
+            "",
+            "4. 공부공간 / 자원",
+            (
+                "Use tool_search_courses and tool_get_class_periods for course lookup. "
+                "Use tool_get_library_seat_status and tool_list_estimated_empty_classrooms "
+                "for study-space availability. Use tool_search_dining_menus, "
+                "tool_find_nearby_restaurants, tool_search_restaurants, and "
+                "tool_search_pc_software for food and campus computing resources."
+            ),
+            (
+                "Library seats are best-effort live lookups with stale fallback. Empty "
+                "classrooms prefer 공식 실시간 data and fall back to timetable-based "
+                "예상 공실 results."
+            ),
+            (
+                "If you use budget_max for nearby restaurants, only candidates with explicit "
+                "price evidence remain."
+            ),
+            (
+                "For nearby restaurant questions, use tool_find_nearby_restaurants when you "
+                "know the starting point like 중도 and want 가까운 후보를 먼저 보려는 경우. "
+                "Use tool_search_restaurants for direct brand lookup like 매머드커피."
+            ),
+            (
+                "Example: 7교시에 시작하는 과목 찾고 싶어 / 중앙도서관 열람실 남은 좌석 알려줘 / "
+                "K관 지금 예상 빈 강의실 있어? / 학생식당 메뉴 보여줘 / "
+                "중도에서 가까운 식당 알려줘 / 매머드커피 있어? / "
+                "SPSS 설치된 컴퓨터실 어디야"
+            ),
+            "",
+            "5. 특수 경로",
+            (
+                "Use tool_list_dormitory_guides for dormitory guidance and "
+                "tool_list_campus_life_support_guides for health center, lost and found, "
+                "parking, counseling, disability support, reservist guidance, hospital use, "
+                "facility rental, and personal mobility safety guidance."
+            ),
+            (
+                "Example: 성심교정 기숙사 안내해줘 / 기숙사 입사안내 어디서 봐? / "
+                "기숙사 최신 공지 알려줘 / 학생상담 어디서 받아? / "
+                "장애학생지원센터 뭐 해줘? / 예비군 신고 시기 알려줘 / "
+                "부속병원 이용 안내해줘 / 성심교정 대관안내 알려줘 / "
+                "개인형 이동장치 안전교육 알려줘 / 헬스장 어디야 / 편의점 어디야"
+            ),
+            "",
+            "Helper resources:",
+            "- songsim://place-categories",
+            "- songsim://notice-categories",
+            "- songsim://class-periods",
+            "- songsim://source-registry",
         ]
     )
 
