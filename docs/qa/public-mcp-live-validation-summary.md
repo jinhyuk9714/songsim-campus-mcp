@@ -25,12 +25,12 @@
 - 릴리즈 게이트는 현재 공개 source truth에 맞춰 **source-backed canary 10문장**으로 다시 잠갔습니다.
 - gate canary는 `자료구조`, `객체지향`, `객체 지향`, `03149`, `전혜경`, `자료구조 교수가 누구야`, `객체지향 과목 2개만`, `자료 구조`, `C0 106`, `7교시 시작 과목`입니다.
 - 이 10문장은 현재 모두 `pass`입니다.
-- watchlist는 현재도 유지하지만, 상태를 `source-gap`과 `normalized recovery`로 나눠 보고 있습니다.
+- watchlist는 현재도 유지하지만, 상태를 `source-gap`, `normalized alignment`, `near match`로 나눠 보고 있습니다.
   - `데이터베이스` / `데이타베이스`: `데이터베이스활용` near match
-  - `CSE 420`: `CSE420` direct hit recovered
+  - `CSE 420`: `CSE420`와 같은 query group으로 정렬되지만 live/source hit는 없음
   - `CSE301`
   - `김가톨`
-- `CSE301`과 `김가톨`만 아직도 **source-backed direct hit 미확인** watchlist로 남고, 나머지 3건은 정규화로 회복된 관찰 항목입니다.
+- `CSE301`, `김가톨`, `CSE 420`은 아직도 **source-backed direct hit 미확인** watchlist로 남고, `데이터베이스` / `데이타베이스`만 near match 관찰 항목입니다.
 
 ### notices
 
@@ -80,7 +80,7 @@
   - `/courses?query=객체지향&year=2026&semester=1`은 이제 `객체지향패러다임`, `객체지향프로그래밍`, `객체지향프로그래밍설계`를 정상 반환합니다.
   - `/courses?query=03149&year=2026&semester=1`, `/courses?query=전혜경&year=2026&semester=1`, `/courses?query=C0%20106&year=2026&semester=1`도 정상 응답합니다.
   - `/courses?year=2026&semester=1&period_start=7&limit=5`는 `3D애니메이션1`을 포함한 7교시 시작 과목만 직접 반환합니다.
-- 다만 `CSE301`과 `김가톨`은 여전히 source-gap watchlist로 남고, `데이터베이스` / `데이타베이스`는 near match, `CSE 420`은 direct hit recovered입니다.
+- 다만 `CSE301`, `김가톨`, `CSE 420`은 여전히 source-gap watchlist로 남고, `데이터베이스` / `데이타베이스`는 near match 관찰 항목입니다.
 - 공지:
   - `/notices?category=academic&limit=10`과 `/gpt/notices?category=academic&limit=5`는 이제 `academic` 공지를 정상 반환합니다.
   - 대표 사례인 `Major Discovery Week` 공지도 `academic`으로 분류되어, 이전의 generic detail label(`공지`) 회귀는 해소됐습니다.
@@ -88,13 +88,13 @@
 요약하면:
 - `academic notice` 실패는 해결됐고, 현재 release pack에는 hard fail이 없습니다.
 - `course gate`는 source-backed canary 기준으로 재조정됐고, 현재 공개 배포에서 재현 가능합니다.
-- 남은 course 문제는 릴리즈 fail이 아니라 **source-gap watchlist(`CSE301`, `김가톨`)**와 **normalized recovery(`데이터베이스`, `데이타베이스`, `CSE 420`)**를 분리해서 관리하는 편이 맞습니다.
+- 남은 course 문제는 릴리즈 fail이 아니라 **source-gap watchlist(`CSE301`, `김가톨`, `CSE 420`)**와 **near match 관찰 항목(`데이터베이스`, `데이타베이스`)**을 분리해서 관리하는 편이 맞습니다.
 
 ## 즉시 수정 우선순위
 
 1. course source-gap watchlist 유지
    - `CSE301`, `김가톨`는 source-backed direct hit가 아직 없으므로 gate가 아니라 watchlist로 계속 추적합니다.
-   - `데이터베이스` / `데이타베이스`는 near match 관찰 항목, `CSE 420`은 direct hit recovered로 따로 보관합니다.
+   - `데이터베이스` / `데이타베이스`는 near match 관찰 항목으로 두고, `CSE 420`은 normalized spacing이 적용된 source-gap watch로 계속 보관합니다.
 2. release-pack course watchlist 모니터링
    - gate 밖으로 뺀 source-gap 질의가 실제 source 변화로 회복되는지 주기적으로 다시 확인하면 됩니다.
 3. Shared GPT actual UI soft watch

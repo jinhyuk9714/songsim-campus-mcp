@@ -65,7 +65,7 @@ curl -fsS "$PUBLIC_HTTP_URL/registration-guides?topic=payment_and_return&limit=3
 
 ## 3. Representative courses watchlist query
 
-recovery canary는 `데이타베이스`와 `CSE 420`처럼 공백/오타를 정상 복구해야 하는 케이스를 기준으로 둡니다. watchlist canary는 현재 [public_api_eval_watchlist.jsonl](../../data/qa/public_api_eval_watchlist.jsonl)의 `CW02`를 기준으로 둡니다.
+recovery canary는 `데이타베이스`처럼 오타/표기 변형을 near match로 복구해야 하는 케이스를 기준으로 둡니다. watchlist canary는 현재 [public_api_eval_watchlist.jsonl](../../data/qa/public_api_eval_watchlist.jsonl)의 `CW02`, `CW05`를 기준으로 둡니다.
 
 ```bash
 curl -fsS "$PUBLIC_HTTP_URL/courses?query=%EB%8D%B0%EC%9D%B4%ED%83%80%EB%B2%A0%EC%9D%B4%EC%8A%A4&year=2026&semester=1&limit=5"
@@ -78,7 +78,8 @@ curl -fsS "$PUBLIC_HTTP_URL/courses?query=CSE301&year=2026&semester=1&limit=5"
 
 - HTTP `200`
 - JSON array
-- `데이타베이스`, `CSE 420`, `CSE-420`은 각각 source-backed 결과를 되찾아야 함
+- `데이타베이스`는 near match 결과를 안정적으로 반환해야 함
+- `CSE 420`, `CSE-420`은 `CSE420` query group과 같은 결과군으로 정렬되되, source-backed hit가 없으면 계속 빈 결과여도 됨
 - `CSE301`은 비어 있어도 괜찮음
 - 중요한 것은 `500`, HTML error page, timeout 없이 응답하는 것
 
