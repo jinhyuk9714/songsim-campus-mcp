@@ -96,6 +96,12 @@ from .ingest.pc_software import (
 from .ingest.pc_software import (
     search_pc_software_entries as rank_pc_software_entries,
 )
+from .ingest.student_activity_guides import (
+    CampusMediaGuideSource,
+    RotcGuideSource,
+    SocialVolunteeringGuideSource,
+    StudentGovernmentGuideSource,
+)
 from .schemas import (
     AcademicCalendarEvent,
     AcademicMilestoneGuide,
@@ -138,6 +144,7 @@ from .schemas import (
     RestaurantSearchResult,
     ScholarshipGuide,
     SeasonalSemesterGuide,
+    StudentActivityGuide,
     StudentExchangeGuide,
     StudentExchangePartner,
     SyncRun,
@@ -172,6 +179,12 @@ STUDENT_RESERVIST_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/campuslife/s
 HOSPITAL_USE_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/campuslife/hospital1.do"
 MOBILITY_SAFETY_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/service/safety.do"
 FACILITY_RENTAL_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/campuslife/rent_songsim.do"
+STUDENT_ACTIVITY_GUIDE_SOURCE_URLS = {
+    "student_government": "https://www.catholic.ac.kr/ko/campuslife/student_government.do",
+    "campus_media": "https://www.catholic.ac.kr/ko/campuslife/media.do",
+    "social_volunteering": "https://www.catholic.ac.kr/ko/campuslife/volunteer.do",
+    "rotc": "https://www.catholic.ac.kr/ko/campuslife/rotc.do",
+}
 RETURN_FROM_LEAVE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/return_from_leave_of_absence.do"
 DROPOUT_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/dropout.do"
 RE_ADMISSION_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/re_admission.do"
@@ -262,6 +275,7 @@ SYNC_DATASET_TABLES = (
     "class_guides",
     "seasonal_semester_guides",
     "academic_milestone_guides",
+    "student_activity_guides",
     "student_exchange_guides",
     "student_exchange_partners",
     "dormitory_guides",
@@ -285,6 +299,7 @@ PUBLIC_READY_CORE_DATASETS = frozenset(
         "class_guides",
         "seasonal_semester_guides",
         "academic_milestone_guides",
+        "student_activity_guides",
         "student_exchange_guides",
         "student_exchange_partners",
         "dormitory_guides",
@@ -331,6 +346,7 @@ ADMIN_SYNC_TARGETS = {
     "class_guides",
     "seasonal_semester_guides",
     "academic_milestone_guides",
+    "student_activity_guides",
     "student_exchange_guides",
     "student_exchange_partners",
     "dormitory_guides",
@@ -428,6 +444,12 @@ CLASS_GUIDE_TOPICS = {
 }
 SEASONAL_SEMESTER_GUIDE_TOPICS = {"seasonal_semester"}
 ACADEMIC_MILESTONE_GUIDE_TOPICS = {"grade_evaluation", "graduation_requirement"}
+STUDENT_ACTIVITY_GUIDE_TOPICS = {
+    "student_government",
+    "campus_media",
+    "social_volunteering",
+    "rotc",
+}
 DORMITORY_GUIDE_TOPICS = {"hall_info", "quick_links", "latest_notices"}
 AFFILIATED_NOTICE_TOPICS = {
     "international_studies",
@@ -2854,6 +2876,55 @@ def list_academic_milestone_guides(
     ]
 
 
+def list_student_activity_guides(
+    conn: DBConnection,
+    *,
+    topic: str | None = None,
+    limit: int = 20,
+) -> list[StudentActivityGuide]:
+    normalized_limit = max(1, min(limit, 50))
+    normalized_topic = topic.strip() if topic else None
+    if normalized_topic and normalized_topic not in STUDENT_ACTIVITY_GUIDE_TOPICS:
+        raise InvalidRequestError(
+            "topic must be one of student_government, campus_media, "
+            "social_volunteering, rotc."
+        )
+    return [
+        StudentActivityGuide.model_validate(item)
+        for item in repo.list_student_activity_guides(
+            conn,
+            topic=normalized_topic,
+            limit=normalized_limit,
+        )
+    ]
+
+
+def refresh_student_activity_guides_from_source(
+    conn: DBConnection,
+    *,
+    sources: list[Any] | None = None,
+    fetched_at: str | None = None,
+) -> list[StudentActivityGuide]:
+    if sources is None:
+        sources = [
+            StudentGovernmentGuideSource(STUDENT_ACTIVITY_GUIDE_SOURCE_URLS["student_government"]),
+            CampusMediaGuideSource(STUDENT_ACTIVITY_GUIDE_SOURCE_URLS["campus_media"]),
+            SocialVolunteeringGuideSource(
+                STUDENT_ACTIVITY_GUIDE_SOURCE_URLS["social_volunteering"]
+            ),
+            RotcGuideSource(STUDENT_ACTIVITY_GUIDE_SOURCE_URLS["rotc"]),
+        ]
+    synced_at = fetched_at or _now_iso()
+    rows: list[dict[str, Any]] = []
+    for source in sources:
+        rows.extend(source.parse(source.fetch(), fetched_at=synced_at))
+    repo.replace_student_activity_guides(conn, rows)
+    return [
+        StudentActivityGuide.model_validate(item)
+        for item in repo.list_student_activity_guides(conn, limit=max(len(rows), 1))
+    ]
+
+
 def list_student_exchange_guides(
     conn: DBConnection,
     *,
@@ -3268,6 +3339,8 @@ def _run_admin_sync_target(
         return {
             "academic_milestone_guides": len(refresh_academic_milestone_guides_from_source(conn))
         }
+    if target == "student_activity_guides":
+        return {"student_activity_guides": len(refresh_student_activity_guides_from_source(conn))}
     if target == "student_exchange_guides":
         return {"student_exchange_guides": len(refresh_student_exchange_guides_from_source(conn))}
     if target == "student_exchange_partners":
@@ -5160,6 +5233,7 @@ def sync_official_snapshot(
     class_guides = refresh_class_guides_from_source(conn)
     seasonal_semester_guides = refresh_seasonal_semester_guides_from_source(conn)
     academic_milestone_guides = refresh_academic_milestone_guides_from_source(conn)
+    student_activity_guides = refresh_student_activity_guides_from_source(conn)
     student_exchange_guides = refresh_student_exchange_guides_from_source(conn)
     dormitory_guides = refresh_dormitory_guides_from_source(conn)
     phone_book_entries = refresh_phone_book_entries_from_source(conn)
@@ -5186,6 +5260,7 @@ def sync_official_snapshot(
         "class_guides": len(class_guides),
         "seasonal_semester_guides": len(seasonal_semester_guides),
         "academic_milestone_guides": len(academic_milestone_guides),
+        "student_activity_guides": len(student_activity_guides),
         "student_exchange_guides": len(student_exchange_guides),
         "student_exchange_partners": len(student_exchange_partners),
         "dormitory_guides": len(dormitory_guides),

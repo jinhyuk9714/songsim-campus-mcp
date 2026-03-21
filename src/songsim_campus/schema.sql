@@ -284,6 +284,18 @@ CREATE TABLE IF NOT EXISTS student_exchange_guides (
     last_synced_at TIMESTAMPTZ NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS student_activity_guides (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    topic TEXT NOT NULL,
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL DEFAULT '',
+    steps_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    links_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    source_url TEXT,
+    source_tag TEXT NOT NULL DEFAULT 'demo',
+    last_synced_at TIMESTAMPTZ NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS student_exchange_partners (
     id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     partner_code TEXT NOT NULL,
@@ -465,6 +477,10 @@ CREATE INDEX IF NOT EXISTS idx_leave_of_absence_guides_title ON leave_of_absence
 CREATE INDEX IF NOT EXISTS idx_scholarship_guides_title ON scholarship_guides(title);
 CREATE INDEX IF NOT EXISTS idx_wifi_guides_building_name ON wifi_guides(building_name);
 CREATE INDEX IF NOT EXISTS idx_academic_support_guides_title ON academic_support_guides(title);
+CREATE INDEX IF NOT EXISTS idx_student_activity_guides_topic
+ON student_activity_guides(topic);
+CREATE INDEX IF NOT EXISTS idx_student_activity_guides_title
+ON student_activity_guides(title);
 CREATE INDEX IF NOT EXISTS idx_campus_life_support_guides_topic
 ON campus_life_support_guides(topic);
 CREATE INDEX IF NOT EXISTS idx_campus_life_support_guides_title

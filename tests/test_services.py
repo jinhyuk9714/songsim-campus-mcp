@@ -41,6 +41,7 @@ from songsim_campus.services import (
     list_latest_notices,
     list_leave_of_absence_guides,
     list_scholarship_guides,
+    list_student_activity_guides,
     list_transport_guides,
     list_wifi_guides,
     refresh_academic_calendar_from_source,
@@ -60,6 +61,7 @@ from songsim_campus.services import (
     refresh_notices_from_notice_board,
     refresh_places_from_campus_map,
     refresh_scholarship_guides_from_source,
+    refresh_student_activity_guides_from_source,
     refresh_transport_guides_from_location_page,
     refresh_wifi_guides_from_source,
     search_campus_dining_menus,
@@ -5317,6 +5319,91 @@ def test_list_dormitory_guides_rejects_unknown_topic(app_env):
         list_dormitory_guides(conn, topic="invalid")
 
 
+def test_list_student_activity_guides_accepts_new_topics_and_rejects_unknown_topic(
+    app_env,
+    monkeypatch,
+):
+    init_db()
+
+    observed_topics: list[str | None] = []
+
+    def fake_list(conn, topic=None, limit=20):
+        observed_topics.append(topic)
+        return []
+
+    monkeypatch.setattr(services_module.repo, "list_student_activity_guides", fake_list)
+
+    with connection() as conn:
+        assert list_student_activity_guides(conn, topic="student_government", limit=1) == []
+        assert list_student_activity_guides(conn, topic="campus_media", limit=1) == []
+        assert list_student_activity_guides(conn, topic="social_volunteering", limit=1) == []
+        assert list_student_activity_guides(conn, topic="rotc", limit=1) == []
+
+        with pytest.raises(
+            InvalidRequestError,
+            match="student_government, campus_media, social_volunteering, rotc",
+        ):
+            list_student_activity_guides(conn, topic="invalid", limit=1)
+
+    assert observed_topics == [
+        "student_government",
+        "campus_media",
+        "social_volunteering",
+        "rotc",
+    ]
+
+
+def test_refresh_student_activity_guides_fetches_default_sources(app_env, monkeypatch):
+    init_db()
+
+    class GovernmentFixtureSource(services_module.StudentGovernmentGuideSource):
+        def fetch(self) -> str:
+            return (FIXTURES_DIR / "student_government.do.html").read_text(encoding="utf-8")
+
+    class MediaFixtureSource(services_module.CampusMediaGuideSource):
+        def fetch(self) -> str:
+            return (FIXTURES_DIR / "media.do.html").read_text(encoding="utf-8")
+
+    class VolunteerFixtureSource(services_module.SocialVolunteeringGuideSource):
+        def fetch(self) -> str:
+            return (FIXTURES_DIR / "volunteer.do.html").read_text(encoding="utf-8")
+
+    class RotcFixtureSource(services_module.RotcGuideSource):
+        def fetch(self) -> str:
+            return (FIXTURES_DIR / "rotc.do.html").read_text(encoding="utf-8")
+
+    monkeypatch.setattr(services_module, "StudentGovernmentGuideSource", GovernmentFixtureSource)
+    monkeypatch.setattr(services_module, "CampusMediaGuideSource", MediaFixtureSource)
+    monkeypatch.setattr(
+        services_module,
+        "SocialVolunteeringGuideSource",
+        VolunteerFixtureSource,
+    )
+    monkeypatch.setattr(services_module, "RotcGuideSource", RotcFixtureSource)
+
+    with connection() as conn:
+        guides = refresh_student_activity_guides_from_source(
+            conn,
+            fetched_at="2026-03-21T00:00:00+09:00",
+        )
+
+    assert [item.topic for item in guides] == [
+        "campus_media",
+        "campus_media",
+        "campus_media",
+        "campus_media",
+        "rotc",
+        "social_volunteering",
+        "social_volunteering",
+        "social_volunteering",
+        "social_volunteering",
+        "student_government",
+        "student_government",
+        "student_government",
+    ]
+    assert services_module.PUBLIC_READY_DATASET_POLICIES["student_activity_guides"] == "core"
+
+
 def test_list_wifi_guides_preserves_snapshot_order_and_limit(app_env):
     init_db()
 
@@ -5784,6 +5871,10 @@ def test_sync_official_snapshot_runs_opening_hours_before_courses_and_transport(
         lambda conn: call_order.append('academic_milestone_guides') or [],
     )
     monkeypatch.setattr(
+        'songsim_campus.services.refresh_student_activity_guides_from_source',
+        lambda conn: call_order.append('student_activity_guides') or [],
+    )
+    monkeypatch.setattr(
         'songsim_campus.services.refresh_student_exchange_guides_from_source',
         lambda conn: call_order.append('student_exchange_guides') or [],
     )
@@ -5846,6 +5937,7 @@ def test_sync_official_snapshot_runs_opening_hours_before_courses_and_transport(
         'class_guides',
         'seasonal_semester_guides',
         'academic_milestone_guides',
+        'student_activity_guides',
         'student_exchange_guides',
         'dormitory_guides',
         'phone_book_entries',
@@ -5867,6 +5959,7 @@ def test_sync_official_snapshot_runs_opening_hours_before_courses_and_transport(
     assert summary['class_guides'] == 0
     assert summary['seasonal_semester_guides'] == 0
     assert summary['academic_milestone_guides'] == 0
+    assert summary['student_activity_guides'] == 0
     assert summary['affiliated_notices'] == 0
     assert summary['campus_life_notices'] == 0
     assert summary['campus_life_support_guides'] == 0

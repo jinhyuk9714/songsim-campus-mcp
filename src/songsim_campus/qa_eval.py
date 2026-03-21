@@ -128,6 +128,7 @@ EvalDomain = Literal[
     "seasonal_semester_guides",
     "academic_milestone_guides",
     "student_exchange_guides",
+    "student_activity_guides",
     "student_exchange_partners",
     "campus_life_support_guides",
     "pc_software_entries",
@@ -414,6 +415,16 @@ def _summarize_payload(payload: Any, *, summary_kind: str) -> Any:
             for item in rows[:5]
         ]
     if summary_kind == "student_exchange_guides_top5":
+        rows = payload if isinstance(payload, list) else []
+        return [
+            {
+                "topic": item.get("topic"),
+                "title": item.get("title"),
+                "summary": item.get("summary"),
+            }
+            for item in rows[:5]
+        ]
+    if summary_kind == "student_activity_guides_top5":
         rows = payload if isinstance(payload, list) else []
         return [
             {

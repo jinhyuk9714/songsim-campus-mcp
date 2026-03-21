@@ -25,6 +25,7 @@ from .mcp_public_serializers import (
     serialize_public_restaurant_search,
     serialize_public_scholarship_guide,
     serialize_public_seasonal_semester_guide,
+    serialize_public_student_activity_guide,
     serialize_public_student_exchange_guide,
     serialize_public_transport_guide,
     serialize_public_wifi_guide,
@@ -63,6 +64,7 @@ from .services import (
     list_registration_guides,
     list_scholarship_guides,
     list_seasonal_semester_guides,
+    list_student_activity_guides,
     list_student_exchange_guides,
     list_transport_guides,
     list_wifi_guides,
@@ -492,6 +494,36 @@ def register_shared_tools(
             guides = list_academic_milestone_guides(conn, topic=topic, limit=limit)
             if public_readonly:
                 return [serialize_public_academic_milestone_guide(item) for item in guides]
+            return [item.model_dump() for item in guides]
+
+    @mcp.tool(
+        description=(
+            (
+                "학생활동 안내를 읽을 때 사용합니다. 학생회, 교지/언론, "
+                "사회봉사, ROTC 같은 학생활동 유형별 정적 안내를 current snapshot으로 "
+                "돌려줍니다."
+            )
+            if public_readonly
+            else "학교 학생활동 안내 current snapshot을 가져옵니다."
+        ),
+        meta=tool_meta,
+    )
+    def tool_list_student_activity_guides(
+        topic: Annotated[
+            str | None,
+            Field(
+                description=(
+                    "학생활동 안내 유형 필터. student_government, campus_media, "
+                    "social_volunteering, rotc 중 하나를 사용합니다."
+                )
+            ),
+        ] = None,
+        limit: Annotated[int, Field(description="최대 결과 수. 기본값은 20입니다.")] = 20,
+    ):
+        with connection_factory() as conn:
+            guides = list_student_activity_guides(conn, topic=topic, limit=limit)
+            if public_readonly:
+                return [serialize_public_student_activity_guide(item) for item in guides]
             return [item.model_dump() for item in guides]
 
     @mcp.tool(

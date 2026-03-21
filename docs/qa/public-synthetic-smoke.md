@@ -338,14 +338,44 @@ curl -fsS "$PUBLIC_HTTP_URL/dormitory-guides?topic=latest_notices&limit=2"
 - `topic=latest_notices` 결과는 홈 최신 공지 카드를 반환
 - `"source_tag":"cuk_dormitory_guides"`가 보임
 
+## 14. Student activity guide family smoke
+
+학생활동 정적 4페이지 v1은 현재 공개 HTTP/MCP surface에서 바로 읽을 수 있습니다.
+
+- `총학생회 안내해줘`
+- `교내미디어 뭐 있어?`
+- `사회봉사 활동 알려줘`
+- `학생군사교육단 안내해줘`
+
+surface names:
+
+- `GET /student-activity-guides`
+- `songsim://student-activity-guide`
+- `tool_list_student_activity_guides`
+
+topics:
+
+- `student_government`
+- `campus_media`
+- `social_volunteering`
+- `rotc`
+
 `jq` 예시:
 
 ```bash
-curl -fsS "$PUBLIC_HTTP_URL/dormitory-guides?topic=latest_notices&limit=2" \
+curl -fsS "$PUBLIC_HTTP_URL/student-activity-guides?topic=campus_media&limit=2" \
   | jq '.[0] | {topic, title, source_tag}'
 ```
 
-## 14. MCP initialize + guide checks
+기대값:
+
+- HTTP `200`
+- JSON array
+- `topic=student_government` 결과는 `조직구성`, `총학생회`, `총동아리연합회` 중 하나를 포함
+- `topic=campus_media` 결과는 `가톨릭대학보` 또는 `영자신문사(The CUK Forum)`를 포함
+- `"source_tag":"cuk_student_activity_guides"`가 보임
+
+## 15. MCP initialize + guide checks
 
 아래 Python smoke는 live에서 검증한 payload 형태를 그대로 사용합니다.
 

@@ -22,6 +22,7 @@ from .services import (
     list_registration_guides,
     list_scholarship_guides,
     list_seasonal_semester_guides,
+    list_student_activity_guides,
     list_student_exchange_guides,
     list_transport_guides,
     list_wifi_guides,
@@ -100,6 +101,7 @@ def public_usage_guide_text() -> str:
                 "tool_list_academic_support_guides, "
                 "tool_list_leave_of_absence_guides, tool_list_academic_status_guides, "
                 "tool_list_class_guides, tool_list_seasonal_semester_guides, "
+                "tool_list_student_activity_guides, "
                 "tool_list_academic_milestone_guides, tool_list_student_exchange_guides, "
                 "tool_search_student_exchange_partners, and tool_list_scholarship_guides "
                 "for academic procedures and institutional rules."
@@ -112,6 +114,8 @@ def public_usage_guide_text() -> str:
                 "외국어강의 의무이수 요건 알려줘 / 공결 신청 방법 알려줘 / "
                 "계절학기 신청 시기 알려줘 / 성적평가 방법 알려줘 / "
                 "졸업요건 알려줘 / 재입학 지원자격 알려줘 / "
+                "총학생회 안내해줘 / 교내미디어 뭐 있어? / 사회봉사 활동 알려줘 / "
+                "학생군사교육단 안내해줘 / 학생활동 공지 알려줘 / "
                 "국내 학점교류 신청대상 알려줘 / 학점교류 신청시기 알려줘 / "
                 "교류대학 현황 알려줘 / 교환학생 프로그램 알려줘 / "
                 "해외 교류프로그램 알려줘 / 해외협정대학 알려줘 / "
@@ -294,6 +298,16 @@ def register_shared_resources(mcp: Any, connection_factory: Any, docs_dir: Path)
         with connection_factory() as conn:
             return json.dumps(
                 [item.model_dump() for item in list_student_exchange_guides(conn, limit=50)],
+                ensure_ascii=False,
+                indent=2,
+            )
+
+    @mcp.resource("songsim://student-activity-guide")
+    def student_activity_guide_resource() -> str:
+        """Return the latest student activity guides as JSON."""
+        with connection_factory() as conn:
+            return json.dumps(
+                [item.model_dump() for item in list_student_activity_guides(conn, limit=50)],
                 ensure_ascii=False,
                 indent=2,
             )

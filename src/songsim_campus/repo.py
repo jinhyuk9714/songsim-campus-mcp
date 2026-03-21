@@ -1102,6 +1102,34 @@ def replace_student_exchange_guides(
     )
 
 
+def replace_student_activity_guides(
+    conn: psycopg.Connection,
+    rows: list[dict[str, Any]],
+) -> None:
+    conn.execute("TRUNCATE TABLE student_activity_guides RESTART IDENTITY CASCADE")
+    _executemany(
+        conn,
+        """
+        INSERT INTO student_activity_guides (
+            topic, title, summary, steps_json, links_json, source_url, source_tag, last_synced_at
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """,
+        [
+            (
+                row["topic"],
+                row["title"],
+                row.get("summary", ""),
+                Jsonb(row.get("steps", [])),
+                Jsonb(row.get("links", [])),
+                row.get("source_url"),
+                row.get("source_tag", "demo"),
+                row["last_synced_at"],
+            )
+            for row in rows
+        ],
+    )
+
+
 def replace_student_exchange_partners(
     conn: psycopg.Connection,
     rows: list[dict[str, Any]],
@@ -1629,6 +1657,26 @@ def list_student_exchange_guides(
     return [_row_to_dict("student_exchange_guides", row) for row in rows]
 
 
+def list_student_activity_guides(
+    conn: psycopg.Connection,
+    *,
+    topic: str | None = None,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    sql = """
+        SELECT *
+        FROM student_activity_guides
+    """
+    params: list[Any] = []
+    if topic:
+        sql += " WHERE topic = %s"
+        params.append(topic)
+    sql += " ORDER BY topic, title, id LIMIT %s"
+    params.append(limit)
+    rows = conn.execute(sql, params).fetchall()
+    return [_row_to_dict("student_activity_guides", row) for row in rows]
+
+
 def list_student_exchange_partners(
     conn: psycopg.Connection,
     *,
@@ -1863,6 +1911,7 @@ def get_dataset_sync_state(conn: psycopg.Connection, table: str) -> dict[str, An
         "seasonal_semester_guides",
         "academic_milestone_guides",
         "campus_life_support_guides",
+        "student_activity_guides",
         "pc_software_entries",
         "student_exchange_guides",
         "student_exchange_partners",

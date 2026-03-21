@@ -29,6 +29,7 @@ from .schemas import (
     RestaurantSearchResult,
     ScholarshipGuide,
     SeasonalSemesterGuide,
+    StudentActivityGuide,
     StudentExchangeGuide,
     TransportGuide,
     WifiGuide,
@@ -260,6 +261,14 @@ def serialize_public_class_guide(guide: ClassGuide) -> dict[str, object]:
 
 def serialize_public_seasonal_semester_guide(
     guide: SeasonalSemesterGuide,
+) -> dict[str, object]:
+    payload = guide.model_dump()
+    payload["guide_summary"] = guide.summary or (guide.steps[0] if guide.steps else "")
+    return payload
+
+
+def serialize_public_student_activity_guide(
+    guide: StudentActivityGuide,
 ) -> dict[str, object]:
     payload = guide.model_dump()
     payload["guide_summary"] = guide.summary or (guide.steps[0] if guide.steps else "")

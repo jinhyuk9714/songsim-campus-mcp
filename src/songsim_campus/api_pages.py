@@ -86,6 +86,7 @@ def render_admin_sync_page(
         {"title": "class_guides", "fields": []},
         {"title": "seasonal_semester_guides", "fields": []},
         {"title": "academic_milestone_guides", "fields": []},
+        {"title": "student_activity_guides", "fields": []},
         {"title": "student_exchange_guides", "fields": []},
         {"title": "student_exchange_partners", "fields": []},
         {"title": "phone_book_entries", "fields": []},
@@ -502,6 +503,10 @@ def render_landing_page(
             <li>
               <code>/academic-milestone-guides</code> grade evaluation, grade check,
               attendance threshold, and graduation requirement guides
+            </li>
+            <li>
+              <code>/student-activity-guides</code> student government, campus media,
+              social volunteering, and ROTC guides
             </li>
             <li>
               <code>/student-exchange-guides</code> domestic credit exchange, partner

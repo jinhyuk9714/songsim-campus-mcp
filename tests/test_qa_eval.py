@@ -2064,7 +2064,7 @@ def test_default_eval_assets_match_distribution_plan() -> None:
     rows = load_eval_rows(DEFAULT_CORPUS_PATH)
     watchlist_rows = load_eval_rows(DEFAULT_WATCHLIST_PATH)
 
-    assert len(rows) == 1060
+    assert len(rows) == 1064
     assert len(watchlist_rows) == 5
 
     by_domain: dict[str, int] = {}
@@ -2090,6 +2090,7 @@ def test_default_eval_assets_match_distribution_plan() -> None:
         "class_guides": 5,
         "seasonal_semester_guides": 4,
         "academic_milestone_guides": 5,
+        "student_activity_guides": 4,
         "student_exchange_guides": 5,
         "student_exchange_partners": 5,
         "dormitory_guides": 5,
@@ -2171,6 +2172,23 @@ def test_default_eval_assets_match_distribution_plan() -> None:
         "domestic_partner_universities",
         "exchange_student",
         "exchange_programs",
+    }
+
+    student_activity_rows = [row for row in rows if row.domain == "student_activity_guides"]
+
+    assert len(student_activity_rows) == 4
+    assert {row.api_request.path for row in student_activity_rows} == {"/student-activity-guides"}
+    assert {row.expected_mcp_flow for row in student_activity_rows} == {
+        "tool_list_student_activity_guides"
+    }
+    assert {row.pass_rule["summary_kind"] for row in student_activity_rows} == {
+        "student_activity_guides_top5"
+    }
+    assert {row.api_request.params["topic"] for row in student_activity_rows} == {
+        "student_government",
+        "campus_media",
+        "social_volunteering",
+        "rotc",
     }
 
     partner_rows = [row for row in rows if row.domain == "student_exchange_partners"]

@@ -17,6 +17,7 @@ from songsim_campus.repo import (
     replace_places,
     replace_restaurant_cache_snapshot,
     replace_restaurants,
+    replace_student_activity_guides,
     replace_student_exchange_guides,
     replace_student_exchange_partners,
     replace_transport_guides,
@@ -483,6 +484,46 @@ def test_mcp_dormitory_tool_and_resource_share_service_data(app_env):
     assert tool_payload["title"] == "스테파노관"
     assert tool_payload["topic"] == "hall_info"
     assert resource_payload[0]["source_tag"] == "cuk_dormitory_guides"
+
+
+def test_mcp_student_activity_tool_and_resource_share_service_data(app_env):
+    pytest.importorskip("mcp.server.fastmcp")
+    init_db()
+    seed_demo(force=True)
+    with connection() as conn:
+        replace_student_activity_guides(
+            conn,
+            [
+                {
+                    "topic": "student_government",
+                    "title": "총학생회",
+                    "summary": "학생 자치 대표 기구",
+                    "steps": ["학생 의견 수렴"],
+                    "links": [],
+                    "source_url": "https://example.com/student-activity",
+                    "source_tag": "cuk_student_activity_guides",
+                    "last_synced_at": "2026-03-20T10:00:00+09:00",
+                }
+            ],
+        )
+
+    async def main():
+        mcp = build_mcp()
+        tool_result = await mcp.call_tool(
+            "tool_list_student_activity_guides",
+            {"topic": "student_government", "limit": 10},
+        )
+        resource_result = await mcp.read_resource("songsim://student-activity-guide")
+        return tool_result, list(resource_result)
+
+    tool_result, resource_result = asyncio.run(main())
+
+    tool_payload = json.loads(tool_result[0].text)
+    resource_payload = json.loads(resource_result[0].content)
+
+    assert tool_payload["title"] == "총학생회"
+    assert tool_payload["topic"] == "student_government"
+    assert resource_payload[0]["source_tag"] == "cuk_student_activity_guides"
 
 
 def test_mcp_student_exchange_tool_and_resource_share_service_data(app_env):
@@ -965,6 +1006,7 @@ def test_mcp_public_readonly_mode_registers_only_read_only_tools(app_env, monkey
         "tool_list_class_guides",
         "tool_list_seasonal_semester_guides",
         "tool_list_academic_milestone_guides",
+        "tool_list_student_activity_guides",
         "tool_list_student_exchange_guides",
         "tool_search_student_exchange_partners",
         "tool_search_phone_book",
@@ -996,6 +1038,7 @@ def test_mcp_public_readonly_mode_registers_only_read_only_tools(app_env, monkey
     assert "songsim://class-guide" in resource_uris
     assert "songsim://seasonal-semester-guide" in resource_uris
     assert "songsim://academic-milestone-guide" in resource_uris
+    assert "songsim://student-activity-guide" in resource_uris
     assert "songsim://student-exchange-guide" in resource_uris
     assert "songsim://student-exchange-partners" in resource_uris
     assert "songsim://phone-book" in resource_uris
@@ -1049,6 +1092,7 @@ def test_mcp_public_readonly_mode_registers_prompts_and_extended_resources(app_e
         "songsim://class-guide",
         "songsim://seasonal-semester-guide",
         "songsim://academic-milestone-guide",
+        "songsim://student-activity-guide",
         "songsim://student-exchange-guide",
         "songsim://student-exchange-partners",
         "songsim://phone-book",
@@ -1122,6 +1166,13 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
     assert "학점 제한" in tools["tool_list_seasonal_semester_guides"]["description"]
     assert "성적평가" in tools["tool_list_academic_milestone_guides"]["description"]
     assert "졸업요건" in tools["tool_list_academic_milestone_guides"]["description"]
+    assert "학생회" in tools["tool_list_student_activity_guides"]["description"]
+    assert "사회봉사" in tools["tool_list_student_activity_guides"]["description"]
+    assert "student_government" in (
+        tools["tool_list_student_activity_guides"]["inputSchema"]["properties"]["topic"][
+            "description"
+        ]
+    )
     assert "학생교류" in tools["tool_list_student_exchange_guides"]["description"]
     assert "국내 학점교류" in tools["tool_list_student_exchange_guides"]["description"]
     assert "교환학생 프로그램" in tools["tool_list_student_exchange_guides"]["description"]
@@ -1456,6 +1507,7 @@ def test_mcp_public_usage_and_class_period_resources_are_readable(app_env, monke
     assert "tool_list_class_guides" in usage_content
     assert "tool_list_seasonal_semester_guides" in usage_content
     assert "tool_list_academic_milestone_guides" in usage_content
+    assert "tool_list_student_activity_guides" in usage_content
     assert "tool_list_student_exchange_guides" in usage_content
     assert "tool_search_student_exchange_partners" in usage_content
     assert "tool_search_phone_book" in usage_content
