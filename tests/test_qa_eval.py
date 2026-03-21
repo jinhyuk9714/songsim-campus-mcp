@@ -227,7 +227,7 @@ def test_search_courses_from_source_normalizes_database_alias(
         }
     )
     monkeypatch.setattr(
-        qa_eval.services,
+        qa_eval,
         "_collect_course_snapshot_rows",
         lambda *args, **kwargs: source_rows,
     )

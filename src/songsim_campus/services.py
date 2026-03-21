@@ -19,6 +19,7 @@ from bs4 import BeautifulSoup
 from pypdf import PdfReader
 
 from . import (
+    course_search_runtime,
     ops_runtime,
     place_search_runtime,
     profile_meal_runtime,
@@ -1213,14 +1214,11 @@ def _normalized_query_variants(value: str | None) -> tuple[str | None, str | Non
 
 
 def _normalize_course_query_text(value: str | None) -> str | None:
-    collapsed, _ = _normalized_query_variants(value)
-    if collapsed is None:
-        return None
-    return collapsed.replace("데이타베이스", "데이터베이스")
+    return course_search_runtime.normalize_course_query_text(value)
 
 
 def _looks_like_course_code_query(value: str) -> bool:
-    return bool(re.search(r"[A-Za-z]", value) and re.search(r"\d", value))
+    return course_search_runtime.looks_like_course_code_query(value)
 
 
 def _matches_exact_text_candidate(
@@ -1281,67 +1279,7 @@ def _rank_course_search_candidate(
     *,
     queries: list[str],
 ) -> int | None:
-    code = str(item.get("code") or "")
-    title = str(item.get("title") or "")
-    professor = str(item.get("professor") or "")
-
-    best_rank: int | None = None
-    for query in queries:
-        collapsed_query, compact_query = _normalized_query_variants(query)
-        if collapsed_query is None:
-            continue
-
-        rank: int | None = None
-        if _matches_exact_text_candidate(
-            code,
-            collapsed_query=collapsed_query,
-            compact_query=compact_query,
-        ):
-            rank = 0
-        elif _matches_prefix_text_candidate(
-            code,
-            collapsed_query=collapsed_query,
-            compact_query=compact_query,
-        ):
-            rank = 1
-        elif _matches_exact_text_candidate(
-            title,
-            collapsed_query=collapsed_query,
-            compact_query=compact_query,
-        ):
-            rank = 2
-        elif _matches_prefix_text_candidate(
-            title,
-            collapsed_query=collapsed_query,
-            compact_query=compact_query,
-        ):
-            rank = 3
-        elif _matches_exact_text_candidate(
-            professor,
-            collapsed_query=collapsed_query,
-            compact_query=compact_query,
-        ):
-            rank = 4
-        elif _matches_prefix_text_candidate(
-            professor,
-            collapsed_query=collapsed_query,
-            compact_query=compact_query,
-        ):
-            rank = 5
-        elif any(
-            _matches_partial_text_candidate(
-                field,
-                collapsed_query=collapsed_query,
-                compact_query=compact_query,
-            )
-            for field in (code, title, professor)
-        ):
-            rank = 6
-        if rank is None:
-            continue
-        if best_rank is None or rank < best_rank:
-            best_rank = rank
-    return best_rank
+    return course_search_runtime.rank_course_search_candidate(item, queries=queries)
 
 
 def _normalize_transport_mode(mode: str | None) -> str | None:
@@ -2419,8 +2357,8 @@ def search_courses(
     period_start: int | None = None,
     limit: int = 20,
 ) -> list[Course]:
-    query_candidates = _course_query_candidates(query)
-    normalized_query = _normalize_course_query_text(query)
+    query_candidates = course_search_runtime.course_query_candidates(query)
+    normalized_query = course_search_runtime.normalize_course_query_text(query)
     if normalized_query is None:
         return [
             Course.model_validate(item)
@@ -2434,43 +2372,92 @@ def search_courses(
             )
         ]
 
-    ranked_items: list[tuple[int, int, int, str, str, str, int, dict[str, Any]]] = []
-    seen_ids: set[int] = set()
-    order_index = 0
+    candidate_rows: list[dict[str, Any]] = []
     for candidate_query in query_candidates:
-        for item in repo.search_courses(
-            conn,
-            candidate_query,
-            year=year,
-            semester=semester,
-            period_start=period_start,
-            limit=None,
-        ):
-            item_id = int(item["id"])
-            if item_id in seen_ids:
-                continue
-            seen_ids.add(item_id)
-            rank = _rank_course_search_candidate(
-                item,
-                queries=query_candidates,
+        candidate_rows.extend(
+            repo.search_courses(
+                conn,
+                candidate_query,
+                year=year,
+                semester=semester,
+                period_start=period_start,
+                limit=None,
             )
-            if rank is None:
-                continue
-            ranked_items.append(
-                (
-                    rank,
-                    -int(item.get("year") or 0),
-                    -int(item.get("semester") or 0),
-                    _collapse_whitespace(str(item.get("title") or "")).lower(),
-                    str(item.get("code") or "").lower(),
-                    str(item.get("section") or "").lower(),
-                    order_index,
-                    item,
-                )
+        )
+
+    return [
+        Course.model_validate(item)
+        for item in course_search_runtime.search_course_rows(
+            candidate_rows,
+            query=query,
+            period_start=None,
+            limit=limit,
+        )
+    ]
+
+
+def _course_query_candidates(query: str) -> list[str]:
+    return course_search_runtime.course_query_candidates(query)
+
+
+def _course_row_matches_queries(row: dict[str, Any], queries: list[str]) -> bool:
+    return course_search_runtime.course_row_matches_queries(row, queries)
+
+
+def _course_match_preview(
+    rows: list[dict[str, Any]],
+    *,
+    limit: int = 5,
+) -> list[dict[str, str | None]]:
+    return course_search_runtime.course_match_preview(rows, limit=limit)
+
+
+def investigate_course_query_coverage(
+    conn: DBConnection,
+    *,
+    queries: list[str],
+    source: CourseCatalogSource | Any | None = None,
+    year: int | None = None,
+    semester: int | None = None,
+    fetched_at: str | None = None,
+    search_limit: int = 20,
+) -> list[dict[str, Any]]:
+    source = source or CourseCatalogSource(COURSE_SOURCE_URL)
+    synced_at = fetched_at or _now_iso()
+    resolved_year, resolved_semester = _current_year_and_semester()
+    resolved_year = year or resolved_year
+    resolved_semester = semester or resolved_semester
+
+    source_rows = _collect_course_snapshot_rows(
+        source,
+        year=resolved_year,
+        semester=resolved_semester,
+        fetched_at=synced_at,
+    )
+    db_rows = repo.list_courses_snapshot(
+        conn,
+        year=resolved_year,
+        semester=resolved_semester,
+    )
+
+    return course_search_runtime.investigate_course_query_coverage(
+        queries=queries,
+        source_rows=source_rows,
+        db_rows=db_rows,
+        year=resolved_year,
+        semester=resolved_semester,
+        search_limit=search_limit,
+        search_rows_fn=lambda raw_query, raw_limit: [
+            course.model_dump()
+            for course in search_courses(
+                conn,
+                query=raw_query,
+                year=resolved_year,
+                semester=resolved_semester,
+                limit=raw_limit,
             )
-            order_index += 1
-    ranked_items.sort(key=lambda item: item[:-1])
-    return [Course.model_validate(item[-1]) for item in ranked_items[:limit]]
+        ],
+    )
 
 
 def search_restaurants(
@@ -2639,138 +2626,6 @@ def _collect_course_snapshot_rows(
         if len(page_rows) < 50:
             break
     return rows
-
-
-def _course_query_candidates(query: str) -> list[str]:
-    collapsed_query = _normalize_course_query_text(query)
-    if collapsed_query is None:
-        return [""]
-    _, compact_query = _normalized_query_variants(collapsed_query)
-    queries = [collapsed_query]
-    if compact_query is not None and compact_query != queries[0]:
-        queries.append(compact_query)
-    if _looks_like_course_code_query(collapsed_query):
-        code_compact_query = re.sub(r"[\s\-_]+", "", collapsed_query)
-        if code_compact_query and code_compact_query not in queries:
-            queries.append(code_compact_query)
-    return queries
-
-
-def _course_row_matches_queries(row: dict[str, Any], queries: list[str]) -> bool:
-    text_fields = [
-        _normalize_optional_text(row.get("title")),
-        _normalize_optional_text(row.get("code")),
-        _normalize_optional_text(row.get("professor")),
-    ]
-    lowered_fields = [field.lower() for field in text_fields if field]
-    compacted_fields = [_compact_text(field).lower() for field in text_fields if field]
-
-    for query in queries:
-        lowered_query = query.lower()
-        compacted_query = _compact_text(query).lower()
-        if any(lowered_query in field for field in lowered_fields):
-            return True
-        if compacted_query and any(compacted_query in field for field in compacted_fields):
-            return True
-    return False
-
-
-def _course_match_preview(
-    rows: list[dict[str, Any]],
-    *,
-    limit: int = 5,
-) -> list[dict[str, str | None]]:
-    return [
-        {
-            "code": row.get("code"),
-            "title": row.get("title"),
-            "professor": row.get("professor"),
-            "department": row.get("department"),
-            "section": row.get("section"),
-        }
-        for row in rows[:limit]
-    ]
-
-
-def investigate_course_query_coverage(
-    conn: DBConnection,
-    *,
-    queries: list[str],
-    source: CourseCatalogSource | Any | None = None,
-    year: int | None = None,
-    semester: int | None = None,
-    fetched_at: str | None = None,
-    search_limit: int = 20,
-) -> list[dict[str, Any]]:
-    source = source or CourseCatalogSource(COURSE_SOURCE_URL)
-    synced_at = fetched_at or _now_iso()
-    resolved_year, resolved_semester = _current_year_and_semester()
-    resolved_year = year or resolved_year
-    resolved_semester = semester or resolved_semester
-
-    source_rows = _collect_course_snapshot_rows(
-        source,
-        year=resolved_year,
-        semester=resolved_semester,
-        fetched_at=synced_at,
-    )
-    db_rows = repo.list_courses_snapshot(
-        conn,
-        year=resolved_year,
-        semester=resolved_semester,
-    )
-
-    reports: list[dict[str, Any]] = []
-    for query in queries:
-        candidate_queries = _course_query_candidates(query)
-        source_matches = [
-            row for row in source_rows if _course_row_matches_queries(row, candidate_queries)
-        ]
-        db_direct_matches = [
-            row for row in db_rows if _course_row_matches_queries(row, candidate_queries)
-        ]
-        search_matches = search_courses(
-            conn,
-            query=query,
-            year=resolved_year,
-            semester=resolved_semester,
-            limit=search_limit,
-        )
-
-        if search_matches:
-            status = "covered"
-        elif db_direct_matches:
-            status = "search_gap"
-        elif source_matches:
-            status = "db_gap"
-        else:
-            status = "source_gap"
-
-        reports.append(
-            {
-                "query": query,
-                "year": resolved_year,
-                "semester": resolved_semester,
-                "status": status,
-                "source_match_count": len(source_matches),
-                "db_match_count": len(db_direct_matches),
-                "search_match_count": len(search_matches),
-                "source_matches": _course_match_preview(source_matches),
-                "db_matches": _course_match_preview(db_direct_matches),
-                "search_matches": [
-                    {
-                        "code": course.code,
-                        "title": course.title,
-                        "professor": course.professor,
-                        "department": course.department,
-                        "section": course.section,
-                    }
-                    for course in search_matches[:5]
-                ],
-            }
-        )
-    return reports
-
 
 def list_latest_notices(
     conn: DBConnection,

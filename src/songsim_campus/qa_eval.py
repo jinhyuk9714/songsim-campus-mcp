@@ -62,6 +62,47 @@ from .ingest.pc_software import (
     search_pc_software_entries as rank_pc_software_rows,
 )
 
+try:
+    from . import course_search_runtime as course_search_runtime
+except ImportError:
+    course_search_runtime = services
+
+_current_academic_year = getattr(
+    course_search_runtime,
+    "_current_academic_year",
+    services._current_academic_year,
+)
+_collect_course_snapshot_rows = getattr(
+    course_search_runtime,
+    "_collect_course_snapshot_rows",
+    services._collect_course_snapshot_rows,
+)
+_course_query_candidates = getattr(
+    course_search_runtime,
+    "course_query_candidates",
+    services._course_query_candidates,
+)
+_normalize_course_query_text = getattr(
+    course_search_runtime,
+    "normalize_course_query_text",
+    services._normalize_course_query_text,
+)
+_course_row_matches_queries = getattr(
+    course_search_runtime,
+    "course_row_matches_queries",
+    services._course_row_matches_queries,
+)
+_rank_course_search_candidate = getattr(
+    course_search_runtime,
+    "rank_course_search_candidate",
+    services._rank_course_search_candidate,
+)
+_search_course_rows = getattr(
+    course_search_runtime,
+    "search_course_rows",
+    None,
+)
+
 ROOT_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_CORPUS_PATH = ROOT_DIR / "data" / "qa" / "public_api_eval_corpus_1000.jsonl"
 DEFAULT_WATCHLIST_PATH = ROOT_DIR / "data" / "qa" / "public_api_eval_watchlist.jsonl"
@@ -1153,7 +1194,7 @@ def _search_courses_from_source(
     source_cache: dict[str, Any],
 ) -> list[dict[str, Any]]:
     params = row.api_request.params
-    year = int(params.get("year") or services._current_academic_year())
+    year = int(params.get("year") or _current_academic_year())
     semester = int(params.get("semester") or 1)
     period_start = params.get("period_start")
     limit = _limit_from_row(row, 20)
@@ -1161,7 +1202,7 @@ def _search_courses_from_source(
     source = CourseCatalogSource(services.COURSE_SOURCE_URL)
     cache_key = f"courses_snapshot:{year}:{semester}"
     if cache_key not in source_cache:
-        source_cache[cache_key] = services._collect_course_snapshot_rows(
+        source_cache[cache_key] = _collect_course_snapshot_rows(
             source,
             year=year,
             semester=semester,
@@ -1169,8 +1210,16 @@ def _search_courses_from_source(
         )
     snapshot_rows = list(source_cache[cache_key])
     query = str(params.get("query") or "")
-    query_candidates = services._course_query_candidates(query)
-    normalized_query = services._normalize_course_query_text(query)
+    if _search_course_rows is not None:
+        return _search_course_rows(
+            snapshot_rows,
+            query=query,
+            period_start=period_start,
+            limit=limit,
+        )
+
+    query_candidates = _course_query_candidates(query)
+    normalized_query = _normalize_course_query_text(query)
     if normalized_query is None:
         rows = snapshot_rows
         if period_start is not None:
@@ -1188,7 +1237,7 @@ def _search_courses_from_source(
         rows = [
             item
             for item in snapshot_rows
-            if services._course_row_matches_queries(item, [candidate_query])
+            if _course_row_matches_queries(item, [candidate_query])
         ]
         for item in rows:
             if period_start is not None and int(item.get("period_start") or 0) != int(period_start):
@@ -1202,7 +1251,7 @@ def _search_courses_from_source(
             if item_key in seen_keys:
                 continue
             seen_keys.add(item_key)
-            rank = services._rank_course_search_candidate(
+            rank = _rank_course_search_candidate(
                 item,
                 queries=queries,
             )
@@ -1226,7 +1275,7 @@ def _search_courses_from_source(
 
 
 def _current_academic_year_bounds() -> tuple[str, str]:
-    academic_year = services._current_academic_year()
+    academic_year = _current_academic_year()
     return f"{academic_year}-03-01", f"{academic_year + 1}-02-28"
 
 
@@ -1541,7 +1590,7 @@ def _payload_from_sources(
             ]
         if month := row.api_request.params.get("month"):
             start_date, end_date = services._academic_month_bounds(
-                row.api_request.params.get("academic_year") or services._current_academic_year(),
+                row.api_request.params.get("academic_year") or _current_academic_year(),
                 int(month),
             )
             indexed_rows = [
