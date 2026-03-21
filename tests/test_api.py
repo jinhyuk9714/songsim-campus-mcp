@@ -400,6 +400,32 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
                     "last_synced_at": "2026-03-20T10:00:00+09:00",
                 }
             ],
+            "facility_rental": [
+                {
+                    "id": 6,
+                    "topic": "facility_rental",
+                    "title": "콘서트홀",
+                    "summary": "1~4시간: 2,000,000 원",
+                    "steps": ["1~4시간: 2,000,000 원"],
+                    "links": [],
+                    "source_url": "https://www.catholic.ac.kr/ko/campuslife/rent_songsim.do",
+                    "source_tag": "cuk_campus_life_support_guides",
+                    "last_synced_at": "2026-03-20T10:00:00+09:00",
+                }
+            ],
+            "mobility_safety": [
+                {
+                    "id": 7,
+                    "topic": "mobility_safety",
+                    "title": "개인형 이동장치 안전관리교육",
+                    "summary": "개인형 이동장치 운행 전 반드시 교육영상을 시청해주시기 바랍니다.",
+                    "steps": ["개인형 이동장치 운행 전 반드시 교육영상을 시청해주시기 바랍니다."],
+                    "links": [],
+                    "source_url": "https://www.catholic.ac.kr/ko/service/safety.do",
+                    "source_tag": "cuk_campus_life_support_guides",
+                    "last_synced_at": "2026-03-20T10:00:00+09:00",
+                }
+            ],
         }
         return topics.get(topic, topics["health_center"])
     def stub_pc_software_entries(conn, query=None, limit=20):
@@ -505,6 +531,14 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
             "/campus-life-support-guides",
             params={"topic": "hospital_use"},
         )
+        campus_life_support_rental = public_client.get(
+            "/campus-life-support-guides",
+            params={"topic": "facility_rental"},
+        )
+        campus_life_support_safety = public_client.get(
+            "/campus-life-support-guides",
+            params={"topic": "mobility_safety"},
+        )
         campus_life_notices = public_client.get(
             "/campus-life-notices",
             params={"query": "외부기관공지"},
@@ -542,6 +576,8 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     assert "장애학생지원센터 뭐 해줘?" in landing.text
     assert "예비군 신고 시기 알려줘" in landing.text
     assert "부속병원 이용 안내해줘" in landing.text
+    assert "성심교정 대관안내 알려줘" in landing.text
+    assert "개인형 이동장치 안전교육 알려줘" in landing.text
     assert "/pc-software" in landing.text
     assert "/affiliated-notices" in landing.text
     assert "/dormitory-guides" in landing.text
@@ -569,6 +605,10 @@ def test_public_readonly_mode_exposes_only_public_routes(app_env, monkeypatch):
     assert campus_life_support_reservist.json()[0]["topic"] == "student_reservist"
     assert campus_life_support_hospital.status_code == 200
     assert campus_life_support_hospital.json()[0]["topic"] == "hospital_use"
+    assert campus_life_support_rental.status_code == 200
+    assert campus_life_support_rental.json()[0]["topic"] == "facility_rental"
+    assert campus_life_support_safety.status_code == 200
+    assert campus_life_support_safety.json()[0]["topic"] == "mobility_safety"
     assert campus_life_notices.status_code == 200
     assert campus_life_notices.json()[0]["topic"] == "outside_agencies"
     assert campus_life_events.status_code == 200
@@ -1131,6 +1171,70 @@ def test_places_endpoint_matches_generic_facility_nouns(client):
     assert atm_response.status_code == 200
     assert [item["slug"] for item in atm_response.json()] == ["student-center"]
     assert atm_response.json()[0]["matched_facility"]["location_hint"] == "학생회관"
+
+
+def test_places_endpoint_supports_laundry_generic_facility_query(client):
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                {
+                    "slug": "dormitory-stephen",
+                    "name": "스테파노기숙사",
+                    "category": "dormitory",
+                    "aliases": ["K관"],
+                    "description": "기숙사 생활시설 건물",
+                    "latitude": 37.48516,
+                    "longitude": 126.80323,
+                    "opening_hours": {
+                        "세탁소": "평일 09:00~18:00",
+                    },
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "slug": "kim-sou-hwan-hall",
+                    "name": "김수환관",
+                    "category": "building",
+                    "aliases": ["김수환", "K관"],
+                    "description": "강의실과 연구실이 있는 건물",
+                    "latitude": 37.48630,
+                    "longitude": 126.80120,
+                    "opening_hours": {
+                        "세탁소": "평일 09:00~18:00",
+                    },
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "slug": "student-center",
+                    "name": "학생회관",
+                    "category": "facility",
+                    "aliases": ["학생센터"],
+                    "description": "학생 편의시설이 많은 건물",
+                    "latitude": 37.48652,
+                    "longitude": 126.80216,
+                    "opening_hours": {
+                        "세탁소": "평일 09:00~18:00",
+                    },
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+
+    response = client.get("/places", params={"query": "세탁소", "limit": 5})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [item["slug"] for item in payload[:3]] == [
+        "kim-sou-hwan-hall",
+        "student-center",
+        "dormitory-stephen",
+    ]
+    assert payload[0]["matched_facility"]["name"] == "세탁소"
+    assert payload[0]["matched_facility"]["location_hint"] == "김수환관"
+    assert payload[0]["matched_facility"]["opening_hours"] == "평일 09:00~18:00"
 
 
 def test_places_endpoint_generic_facility_nouns_prefer_building_then_facility_then_dormitory(

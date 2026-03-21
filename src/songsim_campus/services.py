@@ -29,8 +29,10 @@ from . import (
 from .db import DBConnection, connection, get_connection
 from .ingest import campus_life_support_guides as campus_life_support_guides_ingest
 from .ingest.campus_life_support_guides import (
+    FacilityRentalGuideSource,
     HealthCenterGuideSource,
     LostFoundGuideSource,
+    MobilitySafetyGuideSource,
     ParkingGuideSource,
 )
 from .ingest.kakao_places import (
@@ -167,6 +169,8 @@ STUDENT_COUNSELING_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/campuslife/
 DISABILITY_SUPPORT_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/campuslife/disability_service.do"
 STUDENT_RESERVIST_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/campuslife/student_reservist.do"
 HOSPITAL_USE_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/campuslife/hospital1.do"
+MOBILITY_SAFETY_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/service/safety.do"
+FACILITY_RENTAL_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/campuslife/rent_songsim.do"
 RETURN_FROM_LEAVE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/return_from_leave_of_absence.do"
 DROPOUT_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/dropout.do"
 RE_ADMISSION_GUIDE_SOURCE_URL = "https://www.catholic.ac.kr/ko/support/re_admission.do"
@@ -211,6 +215,8 @@ CAMPUS_LIFE_SUPPORT_GUIDE_TOPICS = {
     "health_center",
     "lost_found",
     "parking",
+    "mobility_safety",
+    "facility_rental",
     "student_counseling",
     "disability_support",
     "student_reservist",
@@ -3192,8 +3198,9 @@ def list_campus_life_support_guides(
     normalized_topic = topic.strip() if topic else None
     if normalized_topic and normalized_topic not in CAMPUS_LIFE_SUPPORT_GUIDE_TOPICS:
         raise InvalidRequestError(
-            "topic must be one of health_center, lost_found, parking, "
-            "student_counseling, disability_support, student_reservist, hospital_use."
+            "topic must be one of health_center, lost_found, parking, mobility_safety, "
+            "facility_rental, student_counseling, disability_support, student_reservist, "
+            "hospital_use."
         )
     return [
         CampusLifeSupportGuide.model_validate(item)
@@ -5221,6 +5228,8 @@ def refresh_campus_life_support_guides_from_source(
         HealthCenterGuideSource(HEALTH_CENTER_GUIDE_SOURCE_URL),
         LostFoundGuideSource(LOST_FOUND_GUIDE_SOURCE_URL),
         ParkingGuideSource(CAMPUS_PARKING_GUIDE_SOURCE_URL),
+        MobilitySafetyGuideSource(MOBILITY_SAFETY_GUIDE_SOURCE_URL),
+        FacilityRentalGuideSource(FACILITY_RENTAL_GUIDE_SOURCE_URL),
         *[
             source_cls(url)
             for source_cls, url in [

@@ -254,6 +254,8 @@ curl -fsS "$PUBLIC_HTTP_URL/restaurants/nearby?origin=%EC%A4%91%EB%8F%84&limit=3
 ```bash
 curl -fsS "$PUBLIC_HTTP_URL/campus-life-support-guides?topic=health_center&limit=2"
 curl -fsS "$PUBLIC_HTTP_URL/campus-life-support-guides?topic=parking&limit=2"
+curl -fsS "$PUBLIC_HTTP_URL/campus-life-support-guides?topic=facility_rental&limit=2"
+curl -fsS "$PUBLIC_HTTP_URL/campus-life-support-guides?topic=mobility_safety&limit=2"
 curl -fsS "$PUBLIC_HTTP_URL/campus-life-support-guides?topic=student_counseling&limit=2"
 curl -fsS "$PUBLIC_HTTP_URL/campus-life-support-guides?topic=student_reservist&limit=2"
 curl -fsS "$PUBLIC_HTTP_URL/campus-life-support-guides?topic=hospital_use&limit=2"
@@ -263,7 +265,7 @@ curl -fsS "$PUBLIC_HTTP_URL/campus-life-support-guides?topic=hospital_use&limit=
 
 - HTTP `200`
 - JSON array
-- 첫 결과 또는 상위 결과 안에 `"topic":"health_center"` 또는 `"topic":"parking"`
+- 첫 결과 또는 상위 결과 안에 `"topic":"health_center"`, `"topic":"parking"`, `"topic":"facility_rental"`, 또는 `"topic":"mobility_safety"`
 - `"source_tag":"cuk_campus_life_support_guides"`가 보임
 
 ## 10. PC software HTTP smoke
@@ -568,7 +570,7 @@ with httpx.Client(timeout=20.0) as client:
             "method": "tools/call",
             "params": {
                 "name": "tool_list_campus_life_support_guides",
-                "arguments": {"topic": "health_center", "limit": 2},
+                "arguments": {"topic": "facility_rental", "limit": 2},
             },
         },
     )
@@ -754,7 +756,7 @@ PY
 - `tool_list_class_guides` payload가 빈 결과가 아니고 `course_evaluation` 항목을 포함함
 - `tool_list_seasonal_semester_guides` payload가 빈 결과가 아니고 `seasonal_semester` 항목을 포함함
 - `tool_list_academic_milestone_guides` payload가 빈 결과가 아니고 `grade_evaluation` 항목을 포함함
-- `tool_list_campus_life_support_guides` payload가 빈 결과가 아니고 `health_center`, `parking`, `student_counseling`, `student_reservist`, 또는 `hospital_use` 항목을 포함함
+- `tool_list_campus_life_support_guides` payload가 빈 결과가 아니고 `health_center`, `parking`, `facility_rental`, `mobility_safety`, `student_counseling`, `student_reservist`, 또는 `hospital_use` 항목을 포함함
 - `tool_search_pc_software` payload가 빈 결과가 아니고 `SPSS` 또는 `Photoshop` 항목을 포함함
 - `tool_list_student_exchange_guides` payload가 빈 결과가 아니고 `exchange_student` 또는 `domestic_partner_universities` 항목을 포함함
 - `tool_search_student_exchange_partners` payload가 빈 결과가 아니고 `네덜란드` 또는 `Utrecht University` 항목을 포함함
@@ -784,7 +786,7 @@ PY
 - `/class-guides`가 `course_evaluation` topic과 `cuk_class_guides` source tag를 반환
 - `/seasonal-semester-guides`가 `seasonal_semester` topic과 `cuk_seasonal_semester_guides` source tag를 반환
 - `/academic-milestone-guides`가 `grade_evaluation` topic과 `cuk_academic_milestone_guides` source tag를 반환
-- `/campus-life-support-guides`가 `health_center`, `parking`, `student_counseling`, `student_reservist`, 또는 `hospital_use` topic과 `cuk_campus_life_support_guides` source tag를 반환
+- `/campus-life-support-guides`가 `health_center`, `parking`, `facility_rental`, `mobility_safety`, `student_counseling`, `student_reservist`, 또는 `hospital_use` topic과 `cuk_campus_life_support_guides` source tag를 반환
 - `/pc-software`가 `SPSS` 또는 `Photoshop` query에 대해 `cuk_pc_software` source tag를 반환
 - `/student-exchange-guides`가 `exchange_student` 또는 `domestic_partner_universities` topic과 `cuk_student_exchange_guides` source tag를 반환
 - `/student-exchange-partners`가 `네덜란드` 같은 query에 대해 `country_ko`, `university_name`, `homepage_url`, `cuk_student_exchange_partners`를 반환

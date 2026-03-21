@@ -1136,6 +1136,10 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
     assert "장애학생지원센터" in tools["tool_list_campus_life_support_guides"]["description"]
     assert "예비군" in tools["tool_list_campus_life_support_guides"]["description"]
     assert "부속병원" in tools["tool_list_campus_life_support_guides"]["description"]
+    assert "대관안내" in tools["tool_list_campus_life_support_guides"]["description"]
+    assert "개인형 이동장치 안전교육" in (
+        tools["tool_list_campus_life_support_guides"]["description"]
+    )
     assert "SPSS" in tools["tool_search_pc_software"]["description"]
     assert "Visual Studio" in tools["tool_search_pc_software"]["description"]
     assert "기숙사" in tools["tool_list_dormitory_guides"]["description"]
@@ -1250,6 +1254,16 @@ def test_mcp_public_readonly_mode_exposes_agent_friendly_tool_metadata(app_env, 
         ]
     )
     assert "student_reservist" in (
+        tools["tool_list_campus_life_support_guides"]["inputSchema"]["properties"]["topic"][
+            "description"
+        ]
+    )
+    assert "mobility_safety" in (
+        tools["tool_list_campus_life_support_guides"]["inputSchema"]["properties"]["topic"][
+            "description"
+        ]
+    )
+    assert "facility_rental" in (
         tools["tool_list_campus_life_support_guides"]["inputSchema"]["properties"]["topic"][
             "description"
         ]
@@ -1465,6 +1479,8 @@ def test_mcp_public_usage_and_class_period_resources_are_readable(app_env, monke
     assert "장애학생지원센터 뭐 해줘?" in usage_content
     assert "예비군 신고 시기 알려줘" in usage_content
     assert "부속병원 이용 안내해줘" in usage_content
+    assert "성심교정 대관안내 알려줘" in usage_content
+    assert "개인형 이동장치 안전교육 알려줘" in usage_content
     assert "SPSS 설치된 컴퓨터실" in usage_content
     assert "휴복학 문의" in usage_content
     assert "복학 신청 방법" in usage_content
@@ -2355,6 +2371,80 @@ def test_mcp_public_search_places_matches_student_center_composite_facility_quer
     assert all(item["canonical_name"] == "학생회관" for item in payloads)
     assert all(item["matched_facility"]["name"] == "CU" for item in payloads)
     assert all(item["matched_facility"]["location_hint"] == "학생회관 1층" for item in payloads)
+
+    clear_settings_cache()
+
+
+def test_mcp_public_search_places_laundry_generic_query_ordering(app_env, monkeypatch):
+    pytest.importorskip('mcp.server.fastmcp')
+    init_db()
+    shared_hours = {
+        "이마트24": "상시 07:00~24:00",
+        "교내복사실": "평일 08:50~19:00",
+        "우리은행": "평일 09:00~16:00",
+        "트러스트짐": "평일 07:00~22:30",
+        "세탁소": "평일 09:00~18:00",
+    }
+    with connection() as conn:
+        replace_places(
+            conn,
+            [
+                {
+                    "slug": "dormitory-stephen",
+                    "name": "스테파노기숙사",
+                    "category": "dormitory",
+                    "aliases": ["K관"],
+                    "description": "기숙사 생활시설 건물",
+                    "opening_hours": shared_hours,
+                    "latitude": 37.48516,
+                    "longitude": 126.80323,
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "slug": "kim-sou-hwan-hall",
+                    "name": "김수환관",
+                    "category": "building",
+                    "aliases": ["K관"],
+                    "description": "강의동과 생활편의시설이 함께 있는 건물",
+                    "opening_hours": shared_hours,
+                    "latitude": 37.48630,
+                    "longitude": 126.80120,
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+                {
+                    "slug": "student-center",
+                    "name": "학생회관",
+                    "category": "facility",
+                    "aliases": ["학생센터"],
+                    "description": "학생 편의시설이 많은 건물",
+                    "opening_hours": shared_hours,
+                    "latitude": 37.48652,
+                    "longitude": 126.80216,
+                    "source_tag": "test",
+                    "last_synced_at": "2026-03-13T09:00:00+09:00",
+                },
+            ],
+        )
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+
+    async def main():
+        mcp = build_mcp()
+        payload = await mcp.call_tool("tool_search_places", {"query": "세탁소", "limit": 5})
+        return _tool_payloads(payload)
+
+    payloads = asyncio.run(main())
+
+    assert [item["slug"] for item in payloads[:3]] == [
+        "kim-sou-hwan-hall",
+        "student-center",
+        "dormitory-stephen",
+    ]
+    assert payloads[0]["matched_facility"]["name"] == "세탁소"
+    assert payloads[0]["matched_facility"]["location_hint"] == "김수환관"
+    assert payloads[0]["matched_facility"]["opening_hours"] == "평일 09:00~18:00"
 
     clear_settings_cache()
 

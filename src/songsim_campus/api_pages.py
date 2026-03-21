@@ -324,6 +324,8 @@ def render_landing_page(
         "장애학생지원센터 뭐 해줘?",
         "예비군 신고 시기 알려줘",
         "부속병원 이용 안내해줘",
+        "성심교정 대관안내 알려줘",
+        "개인형 이동장치 안전교육 알려줘",
         "보건실 위치와 운영시간 알려줘",
         "유실물 찾는 방법 알려줘",
         "성심교정 주차요금 알려줘",
@@ -512,8 +514,8 @@ def render_landing_page(
             <li><code>/phone-book</code> campus-wide department contacts and phone numbers</li>
             <li>
               <code>/campus-life-support-guides</code> health center, counseling,
-              disability, reservist, hospital use, lost-found, and Songsim parking
-              guides
+              disability, reservist, hospital use, facility rental, mobility
+              safety, lost-found, and Songsim parking guides
             </li>
             <li>
               <code>/campus-life-notices</code> outside-agency and event campus-life

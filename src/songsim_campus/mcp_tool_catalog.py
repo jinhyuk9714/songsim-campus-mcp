@@ -286,8 +286,9 @@ def register_shared_tools(
         description=(
             (
                 "생활지원 안내를 읽을 때 사용합니다. 보건실, 유실물, 성심교정 주차요금, "
-                "학생상담, 장애학생지원센터, 예비군, 부속병원처럼 학생이 바로 행동에 옮길 "
-                "수 있는 정적 안내를 current snapshot으로 돌려줍니다."
+                "학생상담, 장애학생지원센터, 예비군, 부속병원, 대관안내, "
+                "개인형 이동장치 안전교육처럼 학생이 바로 행동에 옮길 수 있는 정적 "
+                "안내를 current snapshot으로 돌려줍니다."
             )
             if public_readonly
             else "학교 생활지원 안내 current snapshot을 가져옵니다."
@@ -300,8 +301,9 @@ def register_shared_tools(
             Field(
                 description=(
                     "생활지원 안내 유형 필터. health_center, lost_found, parking, "
-                    "student_counseling, disability_support, student_reservist, "
-                    "hospital_use 중 하나를 사용합니다."
+                    "mobility_safety, facility_rental, student_counseling, "
+                    "disability_support, student_reservist, hospital_use 중 하나를 "
+                    "사용합니다."
                 )
             ),
         ] = None,

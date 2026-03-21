@@ -10,9 +10,11 @@ from songsim_campus import services
 from songsim_campus.db import connection, init_db
 from songsim_campus.ingest.campus_life_support_guides import (
     DisabilitySupportGuideSource,
+    FacilityRentalGuideSource,
     HealthCenterGuideSource,
     HospitalUseGuideSource,
     LostFoundGuideSource,
+    MobilitySafetyGuideSource,
     ParkingGuideSource,
     StudentCounselingGuideSource,
     StudentReservistGuideSource,
@@ -57,6 +59,8 @@ def test_campus_life_support_source_defaults() -> None:
     health = HealthCenterGuideSource()
     lost_found = LostFoundGuideSource()
     parking = ParkingGuideSource()
+    mobility_safety = MobilitySafetyGuideSource()
+    facility_rental = FacilityRentalGuideSource()
     student_counseling = StudentCounselingGuideSource()
     disability_support = DisabilitySupportGuideSource()
     student_reservist = StudentReservistGuideSource()
@@ -65,6 +69,8 @@ def test_campus_life_support_source_defaults() -> None:
     assert health.topic == "health_center"
     assert lost_found.topic == "lost_found"
     assert parking.topic == "parking"
+    assert mobility_safety.topic == "mobility_safety"
+    assert facility_rental.topic == "facility_rental"
     assert student_counseling.topic == "student_counseling"
     assert disability_support.topic == "disability_support"
     assert student_reservist.topic == "student_reservist"
@@ -72,6 +78,8 @@ def test_campus_life_support_source_defaults() -> None:
     assert health.source_tag == "cuk_campus_life_support_guides"
     assert lost_found.source_tag == "cuk_campus_life_support_guides"
     assert parking.source_tag == "cuk_campus_life_support_guides"
+    assert mobility_safety.source_tag == "cuk_campus_life_support_guides"
+    assert facility_rental.source_tag == "cuk_campus_life_support_guides"
     assert student_counseling.source_tag == "cuk_campus_life_support_guides"
     assert disability_support.source_tag == "cuk_campus_life_support_guides"
     assert student_reservist.source_tag == "cuk_campus_life_support_guides"
@@ -79,10 +87,73 @@ def test_campus_life_support_source_defaults() -> None:
     assert health.url.endswith("/campuslife/health.do")
     assert lost_found.url.endswith("/campuslife/find.do")
     assert parking.url.endswith("/about/location_songsim.do")
+    assert mobility_safety.url.endswith("/service/safety.do")
+    assert facility_rental.url.endswith("/campuslife/rent_songsim.do")
     assert student_counseling.url.endswith("/campuslife/counsel.do")
     assert disability_support.url.endswith("/campuslife/disability_service.do")
     assert student_reservist.url.endswith("/campuslife/student_reservist.do")
     assert hospital_use.url.endswith("/campuslife/hospital1.do")
+
+
+def test_mobility_safety_guide_parser_extracts_expected_core_details() -> None:
+    rows = MobilitySafetyGuideSource().parse(
+        _fixture("safety.do.html"),
+        fetched_at="2026-03-20T00:00:00+09:00",
+    )
+
+    assert [row["title"] for row in rows] == ["개인형 이동장치 안전관리교육"]
+    row = rows[0]
+    assert row["topic"] == "mobility_safety"
+    assert row["source_tag"] == "cuk_campus_life_support_guides"
+    assert row["summary"] == "개인형 이동장치 운행 전 반드시 교육영상을 시청해주시기 바랍니다."
+    assert (
+        row["steps"][0]
+        == "개인형 이동장치 운행 전 반드시 교육영상을 시청해주시기 바랍니다."
+    )
+    assert any(
+        step == "※ '개인형 이동장치 안전관리 교육영상' [서울시교육청]"
+        for step in row["steps"]
+    )
+    assert any(step == "1. 면허(원동기 이상) 소지자만 운전" for step in row["steps"])
+    assert any(step == "2. 인명보호 안전장구 착용(헬멧, 보호대) 하기" for step in row["steps"])
+    assert any(step == "3. 1인 탑습(동승 금지)" for step in row["steps"])
+    assert any(
+        step == "4. 주행 중 휴대전화, 이어폰 등 디지털기기 사용 금지"
+        for step in row["steps"]
+    )
+    assert any(
+        step == "5. 교통 법규 및 안전 속도(최대속도제한 20km/h) 준수"
+        for step in row["steps"]
+    )
+    assert any(step == "6. 지정 주차구역 이외 주차 금지" for step in row["steps"])
+    assert any(
+        step == "7. 야간 운행 시 전조등 및 반사장치 등 안전장구 장착"
+        for step in row["steps"]
+    )
+    assert any(
+        step == "8. 교차로 진입 시 서행 및 횡당보도 통행 시 탑승 금지"
+        for step in row["steps"]
+    )
+    assert any(step == "9. 음주운전 및 무면허운전 금지" for step in row["steps"])
+    assert any(
+        step
+        == (
+            "가톨릭대학교 홈페이지 > 가대소개 > 규정 > 규정정보시스템 > "
+            "「가톨릭대학교 개인형 이동장치 안전관리 규정」"
+        )
+        for step in row["steps"]
+    )
+    assert not any(step == "주차구역" for step in row["steps"])
+    assert row["links"] == [
+        {
+            "label": "교육영상",
+            "url": "https://www.catholic.ac.kr/ko/newsroom/safety01.do?mode=view&articleNo=265485&article.offset=0&articleLimit=16",
+        },
+        {
+            "label": "규정 바로가기",
+            "url": "http://rule.catholic.ac.kr:8080/lmxsrv/main/main.srv",
+        },
+    ]
 
 
 def test_health_center_guide_parser_extracts_expected_core_details() -> None:
@@ -144,6 +215,74 @@ def test_parking_guide_parser_extracts_expected_core_details() -> None:
     assert any("할인권" in step for step in row["steps"])
     assert any("일반차량" in step for step in row["steps"])
     assert any("주차관리실(K102호 / K관 1층 안내데스크 옆)" in step for step in row["steps"])
+
+
+def test_facility_rental_guide_parser_extracts_expected_core_details() -> None:
+    rows = FacilityRentalGuideSource().parse(
+        _fixture("rent_songsim.do.html"),
+        fetched_at="2026-03-20T00:00:00+09:00",
+    )
+
+    assert [row["title"] for row in rows] == [
+        "콘서트홀",
+        "미카엘홀",
+        "학생미래인재관(소피이바라관) Hall 1855",
+        "김수환관 컨퍼런스룸(K366)",
+        "김수환관 계단식 강의실(K267)",
+        "김수환관 실내체육관",
+        "정진석추기경약학관 계단식 강의실(NP117)",
+        "모니카홀(SH304)",
+        "PC실습실",
+        "강의실 대관료",
+    ]
+
+    (
+        concert_hall,
+        mikael_hall,
+        hall1855,
+        conference_room,
+        k267,
+        gym,
+        np117,
+        monica,
+        pc_room,
+        lecture_rental,
+    ) = rows
+    assert concert_hall["topic"] == "facility_rental"
+    assert concert_hall["source_tag"] == "cuk_campus_life_support_guides"
+    assert concert_hall["summary"] == "1~4시간: 2,000,000 원"
+    assert concert_hall["steps"] == [
+        "1~4시간: 2,000,000 원",
+        "4~8시간: 3,000,000원",
+        "※ 전기사용료 : 120,000원 / h, 냉난방사용료 : 200,000원 / h",
+        "※ 1,000명 규모",
+    ]
+    assert concert_hall["links"] == []
+    assert mikael_hall["steps"][0] == "1~4시간: 1,000,000 원"
+    assert hall1855["steps"][0] == "1~4시간: 400,000 원"
+    assert conference_room["steps"][0] == "1~4시간: 1,200,000 원"
+    assert k267["steps"][0] == "1~4시간: 600,000 원"
+    assert gym["steps"][-1] == "※ 747M² 규모 (226평)"
+    assert np117["steps"][-1] == "※ 162명 규모"
+    assert monica["steps"][-1] == "※ 204명 규모"
+    assert pc_room["steps"] == [
+        "1~4시간: 200,000 원",
+        "4~8시간: 300,000원",
+        "※ 전기사용료 : 20,000원 / h, 냉난방사용료 : 20,000원 / h",
+        "※ 50명 이내",
+        "1~4시간: 300,000 원",
+        "4~8시간: 500,000원",
+        "※ 전기사용료 : 30,000원 / h, 냉난방사용료 : 30,000원 / h",
+        "※ 50명 이상",
+    ]
+    assert lecture_rental["summary"] == (
+        "건물별 코드 : 니콜스관(N), 다솔관(D), 마리아관(M), 미카엘관(H), "
+        "비르투스관(V), 콘서트홀(CH), 김수환관(K), 정진석추기경약학관(NP), "
+        "성심관(SH)"
+    )
+    assert lecture_rental["steps"][0].startswith("건물별 코드 : 니콜스관(N)")
+    assert any("문의 : 시설관재팀 02-2164-4146" in step for step in lecture_rental["steps"])
+    assert any("15~50명" in step for step in lecture_rental["steps"])
 
 
 def test_student_counseling_guide_parser_extracts_expected_core_details() -> None:
@@ -332,10 +471,29 @@ def test_campus_life_support_guides_refresh_replace_and_list(app_env) -> None:
                         steps=["일반차량: 10분당 500원"],
                     )
                 ),
+                FakeGuideSource(
+                    _guide_row(
+                        topic="mobility_safety",
+                        title="개인형 이동장치 안전관리교육",
+                        summary="개인형 이동장치 운행 전 반드시 교육영상을 시청해주시기 바랍니다.",
+                        steps=["개인형 이동장치 운행 전 반드시 교육영상을 시청해주시기 바랍니다."],
+                        links=[
+                            {
+                                "label": "교육영상",
+                                "url": "https://www.catholic.ac.kr/ko/newsroom/safety01.do?mode=view&articleNo=265485&article.offset=0&articleLimit=16",
+                            },
+                            {
+                                "label": "규정 바로가기",
+                                "url": "http://rule.catholic.ac.kr:8080/lmxsrv/main/main.srv",
+                            },
+                        ],
+                    )
+                ),
             ],
         )
         all_guides = list_campus_life_support_guides(conn, limit=20)
         parking = list_campus_life_support_guides(conn, topic="parking", limit=20)
+        mobility_safety = list_campus_life_support_guides(conn, topic="mobility_safety", limit=20)
 
         refresh_campus_life_support_guides_from_source(
             conn,
@@ -355,9 +513,13 @@ def test_campus_life_support_guides_refresh_replace_and_list(app_env) -> None:
     assert [(item.topic, item.title) for item in all_guides] == [
         ("health_center", "보건실"),
         ("lost_found", "유실물 찾기"),
+        ("mobility_safety", "개인형 이동장치 안전관리교육"),
         ("parking", "주차요금안내"),
     ]
     assert [(item.topic, item.title) for item in parking] == [("parking", "주차요금안내")]
+    assert [(item.topic, item.title) for item in mobility_safety] == [
+        ("mobility_safety", "개인형 이동장치 안전관리교육")
+    ]
     assert [(item.topic, item.title) for item in replaced] == [("health_center", "보건실")]
 
 
@@ -379,6 +541,15 @@ def test_campus_life_support_dataset_is_wired_into_sync_and_readiness(app_env, m
 
     assert run.status == "success"
     assert run.summary == {"campus_life_support_guides": 0}
+
+
+def test_campus_life_support_guides_accepts_mobility_safety_topic(app_env) -> None:
+    init_db()
+
+    with connection() as conn:
+        guides = list_campus_life_support_guides(conn, topic="mobility_safety", limit=5)
+
+    assert guides == []
 
 
 def test_campus_life_support_http_and_mcp_surfaces(client, app_env, monkeypatch):

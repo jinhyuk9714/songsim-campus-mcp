@@ -62,12 +62,19 @@ def _pair_label_value_lines(lines: list[str]) -> list[str]:
     return _unique(paired)
 
 
-def _extract_links(root, *, base_url: str) -> list[dict[str, str]]:
+def _extract_links(
+    root,
+    *,
+    base_url: str,
+    skip_fragment_links: bool = False,
+) -> list[dict[str, str]]:
     items: list[dict[str, str]] = []
     for anchor in root.select("a[href]"):
         label = _clean_text(anchor.get_text(" ", strip=True))
         href = unquote(unescape(str(anchor.get("href") or "")).strip())
         if not label or not href or href.startswith("javascript:"):
+            continue
+        if skip_fragment_links and href.startswith("#"):
             continue
         items.append({"label": label, "url": urljoin(base_url, href)})
     return _dedupe_link_items(items)
@@ -467,3 +474,187 @@ class ParkingGuideSource(CampusLifeSupportGuideSourceBase):
                 "last_synced_at": fetched_at,
             }
         ]
+
+
+class MobilitySafetyGuideSource(CampusLifeSupportGuideSourceBase):
+    topic = "mobility_safety"
+
+    def __init__(self, url: str = "https://www.catholic.ac.kr/ko/service/safety.do"):
+        super().__init__(url)
+
+    def parse(self, html: str, *, fetched_at: str) -> list[dict]:
+        soup = BeautifulSoup(html, "html.parser")
+        root = soup.select_one(".content") or soup.select_one(".content-box") or soup
+        sections = root.find_all("div", class_="con-box", recursive=False)
+
+        title = "개인형 이동장치 안전관리교육"
+        steps: list[str] = []
+        links: list[dict[str, str]] = []
+
+        def add_link(label: str, url: str) -> None:
+            item = {"label": label, "url": url}
+            if item not in links:
+                links.append(item)
+
+        if sections:
+            education_section = sections[0]
+            education_title_node = (
+                education_section.select_one(".h4-tit01")
+                or education_section.select_one(".box-tit")
+            )
+            education_title = _clean_text(
+                education_title_node.get_text(" ", strip=True) if education_title_node else ""
+            )
+            if education_title:
+                title = education_title
+            steps.extend(
+                _extract_section_steps(
+                    education_section,
+                    title=education_title or None,
+                    extra_skip={"개인형 이동장치 안전관리 교육영상 시청하기"},
+                )
+            )
+            for link in _extract_links(education_section, base_url=self.url):
+                if "교육영상" in link["label"]:
+                    add_link("교육영상", link["url"])
+
+        if len(sections) > 1:
+            rules_section = sections[1]
+            rules_title_node = rules_section.select_one(".h4-tit01") or rules_section.select_one(
+                ".box-tit"
+            )
+            rules_title = _clean_text(
+                rules_title_node.get_text(" ", strip=True) if rules_title_node else ""
+            )
+            steps.extend(
+                _extract_section_steps(
+                    rules_section,
+                    title=rules_title or None,
+                )
+            )
+
+        if len(sections) > 2:
+            regulation_section = sections[2]
+            regulation_title_node = (
+                regulation_section.select_one(".h4-tit01")
+                or regulation_section.select_one(".box-tit")
+            )
+            regulation_title = _clean_text(
+                regulation_title_node.get_text(" ", strip=True) if regulation_title_node else ""
+            )
+            steps.extend(
+                _extract_section_steps(
+                    regulation_section,
+                    title=regulation_title or None,
+                    extra_skip={"「가톨릭대학교 개인형 이동장치 안전관리 규정」 바로가기"},
+                )
+            )
+            for link in _extract_links(regulation_section, base_url=self.url):
+                if "규정" in link["label"] or "바로가기" in link["label"]:
+                    add_link("규정 바로가기", link["url"])
+
+        steps = _unique(steps)
+        summary = steps[0] if steps else title
+        return [
+            {
+                "topic": self.topic,
+                "title": title,
+                "summary": summary,
+                "steps": steps,
+                "links": links,
+                "source_url": self.url,
+                "source_tag": self.source_tag,
+                "last_synced_at": fetched_at,
+            }
+        ]
+
+
+class FacilityRentalGuideSource(CampusLifeSupportGuideSourceBase):
+    topic = "facility_rental"
+
+    def __init__(self, url: str = "https://www.catholic.ac.kr/ko/campuslife/rent_songsim.do"):
+        super().__init__(url)
+
+    def parse(self, html: str, *, fetched_at: str) -> list[dict]:
+        soup = BeautifulSoup(html, "html.parser")
+        root = soup.select_one(".content-box.rt_sim") or soup.select_one(".content-box") or soup
+
+        rows: list[dict[str, object]] = []
+        row_index_by_title: dict[str, int] = {}
+
+        for border_box in root.select(".box-wrap.card.col3 .border-box"):
+            title_node = border_box.select_one(".box-tit")
+            title = _clean_text(title_node.get_text(" ", strip=True) if title_node else "")
+            if not title:
+                continue
+
+            steps: list[str] = []
+            for dl in border_box.select(".dl-box dl"):
+                dt_node = dl.find("dt")
+                dd_node = dl.find("dd")
+                dt = _clean_text(dt_node.get_text(" ", strip=True) if dt_node else "")
+                dd = _clean_text(dd_node.get_text(" ", strip=True) if dd_node else "")
+                if dt and dd:
+                    steps.append(f"{dt}: {dd}")
+            for alert in border_box.select(".alert-txt"):
+                alert_text = _clean_text(alert.get_text(" ", strip=True))
+                if alert_text:
+                    steps.append(alert_text)
+
+            links = _extract_links(
+                border_box,
+                base_url=self.url,
+                skip_fragment_links=True,
+            )
+            if title in row_index_by_title:
+                row = rows[row_index_by_title[title]]
+                row["steps"] = _unique([*(row["steps"] or []), *steps])  # type: ignore[index]
+                row["links"] = _dedupe_link_items([*(row["links"] or []), *links])  # type: ignore[index]
+                continue
+
+            row_index_by_title[title] = len(rows)
+            rows.append(
+                {
+                    "topic": self.topic,
+                    "title": title,
+                    "summary": steps[0] if steps else title,
+                    "steps": _unique(steps),
+                    "links": links,
+                    "source_url": self.url,
+                    "source_tag": self.source_tag,
+                    "last_synced_at": fetched_at,
+                }
+            )
+
+        rental_section = (
+            root.select_one(".con-box.no-pd")
+            or root.select_one(".con-box:last-of-type")
+            or root
+        )
+        rental_title_node = rental_section.select_one(".h4-tit01")
+        rental_title = _clean_text(
+            rental_title_node.get_text(" ", strip=True) if rental_title_node else ""
+        ) or "강의실 대관료"
+        rental_steps = _collect_text_lines(
+            rental_section,
+            skip_exact={rental_title},
+        )
+        rental_steps.extend(_extract_table_rows(rental_section.select_one("table")))
+        rental_steps = _unique(rental_steps)
+        rows.append(
+            {
+                "topic": self.topic,
+                "title": rental_title,
+                "summary": rental_steps[0] if rental_steps else rental_title,
+                "steps": rental_steps,
+                "links": _extract_links(
+                    rental_section,
+                    base_url=self.url,
+                    skip_fragment_links=True,
+                ),
+                "source_url": self.url,
+                "source_tag": self.source_tag,
+                "last_synced_at": fetched_at,
+            }
+        )
+        return rows

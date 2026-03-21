@@ -918,6 +918,7 @@ def test_search_places_generic_facility_nouns_prefer_building_then_facility_then
         "교내복사실": "평일 08:50~19:00",
         "우리은행": "평일 09:00~16:00",
         "트러스트짐": "평일 07:00~22:30",
+        "세탁소": "평일 09:00~18:00",
     }
     with connection() as conn:
         replace_places(
@@ -952,12 +953,15 @@ def test_search_places_generic_facility_nouns_prefer_building_then_facility_then
         store_places = search_places(conn, query="편의점", limit=5)
         copy_places = search_places(conn, query="복사실", limit=5)
         atm_places = search_places(conn, query="ATM", limit=5)
+        laundry_places = search_places(conn, query="세탁소", limit=5)
 
     expected_order = ["kim-sou-hwan-hall", "student-center", "dormitory-stephen"]
+    laundry_order = ["kim-sou-hwan-hall", "student-center", "dormitory-stephen"]
     assert [place.slug for place in gym_places[:3]] == expected_order
     assert [place.slug for place in store_places[:3]] == expected_order
     assert [place.slug for place in copy_places[:3]] == expected_order
     assert [place.slug for place in atm_places[:3]] == expected_order
+    assert [place.slug for place in laundry_places[:3]] == laundry_order
     assert gym_places[0].matched_facility is not None
     assert gym_places[0].matched_facility.location_hint == "김수환관"
     assert store_places[0].matched_facility is not None
@@ -966,6 +970,10 @@ def test_search_places_generic_facility_nouns_prefer_building_then_facility_then
     assert copy_places[0].matched_facility.location_hint == "김수환관"
     assert atm_places[0].matched_facility is not None
     assert atm_places[0].matched_facility.location_hint == "김수환관"
+    assert laundry_places[0].matched_facility is not None
+    assert laundry_places[0].matched_facility.name == "세탁소"
+    assert laundry_places[0].matched_facility.location_hint == "김수환관"
+    assert laundry_places[0].matched_facility.opening_hours == "평일 09:00~18:00"
 
 
 def test_search_places_generic_facility_nouns_attach_matched_facility_when_place_alias_ties(
@@ -5265,19 +5273,23 @@ def test_list_campus_life_support_guides_accepts_new_topics_and_rejects_unknown_
     monkeypatch.setattr(services_module.repo, "list_campus_life_support_guides", fake_list)
 
     with connection() as conn:
+        assert list_campus_life_support_guides(conn, topic="mobility_safety", limit=1) == []
         assert list_campus_life_support_guides(conn, topic="student_counseling", limit=1) == []
         assert list_campus_life_support_guides(conn, topic="disability_support", limit=1) == []
         assert list_campus_life_support_guides(conn, topic="student_reservist", limit=1) == []
         assert list_campus_life_support_guides(conn, topic="hospital_use", limit=1) == []
+        assert list_campus_life_support_guides(conn, topic="facility_rental", limit=1) == []
 
-        with pytest.raises(InvalidRequestError, match="student_counseling"):
+        with pytest.raises(InvalidRequestError, match="mobility_safety"):
             list_campus_life_support_guides(conn, topic="invalid", limit=1)
 
     assert observed_topics == [
+        "mobility_safety",
         "student_counseling",
         "disability_support",
         "student_reservist",
         "hospital_use",
+        "facility_rental",
     ]
 
 
@@ -5381,6 +5393,18 @@ def test_refresh_campus_life_support_guides_uses_all_default_sources(app_env, mo
     )
     monkeypatch.setattr(
         services_module,
+        "MobilitySafetyGuideSource",
+        lambda url: FakeGuideSource("mobility_safety", url),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        services_module,
+        "FacilityRentalGuideSource",
+        lambda url: FakeGuideSource("facility_rental", url),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        services_module,
         "StudentCounselingGuideSource",
         lambda url: FakeGuideSource("student_counseling", url),
         raising=False,
@@ -5407,11 +5431,13 @@ def test_refresh_campus_life_support_guides_uses_all_default_sources(app_env, mo
     with connection() as conn:
         guides = refresh_campus_life_support_guides_from_source(conn)
 
-    assert len(guides) == 7
+    assert len(guides) == 9
     assert {item.topic for item in guides} == {
         "health_center",
         "lost_found",
         "parking",
+        "mobility_safety",
+        "facility_rental",
         "student_counseling",
         "disability_support",
         "student_reservist",
@@ -5421,6 +5447,8 @@ def test_refresh_campus_life_support_guides_uses_all_default_sources(app_env, mo
         "health_center title",
         "lost_found title",
         "parking title",
+        "mobility_safety title",
+        "facility_rental title",
         "student_counseling title",
         "disability_support title",
         "student_reservist title",

@@ -30,6 +30,7 @@ PLACE_QUERY_FILLER_PATTERNS = (
     r"어디\s*(야|에요|예요|지|인지|있어|있어요|있나|있나요)?",
     r"(알려\s*줘|알려줘|말해\s*줘|말해줘|보여\s*줘|보여줘)",
 )
+_EXTRA_PLAIN_GENERIC_FACILITY_QUERIES = {"세탁소"}
 
 
 class NotFoundError(ValueError):
@@ -799,6 +800,13 @@ def _is_plain_generic_facility_query(
             compact_query=compact_query,
         )
         for keyword in _load_place_facility_keywords()
+    ) or any(
+        _matches_exact_text_candidate(
+            keyword,
+            collapsed_query=collapsed_query,
+            compact_query=compact_query,
+        )
+        for keyword in _EXTRA_PLAIN_GENERIC_FACILITY_QUERIES
     )
 
 

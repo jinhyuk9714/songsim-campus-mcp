@@ -118,7 +118,8 @@ def public_usage_guide_text() -> str:
                 "13. Use tool_list_campus_life_support_guides for 생활지원 안내 such as "
                 "보건실 위치와 운영시간, 유실물 찾는 방법, 성심교정 주차요금, 학생상담 "
                 "어디서 받아?, 장애학생지원센터 뭐 해줘?, 예비군 신고 시기 알려줘, "
-                "or 부속병원 이용 안내해줘 questions."
+                "부속병원 이용 안내해줘, 성심교정 대관안내 알려줘, or 개인형 이동장치 "
+                "안전교육 알려줘 questions."
             ),
             (
                 "14. Use tool_search_pc_software for PC실 / 설치 소프트웨어 검색 such as "
@@ -225,6 +226,8 @@ def public_usage_guide_text() -> str:
             "- 장애학생지원센터 뭐 해줘?",
             "- 예비군 신고 시기 알려줘",
             "- 부속병원 이용 안내해줘",
+            "- 성심교정 대관안내 알려줘",
+            "- 개인형 이동장치 안전교육 알려줘",
             "- 학사지원팀 전화번호 알려줘",
             "- 트리니티 문의 전화번호 알려줘",
             "- 유실물 문의 전화번호 알려줘",
