@@ -310,6 +310,61 @@ def test_run_automation_tick_returns_noop_when_automation_is_disabled(app_env, m
     assert calls == []
 
 
+def test_run_automation_tick_skips_snapshot_jobs_in_public_readonly_mode(
+    app_env,
+    monkeypatch,
+):
+    monkeypatch.setenv("SONGSIM_AUTOMATION_ENABLED", "true")
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+    init_db()
+    services_module.reset_observability_state()
+
+    calls: list[dict[str, str]] = []
+    monkeypatch.setattr(
+        "songsim_campus.services._is_automation_job_due",
+        lambda *args, **kwargs: True,
+    )
+    monkeypatch.setattr(
+        "songsim_campus.services.run_admin_sync",
+        lambda **kwargs: calls.append(kwargs),
+    )
+
+    runs = run_automation_tick()
+
+    assert runs == [None, None]
+    assert [call["target"] for call in calls] == [
+        "library_seat_prewarm",
+        "cache_cleanup",
+    ]
+
+
+def test_run_automation_tick_returns_noop_for_explicit_snapshot_job_in_public_readonly_mode(
+    app_env,
+    monkeypatch,
+):
+    monkeypatch.setenv("SONGSIM_AUTOMATION_ENABLED", "true")
+    monkeypatch.setenv("SONGSIM_APP_MODE", "public_readonly")
+    clear_settings_cache()
+    init_db()
+    services_module.reset_observability_state()
+
+    calls: list[dict[str, str]] = []
+    monkeypatch.setattr(
+        "songsim_campus.services._is_automation_job_due",
+        lambda *args, **kwargs: True,
+    )
+    monkeypatch.setattr(
+        "songsim_campus.services.run_admin_sync",
+        lambda **kwargs: calls.append(kwargs),
+    )
+
+    runs = run_automation_tick(job_names={"snapshot"})
+
+    assert runs == []
+    assert calls == []
+
+
 def test_run_automation_tick_returns_noop_when_leader_lock_is_unavailable(
     app_env,
     monkeypatch,

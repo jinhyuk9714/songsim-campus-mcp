@@ -359,6 +359,8 @@ ADMIN_SYNC_TARGETS = {
     "transport_guides",
 }
 AUTOMATION_SYNC_TARGETS = {"snapshot", "library_seat_prewarm", "cache_cleanup"}
+AUTOMATION_TARGET_ORDER = ("snapshot", "library_seat_prewarm", "cache_cleanup")
+PUBLIC_READONLY_AUTOMATION_SYNC_TARGETS = {"library_seat_prewarm", "cache_cleanup"}
 SYNC_RUN_TARGETS = ADMIN_SYNC_TARGETS | AUTOMATION_SYNC_TARGETS
 AUTOMATION_LOCK_KEY = 20_260_314
 ALLOWED_ADMISSION_TYPES = {"general", "freshman", "transfer", "exchange"}
@@ -985,6 +987,15 @@ def _sync_run_completed_at(run: dict[str, Any] | SyncRun | None) -> str | None:
     if isinstance(run, SyncRun):
         return run.finished_at or run.started_at
     return ops_runtime.sync_run_completed_at(run)
+
+
+def _automation_targets_for_settings(settings: Any) -> tuple[str, ...]:
+    allowed = (
+        PUBLIC_READONLY_AUTOMATION_SYNC_TARGETS
+        if settings.app_mode == "public_readonly"
+        else AUTOMATION_SYNC_TARGETS
+    )
+    return tuple(target for target in AUTOMATION_TARGET_ORDER if target in allowed)
 
 
 def _automation_job_snapshot(
@@ -3497,10 +3508,22 @@ def run_automation_tick(
         logger.info("event=automation_tick_skipped reason=disabled")
         return []
 
-    selected = job_names or AUTOMATION_SYNC_TARGETS
+    available_targets = _automation_targets_for_settings(settings)
+    selected = set(job_names) if job_names is not None else set(available_targets)
     unknown = set(selected) - AUTOMATION_SYNC_TARGETS
     if unknown:
         raise InvalidRequestError(f"Unsupported automation job(s): {', '.join(sorted(unknown))}")
+    disallowed = set(selected) - set(available_targets)
+    if disallowed:
+        logger.info(
+            "event=automation_tick_skipped reason=disallowed_in_app_mode "
+            "app_mode=%s targets=%s",
+            settings.app_mode,
+            ",".join(sorted(disallowed)),
+        )
+        selected -= disallowed
+    if not selected:
+        return []
 
     lock_conn = None
     acquired_leader = False
@@ -3521,7 +3544,7 @@ def run_automation_tick(
     due_targets: list[str] = []
     try:
         with connection() as conn:
-            for target in ("snapshot", "library_seat_prewarm", "cache_cleanup"):
+            for target in available_targets:
                 if target not in selected:
                     continue
                 if _is_automation_job_due(conn, target=target, now=current):
