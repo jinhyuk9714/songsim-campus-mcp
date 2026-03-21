@@ -8,6 +8,14 @@ import pytest
 
 from songsim_campus import qa_eval, repo
 from songsim_campus.db import connection, init_db
+from songsim_campus.public_api_eval_corpus_builder import (
+    COARSE_CAP_ENFORCED_DOMAINS,
+    DOMAIN_QUOTAS,
+    STYLE_QUOTAS,
+    TRUTH_MODE_QUOTAS,
+    build_public_api_eval_corpus,
+    coarse_request_key_from_payload,
+)
 from songsim_campus.qa_eval import (
     DEFAULT_CORPUS_PATH,
     DEFAULT_WATCHLIST_PATH,
@@ -1463,6 +1471,8 @@ def test_render_validation_report_separates_watchlist() -> None:
     )
 
     assert "hard fail 0" in report.lower()
+    assert "corpus_size: `1`" in report
+    assert "executed: `2`" in report
     assert "Watchlist (hard fail 제외)" in report
     assert "CW001" in report
 
@@ -2187,53 +2197,97 @@ def test_run_evaluation_records_http_errors_without_crashing(
     assert results[0].comparison == "http_error:ReadTimeout"
 
 
+def test_load_actual_payload_retries_read_timeout_until_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    row = EvalCorpusRow.model_validate(
+        {
+            "id": "PL001",
+            "domain": "place",
+            "style": "normal",
+            "user_utterance": "중앙도서관 위치 알려줘",
+            "api_request": {"path": "/places", "params": {"query": "중앙도서관", "limit": 5}},
+            "expected_mcp_flow": "tool_search_places -> tool_get_place",
+            "truth_mode": "set_contains",
+            "pass_rule": {"summary_kind": "places_top3"},
+            "watch_policy": "none",
+            "notes": "",
+        }
+    )
+
+    calls = {"count": 0}
+
+    class _Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, list[str]]:
+            return {"items": ["ok"]}
+
+    def _fake_get(*args, **kwargs):
+        calls["count"] += 1
+        if calls["count"] < 3:
+            raise httpx.ReadTimeout("boom")
+        return _Response()
+
+    monkeypatch.setattr(qa_eval.httpx, "get", _fake_get)
+    monkeypatch.setattr(qa_eval.time, "sleep", lambda *_args, **_kwargs: None)
+
+    payload = qa_eval._load_actual_payload(
+        "https://songsim-public-api.onrender.com",
+        row,
+    )
+
+    assert payload == {"items": ["ok"]}
+    assert calls["count"] == 3
+
+
 def test_default_eval_assets_match_distribution_plan() -> None:
     rows = load_eval_rows(DEFAULT_CORPUS_PATH)
     watchlist_rows = load_eval_rows(DEFAULT_WATCHLIST_PATH)
 
-    assert len(rows) == 1064
+    assert len(rows) == 1000
     assert len(watchlist_rows) == 5
+    assert len({row.id for row in rows}) == 1000
+    assert len({row.user_utterance for row in rows}) == 1000
+    assert {row.truth_mode for row in rows}.issubset(
+        {"set_contains", "invariant_only", "exact_value"}
+    )
 
     by_domain: dict[str, int] = {}
+    by_style: dict[str, int] = {}
+    by_truth_mode: dict[str, int] = {}
     for row in rows:
         by_domain[row.domain] = by_domain.get(row.domain, 0) + 1
+        by_style[row.style] = by_style.get(row.style, 0) + 1
+        by_truth_mode[row.truth_mode] = by_truth_mode.get(row.truth_mode, 0) + 1
 
-    assert by_domain == {
-        "place": 160,
-        "courses": 160,
-        "notices": 110,
-        "affiliated_notices": 6,
-        "campus_life_notices": 4,
-        "restaurants": 160,
-        "transport": 50,
-        "classrooms": 60,
-        "academic_calendar": 70,
-        "certificate_guides": 40,
-        "scholarship_guides": 40,
-        "wifi_guides": 40,
-        "leave_of_absence_guides": 40,
-        "academic_support_guides": 40,
-        "registration_guides": 4,
-        "class_guides": 5,
-        "seasonal_semester_guides": 4,
-        "academic_milestone_guides": 5,
-        "student_activity_guides": 4,
-        "student_exchange_guides": 5,
-        "student_exchange_partners": 5,
-        "dormitory_guides": 5,
-        "phone_book": 5,
-        "campus_life_support_guides": 9,
-        "pc_software_entries": 3,
-        "out_of_scope": 30,
-    }
+    assert by_domain == DOMAIN_QUOTAS
+    assert by_style == STYLE_QUOTAS
+    assert by_truth_mode == TRUTH_MODE_QUOTAS
+
+    coarse_counts: dict[str, dict[tuple[str | None, str | None, str], int]] = {}
+    for row in rows:
+        key = coarse_request_key_from_payload(
+            {
+                "path": row.api_request.path,
+                "policy": row.api_request.policy,
+                "params": row.api_request.params,
+            },
+            truth_mode=row.truth_mode,
+        )
+        domain_counts = coarse_counts.setdefault(row.domain, {})
+        domain_counts[key] = domain_counts.get(key, 0) + 1
+
+    for domain in COARSE_CAP_ENFORCED_DOMAINS:
+        assert domain in coarse_counts
+        assert max(coarse_counts[domain].values()) <= 4
 
     registration_rows = [row for row in rows if row.domain == "registration_guides"]
 
-    assert len(registration_rows) == 4
+    assert len(registration_rows) == DOMAIN_QUOTAS["registration_guides"]
     assert {row.api_request.path for row in registration_rows} == {"/registration-guides"}
-    assert {row.expected_mcp_flow for row in registration_rows} == {
-        "tool_list_registration_guides"
-    }
+    assert {row.expected_mcp_flow for row in registration_rows} == {"tool_list_registration_guides"}
     assert {row.pass_rule["summary_kind"] for row in registration_rows} == {
         "registration_guides_top5"
     }
@@ -2245,7 +2299,7 @@ def test_default_eval_assets_match_distribution_plan() -> None:
 
     class_rows = [row for row in rows if row.domain == "class_guides"]
 
-    assert len(class_rows) == 5
+    assert len(class_rows) == DOMAIN_QUOTAS["class_guides"]
     assert {row.api_request.path for row in class_rows} == {"/class-guides"}
     assert {row.expected_mcp_flow for row in class_rows} == {"tool_list_class_guides"}
     assert {row.pass_rule["summary_kind"] for row in class_rows} == {"class_guides_top5"}
@@ -2259,7 +2313,7 @@ def test_default_eval_assets_match_distribution_plan() -> None:
 
     seasonal_rows = [row for row in rows if row.domain == "seasonal_semester_guides"]
 
-    assert len(seasonal_rows) == 4
+    assert len(seasonal_rows) == DOMAIN_QUOTAS["seasonal_semester_guides"]
     assert {row.api_request.path for row in seasonal_rows} == {"/seasonal-semester-guides"}
     assert {row.expected_mcp_flow for row in seasonal_rows} == {
         "tool_list_seasonal_semester_guides"
@@ -2271,7 +2325,7 @@ def test_default_eval_assets_match_distribution_plan() -> None:
 
     milestone_rows = [row for row in rows if row.domain == "academic_milestone_guides"]
 
-    assert len(milestone_rows) == 5
+    assert len(milestone_rows) == DOMAIN_QUOTAS["academic_milestone_guides"]
     assert {row.api_request.path for row in milestone_rows} == {"/academic-milestone-guides"}
     assert {row.expected_mcp_flow for row in milestone_rows} == {
         "tool_list_academic_milestone_guides"
@@ -2286,11 +2340,9 @@ def test_default_eval_assets_match_distribution_plan() -> None:
 
     exchange_rows = [row for row in rows if row.domain == "student_exchange_guides"]
 
-    assert len(exchange_rows) == 5
+    assert len(exchange_rows) == DOMAIN_QUOTAS["student_exchange_guides"]
     assert {row.api_request.path for row in exchange_rows} == {"/student-exchange-guides"}
-    assert {row.expected_mcp_flow for row in exchange_rows} == {
-        "tool_list_student_exchange_guides"
-    }
+    assert {row.expected_mcp_flow for row in exchange_rows} == {"tool_list_student_exchange_guides"}
     assert {row.pass_rule["summary_kind"] for row in exchange_rows} == {
         "student_exchange_guides_top5"
     }
@@ -2303,7 +2355,7 @@ def test_default_eval_assets_match_distribution_plan() -> None:
 
     student_activity_rows = [row for row in rows if row.domain == "student_activity_guides"]
 
-    assert len(student_activity_rows) == 4
+    assert len(student_activity_rows) == DOMAIN_QUOTAS["student_activity_guides"]
     assert {row.api_request.path for row in student_activity_rows} == {"/student-activity-guides"}
     assert {row.expected_mcp_flow for row in student_activity_rows} == {
         "tool_list_student_activity_guides"
@@ -2320,7 +2372,7 @@ def test_default_eval_assets_match_distribution_plan() -> None:
 
     partner_rows = [row for row in rows if row.domain == "student_exchange_partners"]
 
-    assert len(partner_rows) == 5
+    assert len(partner_rows) == DOMAIN_QUOTAS["student_exchange_partners"]
     assert {row.api_request.path for row in partner_rows} == {"/student-exchange-partners"}
     assert {row.expected_mcp_flow for row in partner_rows} == {
         "tool_search_student_exchange_partners"
@@ -2328,30 +2380,31 @@ def test_default_eval_assets_match_distribution_plan() -> None:
     assert {row.pass_rule["summary_kind"] for row in partner_rows} == {
         "student_exchange_partners_top5"
     }
-    assert {row.api_request.params["query"] for row in partner_rows} == {
-        "대만",
+    partner_queries = {row.api_request.params["query"] for row in partner_rows}
+    assert partner_queries == {
+        "ASIA",
+        "National Taiwan University",
         "Utrecht University",
-        "유럽",
         "네덜란드",
+        "대만",
+        "미국",
+        "유럽",
+        "일본",
     }
 
     phone_rows = [row for row in rows if row.domain == "phone_book"]
 
-    assert len(phone_rows) == 5
+    assert len(phone_rows) == DOMAIN_QUOTAS["phone_book"]
     assert {row.api_request.path for row in phone_rows} == {"/phone-book"}
     assert {row.expected_mcp_flow for row in phone_rows} == {"tool_search_phone_book"}
     assert {row.pass_rule["summary_kind"] for row in phone_rows} == {"phone_book_top5"}
 
     affiliated_rows = [row for row in rows if row.domain == "affiliated_notices"]
 
-    assert len(affiliated_rows) == 6
+    assert len(affiliated_rows) == DOMAIN_QUOTAS["affiliated_notices"]
     assert {row.api_request.path for row in affiliated_rows} == {"/affiliated-notices"}
-    assert {row.expected_mcp_flow for row in affiliated_rows} == {
-        "tool_list_affiliated_notices"
-    }
-    assert {row.pass_rule["summary_kind"] for row in affiliated_rows} == {
-        "affiliated_notices_top5"
-    }
+    assert {row.expected_mcp_flow for row in affiliated_rows} == {"tool_list_affiliated_notices"}
+    assert {row.pass_rule["summary_kind"] for row in affiliated_rows} == {"affiliated_notices_top5"}
     assert {row.api_request.params["topic"] for row in affiliated_rows} == {
         "international_studies",
         "dorm_k_a_general",
@@ -2362,10 +2415,8 @@ def test_default_eval_assets_match_distribution_plan() -> None:
 
     campus_life_notice_rows = [row for row in rows if row.domain == "campus_life_notices"]
 
-    assert len(campus_life_notice_rows) == 4
-    assert {row.api_request.path for row in campus_life_notice_rows} == {
-        "/campus-life-notices"
-    }
+    assert len(campus_life_notice_rows) == DOMAIN_QUOTAS["campus_life_notices"]
+    assert {row.api_request.path for row in campus_life_notice_rows} == {"/campus-life-notices"}
     assert {row.expected_mcp_flow for row in campus_life_notice_rows} == {
         "tool_list_campus_life_notices"
     }
@@ -2379,7 +2430,7 @@ def test_default_eval_assets_match_distribution_plan() -> None:
 
     campus_life_support_rows = [row for row in rows if row.domain == "campus_life_support_guides"]
 
-    assert len(campus_life_support_rows) == 9
+    assert len(campus_life_support_rows) == DOMAIN_QUOTAS["campus_life_support_guides"]
     assert {row.api_request.path for row in campus_life_support_rows} == {
         "/campus-life-support-guides"
     }
@@ -2400,3 +2451,9 @@ def test_default_eval_assets_match_distribution_plan() -> None:
         "student_reservist",
         "hospital_use",
     }
+
+
+def test_default_eval_corpus_snapshot_matches_builder() -> None:
+    committed_rows = qa_eval._read_jsonl(DEFAULT_CORPUS_PATH)
+
+    assert build_public_api_eval_corpus(seed_rows=committed_rows) == committed_rows

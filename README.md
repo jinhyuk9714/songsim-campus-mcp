@@ -153,14 +153,14 @@ Local Full Mode는 운영과 개인화용 별도 모드입니다.
 
 Public API live baseline 기준:
 
-- checked_at: `2026-03-19T03:42:22+00:00`
-- corpus size: `1009`
-- executed: `1009`
+- checked_at: `2026-03-21T12:31:05+00:00`
+- corpus size: `1000`
+- executed: `1005`
 - hard fail: `0`
 - watch: `5`
-- skip: `0`
+- skip: `104`
 
-현재 watch item은 course source-gap 계열로 분리되어 있고, hard fail은 없습니다. 자세한 내용은 [공개 API 1000문장 라이브 검증](docs/qa/public-api-live-validation-1000.md)에서 확인할 수 있습니다.
+`executed`는 main corpus 1000건에 watchlist 5건을 함께 실행한 값입니다. 현재 hard fail은 없고, watch item은 course source-gap 계열로 분리되어 있습니다. `skip`은 degraded truth 경로로 남은 케이스입니다. 자세한 내용은 [공개 API 1000문장 라이브 검증](docs/qa/public-api-live-validation-1000.md)에서 확인할 수 있습니다.
 
 Public MCP는 별도 release pack과 live validation 문서로 관리합니다.
 

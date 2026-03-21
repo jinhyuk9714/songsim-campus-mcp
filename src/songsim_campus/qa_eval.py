@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import re
+import time
 from collections import Counter
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -113,6 +114,9 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_CORPUS_PATH = ROOT_DIR / "data" / "qa" / "public_api_eval_corpus_1000.jsonl"
 DEFAULT_WATCHLIST_PATH = ROOT_DIR / "data" / "qa" / "public_api_eval_watchlist.jsonl"
 DEFAULT_REPORT_PATH = ROOT_DIR / "docs" / "qa" / "public-api-live-validation-1000.md"
+PUBLIC_EVAL_HTTP_TIMEOUT_SECONDS = 20.0
+PUBLIC_EVAL_HTTP_RETRIES = 2
+PUBLIC_EVAL_MAX_WORKERS = 4
 
 EvalDomain = Literal[
     "place",
@@ -1964,13 +1968,26 @@ def _load_actual_payload(
         return _build_policy_summary(row)
     if row.api_request.path is None:
         return None
-    response = httpx.get(
-        f"{base_url.rstrip('/')}{row.api_request.path}",
-        params=params_override or row.api_request.params,
-        timeout=10.0,
-    )
-    response.raise_for_status()
-    return response.json()
+    request_url = f"{base_url.rstrip('/')}{row.api_request.path}"
+    request_params = params_override or row.api_request.params
+    last_error: httpx.HTTPError | None = None
+    for attempt in range(PUBLIC_EVAL_HTTP_RETRIES + 1):
+        try:
+            response = httpx.get(
+                request_url,
+                params=request_params,
+                timeout=PUBLIC_EVAL_HTTP_TIMEOUT_SECONDS,
+            )
+            response.raise_for_status()
+            return response.json()
+        except (httpx.ReadTimeout, httpx.ConnectTimeout) as exc:
+            last_error = exc
+            if attempt >= PUBLIC_EVAL_HTTP_RETRIES:
+                raise
+            time.sleep(0.25 * (attempt + 1))
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("unreachable")
 
 
 def run_evaluation(
@@ -2009,7 +2026,7 @@ def run_evaluation(
         (cache_key, representative_row_by_key[cache_key], params_by_key.get(cache_key))
         for cache_key in representative_row_by_key
     ]
-    max_workers = min(12, max(1, len(unique_requests)))
+    max_workers = min(PUBLIC_EVAL_MAX_WORKERS, max(1, len(unique_requests)))
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_by_key = {
             executor.submit(
@@ -2075,6 +2092,7 @@ def render_validation_report(
         item if isinstance(item, EvalResultRow) else EvalResultRow.model_validate(item)
         for item in results
     ]
+    main_corpus_rows = [row for row in rows if row.truth_mode != "watch_only"]
     row_by_id = {row.id: row for row in rows}
     result_by_id = {result.id: result for result in normalized_results}
     pass_like_verdicts = {"pass", "soft_pass"}
@@ -2189,8 +2207,9 @@ def render_validation_report(
                 "## 실행 메타",
                 "",
                 f"- checked_at: `{checked_at}`",
-                f"- corpus_size: `{len(rows)}`",
+                f"- corpus_size: `{len(main_corpus_rows)}`",
                 f"- executed: `{len(normalized_results)}`",
+                f"  - includes `{len(rows) - len(main_corpus_rows)}` watchlist rows",
                 f"- hard fail {verdict_counter.get('fail', 0)}",
                 "",
                 "## 판정 레벨",

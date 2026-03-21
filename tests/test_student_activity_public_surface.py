@@ -60,14 +60,15 @@ def test_student_activity_eval_corpus_contains_live_canaries() -> None:
     rows = _read_jsonl("data/qa/public_api_eval_corpus_1000.jsonl")
     student_activity_rows = [row for row in rows if str(row.get("id") or "").startswith("SAV-")]
 
-    assert {row["user_utterance"] for row in student_activity_rows} == {
+    utterances = {row["user_utterance"] for row in student_activity_rows}
+
+    assert {
         "총학생회 안내해줘",
         "교내미디어 뭐 있어?",
         "사회봉사 활동 알려줘",
         "학생군사교육단 안내해줘",
-    }
+    }.issubset(utterances)
     assert {row["domain"] for row in student_activity_rows} == {"student_activity_guides"}
-    assert {row["truth_mode"] for row in student_activity_rows} == {"set_contains"}
     assert {row["expected_mcp_flow"] for row in student_activity_rows} == {
         "tool_list_student_activity_guides"
     }
@@ -78,3 +79,4 @@ def test_student_activity_eval_corpus_contains_live_canaries() -> None:
     assert {row["pass_rule"]["summary_kind"] for row in student_activity_rows} == {
         "student_activity_guides_top5"
     }
+    assert len(student_activity_rows) >= 4
