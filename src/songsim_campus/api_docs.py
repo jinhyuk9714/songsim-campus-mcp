@@ -201,7 +201,6 @@ GPT_ACTION_V2_PATHS: dict[str, dict[str, str]] = {
 GPT_ACTION_V3_PATHS: dict[str, dict[str, str]] = {
     "/gpt/places": GPT_ACTION_V2_PATHS["/gpt/places"],
     "/gpt/notices": GPT_ACTION_V2_PATHS["/gpt/notices"],
-    "/gpt/notice-categories": GPT_ACTION_V2_PATHS["/gpt/notice-categories"],
     "/gpt/periods": GPT_ACTION_V2_PATHS["/gpt/periods"],
     "/gpt/library-seats": GPT_ACTION_V2_PATHS["/gpt/library-seats"],
     "/gpt/dining-menus": GPT_ACTION_V2_PATHS["/gpt/dining-menus"],
