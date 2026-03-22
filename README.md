@@ -7,12 +7,14 @@
 **HTTP API**는 같은 결과를 직접 검증하거나 외부 앱에서 연동할 때 쓰는 companion layer입니다.
 **Local Full Mode**는 운영과 개인화용 별도 모드입니다.
 
-[Public API](https://songsim-public-api.onrender.com) · [Connect ChatGPT](docs/connect-chatgpt.md) · [Connect Codex](docs/connect-codex.md) · [Connect Claude](docs/connect-claude.md) · [Source Registry](docs/source_registry.md) · [Public API QA](docs/qa/public-api-live-validation-1000.md) · [Public MCP QA](docs/qa/public-mcp-live-validation-summary.md)
+[Open in ChatGPT](https://chatgpt.com/g/g-69b526a162c48191843a6a7f469f5030-gatolrigdae-seongsimgyojeong-doumi) · [Public API](https://songsim-public-api.onrender.com) · [Connect ChatGPT](docs/connect-chatgpt.md) · [Connect Codex](docs/connect-codex.md) · [Connect Claude](docs/connect-claude.md) · [Source Registry](docs/source_registry.md) · [Public API QA](docs/qa/public-api-live-validation-1000.md) · [Public MCP QA](docs/qa/public-mcp-live-validation-summary.md)
 
 ## Connect From Web ChatGPT
 
 웹 ChatGPT에서 바로 쓰려면 아래 둘 중 하나로 연결하면 됩니다.
 
+- 이미 열어둔 shared GPT로 바로 이동
+  - [가톨릭대 성심교정 도우미](https://chatgpt.com/g/g-69b526a162c48191843a6a7f469f5030-gatolrigdae-seongsimgyojeong-doumi)
 - MCP connector 권장
   - URL: `https://songsim-public-mcp.onrender.com/mcp`
   - 모드: read-only public server
