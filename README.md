@@ -9,6 +9,20 @@
 
 [Public API](https://songsim-public-api.onrender.com) · [Connect ChatGPT](docs/connect-chatgpt.md) · [Connect Codex](docs/connect-codex.md) · [Connect Claude](docs/connect-claude.md) · [Source Registry](docs/source_registry.md) · [Public API QA](docs/qa/public-api-live-validation-1000.md) · [Public MCP QA](docs/qa/public-mcp-live-validation-summary.md)
 
+## Connect From Web ChatGPT
+
+웹 ChatGPT에서 바로 쓰려면 아래 둘 중 하나로 연결하면 됩니다.
+
+- MCP connector 권장
+  - URL: `https://songsim-public-mcp.onrender.com/mcp`
+  - 모드: read-only public server
+- Custom GPT Actions
+  - Schema: `https://songsim-public-api.onrender.com/gpt-actions-openapi-v3.json`
+  - Privacy: `https://songsim-public-api.onrender.com/privacy`
+  - 인증: `None`
+
+개인 사용은 MCP connector가 가장 좋고, `chatgpt.com/g/...` 공유 링크를 만들 때는 Actions v3를 쓰는 편이 맞습니다. 자세한 설정값은 [Connect ChatGPT](docs/connect-chatgpt.md) 문서를 보면 됩니다.
+
 ## Why this project
 
 학생은 생각보다 비슷한 질문을 자주 반복합니다.
