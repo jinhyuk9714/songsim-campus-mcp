@@ -198,6 +198,129 @@ GPT_ACTION_V2_PATHS: dict[str, dict[str, str]] = {
     },
 }
 
+GPT_ACTION_V3_PATHS: dict[str, dict[str, str]] = {
+    "/gpt/places": GPT_ACTION_V2_PATHS["/gpt/places"],
+    "/gpt/notices": GPT_ACTION_V2_PATHS["/gpt/notices"],
+    "/gpt/notice-categories": GPT_ACTION_V2_PATHS["/gpt/notice-categories"],
+    "/gpt/periods": GPT_ACTION_V2_PATHS["/gpt/periods"],
+    "/gpt/library-seats": GPT_ACTION_V2_PATHS["/gpt/library-seats"],
+    "/gpt/dining-menus": GPT_ACTION_V2_PATHS["/gpt/dining-menus"],
+    "/gpt/restaurants/nearby": GPT_ACTION_V2_PATHS["/gpt/restaurants/nearby"],
+    "/gpt/restaurants/search": GPT_ACTION_V2_PATHS["/gpt/restaurants/search"],
+    "/gpt/classrooms/empty": GPT_ACTION_V2_PATHS["/gpt/classrooms/empty"],
+    "/academic-calendar": GPT_ACTION_PATHS["/academic-calendar"],
+    "/affiliated-notices": GPT_ACTION_PATHS["/affiliated-notices"],
+    "/campus-life-notices": {
+        "operationId": "listCampusLifeNotices",
+        "summary": "List campus life notice bundles",
+        "description": (
+            "List current campus life notice bundles such as 행사안내 and 외부기관공지."
+        ),
+    },
+    "/phone-book": {
+        "operationId": "searchPhoneBookEntries",
+        "summary": "Search phone book entries",
+        "description": (
+            "Search the current Songsim campus phone book by office, department, or "
+            "contact keyword."
+        ),
+    },
+    "/certificate-guides": GPT_ACTION_PATHS["/certificate-guides"],
+    "/leave-of-absence-guides": GPT_ACTION_PATHS["/leave-of-absence-guides"],
+    "/scholarship-guides": GPT_ACTION_PATHS["/scholarship-guides"],
+    "/wifi-guides": GPT_ACTION_PATHS["/wifi-guides"],
+    "/transport": GPT_ACTION_PATHS["/transport"],
+    "/courses": GPT_ACTION_PATHS["/courses"],
+    "/academic-status-guides": {
+        "operationId": "listAcademicStatusGuides",
+        "summary": "List academic status guides",
+        "description": (
+            "List current academic status guidance for leave, dropout, and re-admission."
+        ),
+    },
+    "/registration-guides": {
+        "operationId": "listRegistrationGuides",
+        "summary": "List registration guides",
+        "description": (
+            "List the current Songsim registration guidance and official notice links."
+        ),
+    },
+    "/class-guides": {
+        "operationId": "listClassGuides",
+        "summary": "List class guides",
+        "description": (
+            "List the current Songsim class guidance such as excused absence and "
+            "course cancellation."
+        ),
+    },
+    "/seasonal-semester-guides": {
+        "operationId": "listSeasonalSemesterGuides",
+        "summary": "List seasonal semester guides",
+        "description": (
+            "List the current Songsim seasonal semester guidance and eligibility notes."
+        ),
+    },
+    "/academic-milestone-guides": {
+        "operationId": "listAcademicMilestoneGuides",
+        "summary": "List academic milestone guides",
+        "description": (
+            "List the current Songsim academic milestone guidance for grades and graduation."
+        ),
+    },
+    "/academic-support-guides": {
+        "operationId": "listAcademicSupportGuides",
+        "summary": "List academic support guides",
+        "description": (
+            "List the current Songsim academic support guidance and office contact links."
+        ),
+    },
+    "/campus-life-support-guides": {
+        "operationId": "listCampusLifeSupportGuides",
+        "summary": "List campus life support guides",
+        "description": (
+            "List the current Songsim campus life support guidance for counseling, "
+            "disability support, reservist, and hospital use."
+        ),
+    },
+    "/dormitory-guides": {
+        "operationId": "listDormitoryGuides",
+        "summary": "List dormitory guides",
+        "description": (
+            "List the current Songsim dormitory guidance and notice bundles."
+        ),
+    },
+    "/pc-software": {
+        "operationId": "searchPcSoftwareEntries",
+        "summary": "Search PC software entries",
+        "description": (
+            "Search the current Songsim PC software and lab availability entries."
+        ),
+    },
+    "/student-exchange-guides": {
+        "operationId": "listStudentExchangeGuides",
+        "summary": "List student exchange guides",
+        "description": (
+            "List the current Songsim student exchange guidance and official links."
+        ),
+    },
+    "/student-exchange-partners": {
+        "operationId": "searchStudentExchangePartners",
+        "summary": "Search student exchange partners",
+        "description": (
+            "Search current student exchange partner universities by country, "
+            "region, or university name."
+        ),
+    },
+    "/student-activity-guides": {
+        "operationId": "listStudentActivityGuides",
+        "summary": "List student activity guides",
+        "description": (
+            "List the current Songsim student activity guidance for government, "
+            "media, volunteering, and ROTC."
+        ),
+    },
+}
+
 
 def build_filtered_openapi(
     app: FastAPI,
@@ -256,4 +379,22 @@ def build_gpt_actions_openapi_v2(
             "restaurant responses."
         ),
         path_metadata=GPT_ACTION_V2_PATHS,
+    )
+
+
+def build_gpt_actions_openapi_v3(
+    app: FastAPI,
+    request: Request,
+    settings: Any,
+) -> dict[str, object]:
+    return build_filtered_openapi(
+        app,
+        request,
+        settings,
+        title="Songsim Campus GPT Actions v3",
+        description=(
+            "Hybrid actions schema combining concise GPT wrappers with broader public "
+            "student-facing endpoints."
+        ),
+        path_metadata=GPT_ACTION_V3_PATHS,
     )

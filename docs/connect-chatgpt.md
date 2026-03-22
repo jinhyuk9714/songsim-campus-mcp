@@ -76,11 +76,24 @@
 
 ChatGPT의 `chatgpt.com/g/...` 링크를 만들고 싶다면 MCP connector 대신 GPT Builder의 `Actions`를 사용할 수 있습니다. 다만 학생용 기본 입구는 MCP connector이고, GPT Actions는 선택적 포장층입니다.
 
-- Actions schema URL: `https://your-public-api-url/gpt-actions-openapi-v2.json`
+- Shared GPT schema URL: `https://your-public-api-url/gpt-actions-openapi-v3.json`
+- Slim demo / legacy schema URL: `https://your-public-api-url/gpt-actions-openapi-v2.json`
 - Privacy Policy URL: `https://your-public-api-url/privacy`
 - 인증: `None`
-- Shared GPT를 정말 공개할 때만 이 경로를 쓰고, 일반 학생 사용 기준으로는 MCP connector를 먼저 권장합니다.
+- shared GPT는 `v3`를 쓰고, `v2`는 슬림 데모나 레거시 호환용으로만 둡니다.
+- 일반 학생 사용 기준으로는 MCP connector를 먼저 권장합니다.
 - 기존 `gpt-actions-openapi.json`은 회귀용으로 남아 있지만, 학생-facing 기본 문서에서는 전면에 두지 않습니다.
+
+Builder에 넣을 수 있는 최소 Instructions 예시:
+
+```text
+You are a read-only student assistant for Songsim Campus.
+Use the connected action first for any campus question.
+Prefer the action over memory or web search.
+Do not invent school data.
+If the action cannot verify something, say so briefly and suggest the closest verifiable alternative.
+Keep answers short, practical, and campus-specific.
+```
 
 ## 공개 서버 제한
 

@@ -13,6 +13,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from .api_docs import (
     build_gpt_actions_openapi,
     build_gpt_actions_openapi_v2,
+    build_gpt_actions_openapi_v3,
 )
 from .api_pages import (
     render_admin_observability_page,
@@ -373,6 +374,7 @@ def create_app() -> FastAPI:
             ""
             if public_readonly
             else (
+                '<a class="pill" href="/gpt-actions-openapi-v3.json">GPT Actions OpenAPI v3</a>'
                 '<a class="pill" href="/gpt-actions-openapi-v2.json">GPT Actions OpenAPI v2</a>'
                 '<a class="pill" href="/gpt-actions-openapi.json">GPT Actions OpenAPI v1</a>'
             )
@@ -404,6 +406,10 @@ def create_app() -> FastAPI:
     @app.get("/gpt-actions-openapi-v2.json")
     def gpt_actions_openapi_v2(request: Request) -> JSONResponse:
         return JSONResponse(build_gpt_actions_openapi_v2(app, request, settings=settings))
+
+    @app.get("/gpt-actions-openapi-v3.json")
+    def gpt_actions_openapi_v3(request: Request) -> JSONResponse:
+        return JSONResponse(build_gpt_actions_openapi_v3(app, request, settings=settings))
 
     @app.get("/periods", response_model=list[Period])
     def periods() -> list[Period]:

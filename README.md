@@ -32,6 +32,10 @@
 
 학생이 실제로 쓰는 입구는 Remote MCP입니다. ChatGPT, Codex, Claude 같은 MCP 클라이언트에서 바로 연결해서 사용할 수 있습니다.
 
+### Actions-secondary
+
+ChatGPT 공유 GPT용 packaging layer도 따로 둡니다. 이 레포에서는 학생용 shared GPT가 `gpt-actions-openapi-v3.json`을 쓰고, `v2`는 슬림 데모와 레거시 호환용으로 남겨둡니다.
+
 ### Student-first
 
 질문 축이 추상적이지 않습니다. `오늘 할 일`, `어디/연락처`, `절차/제도`, `공부공간/자원`, `특수 경로`처럼 학생이 바로 행동으로 옮기는 여정을 먼저 다룹니다.
@@ -270,6 +274,7 @@ uv run songsim-api
 ```
 
 - docs: `http://127.0.0.1:8000/docs`
+- shared GPT schema v3: `http://127.0.0.1:8000/gpt-actions-openapi-v3.json`
 - shared GPT schema v2: `http://127.0.0.1:8000/gpt-actions-openapi-v2.json`
 - legacy schema v1: `http://127.0.0.1:8000/gpt-actions-openapi.json`
 
@@ -332,6 +337,7 @@ curl 'http://127.0.0.1:8000/wifi-guides'
 - 내부 automation
 - `/gpt/*` 및 GPT Actions packaging layer
   - 공개 기본 진입면은 아니고, 필요할 때 쓰는 secondary packaging layer입니다.
+  - shared GPT는 `gpt-actions-openapi-v3.json`, slim demo / legacy는 `gpt-actions-openapi-v2.json`을 씁니다.
 
 ## Local Full Mode
 
