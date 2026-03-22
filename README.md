@@ -5,9 +5,9 @@
 
 공개 배포에서는 **read-only Remote MCP**가 학생용 기본 입구이고,  
 **HTTP API**는 같은 결과를 직접 검증하거나 외부 앱에서 연동할 때 쓰는 companion layer입니다.
-Local Full Mode는 운영과 개인화용 별도 모드입니다.
+**Local Full Mode**는 운영과 개인화용 별도 모드입니다.
 
-[Public API](https://songsim-public-api.onrender.com) · [Connect ChatGPT](docs/connect-chatgpt.md) · [Connect Codex](docs/connect-codex.md) · [Connect Claude](docs/connect-claude.md) · [Source Registry](docs/source_registry.md) · [QA Baseline](docs/qa/public-api-live-validation-1000.md)
+[Public API](https://songsim-public-api.onrender.com) · [Connect ChatGPT](docs/connect-chatgpt.md) · [Connect Codex](docs/connect-codex.md) · [Connect Claude](docs/connect-claude.md) · [Source Registry](docs/source_registry.md) · [Public API QA](docs/qa/public-api-live-validation-1000.md) · [Public MCP QA](docs/qa/public-mcp-live-validation-summary.md)
 
 ## Why this project
 
@@ -59,6 +59,7 @@ Local Full Mode는 운영과 개인화용 별도 모드입니다.
 - `songsim://academic-milestone-guide`
 - `songsim://student-exchange-guide`
 - `songsim://student-exchange-partners`
+- `songsim://student-activity-guide`
 - `songsim://phone-book`
 - `songsim://campus-life-support-guide`
 - `songsim://dormitory-guide`
@@ -75,6 +76,7 @@ Local Full Mode는 운영과 개인화용 별도 모드입니다.
 - `tool_list_latest_notices`
 - `tool_list_affiliated_notices`
 - `tool_list_campus_life_notices`
+- `tool_list_student_activity_guides`
 - `tool_search_dining_menus`
 - `tool_find_nearby_restaurants`
 - `tool_get_library_seat_status`
@@ -97,6 +99,7 @@ Local Full Mode는 운영과 개인화용 별도 모드입니다.
 - `/academic-milestone-guides`
 - `/student-exchange-guides`
 - `/student-exchange-partners`
+- `/student-activity-guides`
 - `/certificate-guides`
 - `/leave-of-absence-guides`
 - `/academic-status-guides`
@@ -124,7 +127,7 @@ Local Full Mode는 운영과 개인화용 별도 모드입니다.
 | 어디 / 연락처 | 건물, 별칭, 편의시설, 전화번호, 운영시간, 교통, Wi-Fi | `학생회관 어디야?` `복사실이 어디야?` `보건실 전화번호 알려줘` `니콜스관 WIFI 안내 알려줘` | `songsim://usage-guide` `tool_search_places` `tool_get_place` `tool_search_phone_book` `tool_list_transport_guides` `tool_list_wifi_guides` | `/places` `/places/{identifier}` `/phone-book` `/transport` `/wifi-guides` |
 | 절차 / 제도 | 등록, 증명, 휴학, 복학/자퇴/재입학, 수업, 계절학기, 성적·졸업, 학생교류, 장학 | `등록금 반환 기준 알려줘` `재학증명서 발급 방법 알려줘` `공결 신청 방법 알려줘` `계절학기 신청 시기 알려줘` `졸업요건 알려줘` `국내 학점교류 신청대상 알려줘` | `tool_list_registration_guides` `tool_list_certificate_guides` `tool_list_leave_of_absence_guides` `tool_list_academic_status_guides` `tool_list_class_guides` `tool_list_seasonal_semester_guides` `tool_list_academic_milestone_guides` `tool_list_student_exchange_guides` `tool_search_student_exchange_partners` `tool_list_scholarship_guides` | `/registration-guides` `/certificate-guides` `/leave-of-absence-guides` `/academic-status-guides` `/class-guides` `/seasonal-semester-guides` `/academic-milestone-guides` `/student-exchange-guides` `/student-exchange-partners` `/scholarship-guides` |
 | 공부공간 / 자원 | 과목, 교시, 도서관 좌석, 예상 빈 강의실, 학식, 주변 식당, PC 소프트웨어 | `7교시가 몇 시야?` `2026년 1학기 객체지향 과목 찾아줘` `중앙도서관 열람실 남은 좌석 알려줘` `K관 지금 예상 빈 강의실 있어?` `학생식당 메뉴 보여줘` `SPSS 설치된 컴퓨터실 어디야` | `tool_search_courses` `tool_get_class_periods` `tool_get_library_seat_status` `tool_list_estimated_empty_classrooms` `tool_search_dining_menus` `tool_find_nearby_restaurants` `tool_search_restaurants` `tool_search_pc_software` | `/courses` `/periods` `/library-seats` `/classrooms/empty` `/dining-menus` `/restaurants/nearby` `/restaurants/search` `/pc-software` |
-| 특수 경로 | 기숙사, 생활지원, 상담·예비군·병원, 소속기관 공지 | `성심교정 기숙사 안내해줘` `학생상담 어디서 받아?` `예비군 신고 시기 알려줘` `부속병원 이용 안내해줘` `프란치스코관 입퇴사공지 알려줘` | `tool_list_dormitory_guides` `tool_list_campus_life_support_guides` `tool_list_affiliated_notices` | `/dormitory-guides` `/campus-life-support-guides` `/affiliated-notices` |
+| 특수 경로 | 기숙사, 생활지원, 상담·예비군·병원, 학생활동, 소속기관 공지 | `성심교정 기숙사 안내해줘` `학생상담 어디서 받아?` `예비군 신고 시기 알려줘` `부속병원 이용 안내해줘` `총학생회 안내해줘` `프란치스코관 입퇴사공지 알려줘` | `tool_list_dormitory_guides` `tool_list_campus_life_support_guides` `tool_list_student_activity_guides` `tool_list_affiliated_notices` | `/dormitory-guides` `/campus-life-support-guides` `/student-activity-guides` `/affiliated-notices` |
 
 질문 패턴 예시:
 
@@ -328,6 +331,7 @@ curl 'http://127.0.0.1:8000/wifi-guides'
 - observability
 - 내부 automation
 - `/gpt/*` 및 GPT Actions packaging layer
+  - 공개 기본 진입면은 아니고, 필요할 때 쓰는 secondary packaging layer입니다.
 
 ## Local Full Mode
 
